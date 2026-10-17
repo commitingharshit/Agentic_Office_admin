@@ -7,10 +7,10 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
-import { adminHandler } from '../api/admin.ts';
-import { ClerkVerifier, frontendApiFromPublishableKey } from '../api/clerk.ts';
-import { S3 } from '../api/s3.ts';
-import { syncHandler } from '../api/sync.ts';
+import { adminHandler } from '../src/api/admin.ts';
+import { ClerkVerifier, frontendApiFromPublishableKey } from '../src/auth/clerk.ts';
+import { S3 } from '../src/api/s3.ts';
+import { syncHandler } from '../src/api/sync.ts';
 
 const ownerUrl = process.env.AO_TEST_PG;
 const skip = !ownerUrl && 'AO_TEST_PG not set';

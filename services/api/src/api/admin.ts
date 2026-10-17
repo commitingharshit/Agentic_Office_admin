@@ -8,7 +8,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
 import type { S3 } from './s3.ts';
-import type { ClerkClaims } from './clerk.ts';
+import type { ClerkClaims } from '../auth/clerk.ts';
 
 export interface AdminDeps {
   ro: pg.Pool;

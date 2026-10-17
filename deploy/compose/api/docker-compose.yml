@@ -108,14 +108,14 @@ services:
       - backups:/backups:ro
 
   # The admin API (Admin Console backend). Reads as ao_readonly, acts as ao_admin, audits
-  # everything. AO_SERVER_DIR holds api/, node_modules/ and package.json (default: this repo's server/).
+  # everything. AO_SERVER_DIR holds src/, node_modules/ and package.json (default: services/accounts-sync/).
   api:
     image: node:24.15.0-alpine
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
     working_dir: /srv
-    command: ["node", "api/main.ts"]
+    command: ["node", "src/api/main.ts"]
     environment:
       AO_API_BIND: 0.0.0.0
       PG_HOST: postgres
@@ -130,7 +130,7 @@ services:
       CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-}
       AO_APP_PASSWORD: ${AO_APP_PASSWORD}
     volumes:
-      - ${AO_SERVER_DIR:-..}/api:/srv/api:ro
+      - ${AO_SERVER_DIR:-..}/src:/srv/src:ro
       - ${AO_SERVER_DIR:-..}/node_modules:/srv/node_modules:ro
       - ${AO_SERVER_DIR:-..}/package.json:/srv/package.json:ro
     ports:

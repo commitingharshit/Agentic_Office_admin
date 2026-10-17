@@ -51,7 +51,7 @@ SSH in as `tanmaykumar@100.94.155.4`; the stack lives in `C:\Users\tanmaykumar\a
 - Run docker commands with `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine`.
 
 ## Admin API (the Admin Console's backend)
-`api` in the compose file runs `services/accounts-sync/api/main.ts` on `${BIND_IP}:8787` (Tailscale only until the public
+`api` in the compose file runs `services/accounts-sync/src/api/main.ts` on `${BIND_IP}:8787` (Tailscale only until the public
 API exists). It reads as `ao_readonly`, acts as `ao_admin`, and writes every view, action and SQL query to
 `admin_audit` before doing it. Until Clerk admin sign-in is wired, admins authenticate with a bearer token
 from `AO_ADMIN_TOKENS=name:token` (24+ characters; only its hash is kept in memory). `CLERK_SECRET_KEY` is
