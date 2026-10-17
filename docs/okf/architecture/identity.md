@@ -44,7 +44,7 @@ Postgres roles: `ao_app` (row-level security, `own_rows`/`own_user` policies), `
   and `collabSignIn.ts` (collab server sign-in). The xlsx, pptx and pdf extensions have no
   sign-in of their own, so nothing is shared with them yet and it stays in the extension rather
   than in `packages/`.
-- **Window:** `vscode/src/vs/workbench/contrib/agenticOffice/browser/account.contribution.ts`
+- **Window:** `apps/desktop/src/vs/workbench/contrib/agenticOffice/browser/account.contribution.ts`
   draws the account in the Accounts menu from what the extension reports.
 
 ## Phase 2 (separate plan)
