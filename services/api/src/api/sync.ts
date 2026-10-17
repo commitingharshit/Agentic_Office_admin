@@ -6,7 +6,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
-import { AuthError, type ClerkClaims } from './clerk.ts';
+import { AuthError, type ClerkClaims } from '../auth/clerk.ts';
 import type { S3 } from './s3.ts';
 
 export interface SyncDeps {

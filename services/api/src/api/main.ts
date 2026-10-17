@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import pg from 'pg';
 import { adminHandler, parseTokens } from './admin.ts';
-import { ClerkVerifier } from './clerk.ts';
+import { ClerkVerifier } from '../auth/clerk.ts';
 import { S3 } from './s3.ts';
 import { syncHandler } from './sync.ts';
 
