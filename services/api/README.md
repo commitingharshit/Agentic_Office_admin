@@ -5,7 +5,11 @@ behind Clerk sign-in. The only service with versioned SQL migrations.
 
 - **Toolchain:** Node 24 (TypeScript run directly by type stripping — no build step), npm.
 - **Install:** `npm ci`
-- **Test:** `npm test` — needs the local stack (Postgres + MinIO) from `deploy/`.
+- **Test:** `npm run test:postgres` starts a disposable local Postgres, runs the real migrations,
+  and executes the schema/API tests (requires PostgreSQL with pgvector installed for that major
+  version; set `PG_BIN_DIR` if multiple versions are installed). `npm test` uses an existing
+  migrated database from `AO_TEST_PG`; tests skip when it is unset. MinIO-backed blob tests are
+  optional in either mode (`AO_TEST_MINIO` plus MinIO credentials).
 - **Migrate:** `AO_APP_PASSWORD=… AO_READONLY_PASSWORD=… AO_ADMIN_PASSWORD=… npm run migrate [-- --status]`
 - **Run:** `node src/api/main.ts` (port 8787), or the `api` service in `deploy/docker-compose.yml`.
 - **Deploy:** `services/deploy/stack.sh accounts-sync up -d`; host quirks, backups and the restore

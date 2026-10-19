@@ -350,7 +350,7 @@ export function syncHandler(deps: SyncDeps) {
         return send(200, { revisions: rows.map((r) => ({ ...r, revision: Number(r.revision), bytes: Number(r.bytes) })) }), true;
       }
 
-      // ── memory references (Mnemo files synced as encrypted blobs)
+      // ── memory references (encrypted memory files)
       if (a === 'memory' && !b && m === 'GET') {
         // With ?since= (incremental) tombstones come too, as {deleted: true}; without it, live memories only.
         const since = url.searchParams.get('since');
@@ -362,14 +362,33 @@ export function syncHandler(deps: SyncDeps) {
         const d = await json(req);
         const hash = d.blob_hash ? String(d.blob_hash) : null;
         if (hash && !HASH.test(hash)) throw new HttpError(400, 'blob_hash must be a sha256.');
-        await q((cl) => cl.query(`INSERT INTO memory_references(memory_id, user_id, workspace_id, memory_uri, source_version, kind, blob_key) VALUES ($1,$2,$3,$4,$5,$6,$7)
-          ON CONFLICT (memory_id) DO UPDATE SET source_version = excluded.source_version, kind = excluded.kind, blob_key = excluded.blob_key, deleted_at = NULL, updated_at = now() WHERE memory_references.user_id = $2`,
-          [id(b, 'memory id'), uid, d.workspace_id ? id(d.workspace_id, 'workspace_id') : null, `mnemo://${uid}/${b}`, str(d.source_version, 80) ?? '', str(d.kind, 40), hash ? `ao-user-blobs/${uid}/${hash}` : null]));
+        if (!Object.hasOwn(d, 'expected_version')) throw new HttpError(400, 'expected_version is required.');
+        await q(async (cl) => {
+          const mid = id(b, 'memory id');
+          // Serialize even absent-row creations. The row lock protects updates; the advisory
+          // lock also protects two devices creating the same id simultaneously.
+          await cl.query('SELECT pg_advisory_xact_lock(hashtext($1))', [mid]);
+          const current = (await cl.query('SELECT source_version, deleted_at FROM memory_references WHERE memory_id = $1 FOR UPDATE', [mid])).rows[0];
+          const actual = current && !current.deleted_at ? current.source_version : null;
+          if (actual !== d.expected_version) throw new HttpError(409, 'Memory changed on another device; pull and resolve the conflict.');
+          await cl.query(`INSERT INTO memory_references(memory_id, user_id, workspace_id, memory_uri, source_version, kind, blob_key) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            ON CONFLICT (memory_id) DO UPDATE SET source_version = excluded.source_version, kind = excluded.kind, blob_key = excluded.blob_key, deleted_at = NULL, updated_at = now() WHERE memory_references.user_id = $2`,
+            [mid, uid, d.workspace_id ? id(d.workspace_id, 'workspace_id') : null, `mnemo://${uid}/${b}`, str(d.source_version, 80) ?? '', str(d.kind, 40), hash ? `ao-user-blobs/${uid}/${hash}` : null]);
+        });
         return send(200, { ok: true }), true;
       }
       if (a === 'memory' && b && m === 'DELETE') {
         // A tombstone, not a delete: other devices learn the memory is gone on their next pull.
-        await q((cl) => cl.query('UPDATE memory_references SET deleted_at = now(), updated_at = now(), blob_key = NULL WHERE memory_id = $1 AND deleted_at IS NULL', [id(b, 'memory id')]));
+        const d = await json(req);
+        if (!Object.hasOwn(d, 'expected_version')) throw new HttpError(400, 'expected_version is required.');
+        await q(async (cl) => {
+          const mid = id(b, 'memory id');
+          await cl.query('SELECT pg_advisory_xact_lock(hashtext($1))', [mid]);
+          const current = (await cl.query('SELECT source_version, deleted_at FROM memory_references WHERE memory_id = $1 FOR UPDATE', [mid])).rows[0];
+          const actual = current && !current.deleted_at ? current.source_version : null;
+          if (actual !== d.expected_version) throw new HttpError(409, 'Memory changed on another device; pull and resolve the conflict.');
+          if (current && !current.deleted_at) await cl.query('UPDATE memory_references SET deleted_at = now(), updated_at = now(), blob_key = NULL WHERE memory_id = $1', [mid]);
+        });
         return send(200, { ok: true }), true;
       }
 

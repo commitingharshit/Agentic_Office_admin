@@ -151,14 +151,38 @@ test('devices, workspaces, sessions, memory references and cursors round-trip', 
   assert.equal(me.body.workspaces[0].name, 'Board pack');
   const ss = await call(`/v1/sessions?workspace_id=ws_${tag}`, t);
   assert.equal(ss.body.sessions[0].latest_checkpoint_id, `chk_${tag}`);
-  await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'v1', kind: 'decision' }) });
+  await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'v1', kind: 'decision', expected_version: null }) });
   const mem = await call('/v1/memory', t);
   assert.match(mem.body.memories[0].memory_uri, /^mnemo:\/\/usr_.+\/mem_/);
   assert.deepEqual((await call('/v1/memory', tokenB())).body.memories, []);
-  await call(`/v1/memory/mem_${tag}`, t, { method: 'DELETE' });
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'stale', expected_version: null }) })).status, 409);
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'DELETE', body: JSON.stringify({ expected_version: 'stale' }) })).status, 409);
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'DELETE', body: JSON.stringify({ expected_version: 'v1' }) })).status, 200);
   assert.deepEqual((await call('/v1/memory', t)).body.memories, []);
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'v2', expected_version: 'v1' }) })).status, 409);
   await call(`/v1/cursors/dev_${tag}/events`, t, { method: 'PUT', body: JSON.stringify({ cursor: '42' }) });
   assert.equal((await call(`/v1/cursors/dev_${tag}/events`, t)).body.cursor, '42');
+});
+
+test('two devices cannot silently overwrite a memory or resurrect a private one', { skip }, async () => {
+  const mid = `mem_race_${tag}`;
+  const path = `/v1/memory/${mid}`;
+  const put = (version: string, expected: string | null) => call(path, tokenA(), {
+    method: 'PUT', body: JSON.stringify({ source_version: version, expected_version: expected, kind: 'preference' }),
+  });
+  const remove = (expected: string | null) => call(path, tokenA(), {
+    method: 'DELETE', body: JSON.stringify({ expected_version: expected }),
+  });
+  assert.equal((await put('base', null)).status, 200);
+  const edits = await Promise.all([put('device-a', 'base'), put('device-b', 'base')]);
+  assert.deepEqual(edits.map((x) => x.status).sort(), [200, 409]);
+  const winner = (await call('/v1/memory', tokenA())).body.memories.find((m: { memory_id: string }) => m.memory_id === mid);
+  assert.ok(['device-a', 'device-b'].includes(winner.source_version));
+  assert.deepEqual((await call('/v1/memory', tokenB())).body.memories, [], 'another account has no reference to this memory');
+  assert.equal((await remove('base')).status, 409, 'a stale device cannot hide the newer edit');
+  assert.equal((await remove(winner.source_version)).status, 200, 'privacy removal uses the current version');
+  assert.equal((await put('stale-resurrection', 'base')).status, 409);
+  assert.equal((await call('/v1/memory', tokenA())).body.memories.some((m: { memory_id: string }) => m.memory_id === mid), false);
 });
 
 test('admins sign in with Clerk: role claim or our admin row; others get 403', { skip }, async () => {
