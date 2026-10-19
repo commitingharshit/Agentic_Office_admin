@@ -151,12 +151,15 @@ test('devices, workspaces, sessions, memory references and cursors round-trip', 
   assert.equal(me.body.workspaces[0].name, 'Board pack');
   const ss = await call(`/v1/sessions?workspace_id=ws_${tag}`, t);
   assert.equal(ss.body.sessions[0].latest_checkpoint_id, `chk_${tag}`);
-  await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'v1', kind: 'decision' }) });
+  await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'v1', kind: 'decision', expected_version: null }) });
   const mem = await call('/v1/memory', t);
   assert.match(mem.body.memories[0].memory_uri, /^mnemo:\/\/usr_.+\/mem_/);
   assert.deepEqual((await call('/v1/memory', tokenB())).body.memories, []);
-  await call(`/v1/memory/mem_${tag}`, t, { method: 'DELETE' });
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'stale', expected_version: null }) })).status, 409);
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'DELETE', body: JSON.stringify({ expected_version: 'stale' }) })).status, 409);
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'DELETE', body: JSON.stringify({ expected_version: 'v1' }) })).status, 200);
   assert.deepEqual((await call('/v1/memory', t)).body.memories, []);
+  assert.equal((await call(`/v1/memory/mem_${tag}`, t, { method: 'PUT', body: JSON.stringify({ source_version: 'v2', expected_version: 'v1' }) })).status, 409);
   await call(`/v1/cursors/dev_${tag}/events`, t, { method: 'PUT', body: JSON.stringify({ cursor: '42' }) });
   assert.equal((await call(`/v1/cursors/dev_${tag}/events`, t)).body.cursor, '42');
 });
