@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { parseManifest, pathProblem } from '../manifest.ts';
 import type { ListingType, UnpackedPackage, ValidationCheck, ValidationReport } from '../types.ts';
 
 export type Validator = (pkg: UnpackedPackage) => Promise<ValidationCheck[]> | ValidationCheck[];
@@ -12,6 +13,19 @@ function commonChecks(type: ListingType, pkg: UnpackedPackage): ValidationCheck[
   const typeOk = pkg.manifest.type === type;
   checks.push({ name: 'manifest-type-matches', ok: typeOk, ...(typeOk ? {} : { detail: `manifest type ${pkg.manifest.type} != ${type}` }) });
 
+  // pkg.manifest is untrusted: re-validate it rather than assume Task 3's unpacker did.
+  let manifestOk = true;
+  try { parseManifest(structuredClone(pkg.manifest)); checks.push({ name: 'manifest-valid', ok: true }); }
+  catch (e) { manifestOk = false; checks.push({ name: 'manifest-valid', ok: false, detail: (e as Error).message }); }
+
+  const badPaths: string[] = [];
+  for (const k of pkg.files.keys()) { const pr = pathProblem(k); if (pr) badPaths.push(`${JSON.stringify(k)}: ${pr}`); }
+  checks.push({ name: 'file-paths-safe', ok: badPaths.length === 0, ...(badPaths.length ? { detail: badPaths.join('; ') } : {}) });
+
+  if (!manifestOk) {
+    checks.push({ name: 'files-match-hashes', ok: false, detail: 'manifest is invalid' });
+    return checks;
+  }
   const problems: string[] = [];
   const declared = new Set<string>();
   for (const f of pkg.manifest.files) {
@@ -30,7 +44,12 @@ function commonChecks(type: ListingType, pkg: UnpackedPackage): ValidationCheck[
 export async function validateArtifact(type: ListingType, pkg: UnpackedPackage): Promise<ValidationReport> {
   const checks = commonChecks(type, pkg);
   const v = validators.get(type);
+  // Type validators only ever see a manifest that passed manifest-valid.
+  if (checks.some(c => c.name === 'manifest-valid' && !c.ok)) return { ok: false, checks };
   if (!v) checks.push({ name: 'type-supported', ok: false, detail: `no validator for type ${type}` });
-  else checks.push(...await v(pkg));
+  else {
+    try { checks.push(...((await v(pkg)) ?? [])); }
+    catch (e) { checks.push({ name: 'validator-error', ok: false, detail: e instanceof Error ? e.message : String(e) }); }
+  }
   return { ok: checks.every(c => c.ok), checks };
 }

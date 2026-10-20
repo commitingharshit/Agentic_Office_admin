@@ -107,3 +107,81 @@ test('manifest type mismatch fails', async () => {
   registerValidator('routine', async () => []);
   assert.deepEqual(failed(await validateArtifact('routine', pkg('skill', { a: 'x' }))), ['manifest-type-matches']);
 });
+
+// ---- review round 1 ----
+test('prerelease range edges (npm semantics)', () => {
+  assert.equal(satisfies('2.0.0-alpha', '^1.0.0-rc.1'), false);
+  assert.equal(satisfies('1.3.0-alpha', '~1.2.0-rc'), false);
+  assert.equal(satisfies('5.0.0-alpha', '>=1.0.0-rc.1'), false);
+  assert.equal(satisfies('1.0.0-rc.2', '>=1.0.0-rc.1'), true);
+  assert.equal(satisfies('1.0.0-rc.2', '^1.0.0-rc.1'), true);
+  assert.equal(satisfies('1.2.0-rc.5', '~1.2.0-rc'), true);
+});
+test('huge numbers are rejected', () => {
+  const big = '9007199254740993';
+  throwsAt(m => { m.version = `${big}.0.0`; }, 'version');
+  throwsAt(m => { m.version = `1.0.0-${big}`; }, 'version');
+  throwsAt(m => { m.compat.app = `^${big}.0.0`; }, 'compat.app');
+  throwsAt(m => { m.compat.app = `${big}.x`; }, 'compat.app');
+  throwsAt(m => { m.files[0].size = 2 ** 53; }, 'files[0].size');
+  assert.equal(satisfies(`${big}.0.0`, '*'), false);
+});
+test('case and unicode-normalization path collisions', () => {
+  throwsAt(m => { m.files.push({ path: 'skill.md', sha256: HEX, size: 1 }); }, 'files[1].path');
+  throwsAt(m => {
+    m.files[0].path = 'caf\u00e9.md';
+    m.files.push({ path: 'cafe\u0301.md', sha256: HEX, size: 1 });
+  }, 'files[1].path');
+});
+test('unsafe paths', () => {
+  for (const p of ['a\0b', 'a\x1fb', 'a\x7fb', '.', './a', 'a/', 'C:/x', 'dir/x:stream', 'a./b', 'a /b', 'a/b.', 'CON.txt', 'con', 'dir/Nul', 'COM1', 'lpt9.log', '.git/config', 'x/.GIT/y', 'a'.repeat(241)])
+    throwsAt(m => { m.files[0].path = p; }, 'files[0].path');
+  assert.doesNotThrow(() => parseManifest({ ...base(), files: [{ path: 'dir/com10.txt', sha256: HEX, size: 1 }, { path: '.gitignore', sha256: HEX, size: 1 }] }));
+});
+test('invalid ranges', () => {
+  for (const r of ['>=1.2', '1.2.3 || 2.0.0', '1.2.3 - 2.0.0', '', '^1', 'latest'])
+    assert.equal(satisfies('1.2.3', r), false, r);
+  throwsAt(m => { m.compat.app = '1.2.3 || 2.0.0'; }, 'compat.app');
+});
+test('compat.hermes', () => {
+  assert.equal(parseManifest({ ...base(), compat: { app: '^1.0.0', hermes: '>=0.21.0' } }).compat.hermes, '>=0.21.0');
+  throwsAt(m => { m.compat.hermes = 'nope'; }, 'compat.hermes');
+});
+test('limits and dependencies', () => {
+  throwsAt(m => { m.title = 'x'.repeat(2001); }, 'title');
+  throwsAt(m => { m.files = Array.from({ length: 1001 }, (_, i) => ({ path: `f${i}`, sha256: HEX, size: 1 })); }, 'files');
+  throwsAt(m => { m.permissions = Array.from({ length: 101 }, () => ({ capability: 'network', scope: 's', reason: 'r' })); }, 'permissions');
+  throwsAt(m => { m.dependencies = Array.from({ length: 101 }, (_, i) => ({ id: `a/d${i}`, range: '*' })); }, 'dependencies');
+  throwsAt(m => { m.dependencies = [{ id: 'acme/my-skill', range: '*' }]; }, 'dependencies[0].id');
+  throwsAt(m => { m.dependencies = [{ id: 'a/b', range: '*' }, { id: 'a/b', range: '^1.0.0' }]; }, 'dependencies[1].id');
+  throwsAt(m => { m.version = '1.0.0+build'; }, 'version');
+});
+test('payload is deep-cloned', () => {
+  const raw = base(); raw.payload = JSON.parse('{"__proto__":{"x":1},"a":{"b":1}}');
+  const m = parseManifest(raw);
+  assert.notEqual(m.payload, raw.payload);
+  assert.notEqual(m.payload.a, raw.payload.a);
+});
+test('validator that throws becomes validator-error; empty result is ok', async () => {
+  registerValidator('routine', async () => { throw new Error('boom'); });
+  const r = await validateArtifact('routine', pkg('routine', { a: 'x' }));
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.checks.find(c => c.name === 'validator-error'), { name: 'validator-error', ok: false, detail: 'boom' });
+  registerValidator('routine', async () => []);
+  assert.equal((await validateArtifact('routine', pkg('routine', { a: 'x' }))).ok, true);
+});
+test('validateArtifact does not trust pkg.manifest', async () => {
+  registerValidator('routine', async () => []);
+  const p = pkg('routine', { a: 'x' });
+  p.manifest = { ...p.manifest, files: [{ path: '../evil', sha256: sha(enc('x')), size: 1 }] };
+  p.files = new Map([['../evil', enc('x')]]);
+  const f = failed(await validateArtifact('routine', p));
+  assert.ok(f.includes('manifest-valid'));
+  assert.ok(f.includes('file-paths-safe'));
+  const q = pkg('routine', { a: 'x' });
+  q.files.set('CON.txt', enc('y'));
+  assert.ok(failed(await validateArtifact('routine', q)).includes('file-paths-safe'));
+  const w = pkg('routine', { a: 'x' });
+  (w.manifest as any).version = 'bad';
+  assert.ok(failed(await validateArtifact('routine', w)).includes('manifest-valid'));
+});
