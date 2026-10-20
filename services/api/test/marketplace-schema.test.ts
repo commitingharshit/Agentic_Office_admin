@@ -1,6 +1,6 @@
-// Marketplace schema (migration 0013).
-//  - The PGlite suite loads a minimal stub of the tables 0013 references (users, devices) and then
-//    runs the real 0013 SQL. Role GRANT/POLICY statements sit in a guarded trailing section, so they
+// Marketplace schema (migration 0015).
+//  - The PGlite suite loads a minimal stub of the tables 0015 references (users, devices) and then
+//    runs the real 0015 SQL. Role GRANT/POLICY statements sit in a guarded trailing section, so they
 //    are no-ops there; roles and RLS are only exercised by the full-chain suite below.
 //  - The full-chain suite runs the real db/migrate.ts chain and needs AO_TEST_PG (owner URL).
 import assert from 'node:assert/strict';
@@ -13,7 +13,7 @@ import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const migration = readFileSync(join(here, '..', 'db', 'migrations', '0013_marketplace.sql'), 'utf8');
+const migration = readFileSync(join(here, '..', 'db', 'migrations', '0015_marketplace.sql'), 'utf8');
 const STUB = `
   CREATE TABLE users (id text PRIMARY KEY, email text);
   CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);
@@ -35,12 +35,11 @@ describe('marketplace schema (pglite)', () => {
   });
   after(async () => { await db.close(); });
 
-  async function listing(extra = ''): Promise<string> {
+  async function listing(): Promise<string> {
     const lid = `acme/thing-${++n}`;
     await db.query(
       `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, trust, title, summary, tags)
        VALUES ($1,'skill','acme','usr_a','public','community','Title','Summary',ARRAY['x'])`, [lid]);
-    void extra;
     return lid;
   }
   async function version(lid: string, v = '1.0.0', state = 'published', sha = SHA('a')): Promise<string> {
@@ -63,7 +62,12 @@ describe('marketplace schema (pglite)', () => {
     const lid = await listing();
     const vid = await version(lid);
     await assert.rejects(db.query(`UPDATE marketplace_versions SET manifest = '{"a":2}'::jsonb WHERE id = $1`, [vid]), /immutable/i);
-    await assert.rejects(db.query(`UPDATE marketplace_versions SET sha256 = $2 WHERE id = $1`, [vid, SHA('b')]), /immutable|foreign key/i);
+    await db.query(`INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1, 10, 'k/b')`, [SHA('b')]);
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET sha256 = $2 WHERE id = $1`, [vid, SHA('b')]), /immutable/i);
+    const other = await listing();
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET listing_id = $2 WHERE id = $1`, [vid, other]), /immutable/i);
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET size = 99 WHERE id = $1`, [vid]), /immutable/i);
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET compat = '{"x":1}' WHERE id = $1`, [vid]), /immutable/i);
     await assert.rejects(db.query(`UPDATE marketplace_versions SET version = '9.9.9' WHERE id = $1`, [vid]), /immutable/i);
     await db.query(`UPDATE marketplace_versions SET state = 'revoked' WHERE id = $1`, [vid]);
     const r = await db.query<{ state: string }>(`SELECT state FROM marketplace_versions WHERE id = $1`, [vid]);
@@ -120,6 +124,97 @@ describe('marketplace schema (pglite)', () => {
     await assert.rejects(db.query(ins, [id('inst'), lid]), /unique|duplicate/i);
   });
 
+  test('immutability_survives_deprecation_and_cannot_be_reverted', async () => {
+    const lid = await listing();
+    const vid = await version(lid);
+    const before = await db.query<{ published_at: string }>(`SELECT published_at FROM marketplace_versions WHERE id = $1`, [vid]);
+    assert.ok(before.rows[0].published_at, 'published_at is set when state becomes published');
+    await db.query(`UPDATE marketplace_versions SET state = 'deprecated' WHERE id = $1`, [vid]);
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET manifest = '{"evil":1}' WHERE id = $1`, [vid]), /immutable/i);
+    for (const s of ['draft', 'validating', 'testing', 'submitted', 'in_review', 'approved', 'rejected']) {
+      await assert.rejects(db.query(`UPDATE marketplace_versions SET state = $2 WHERE id = $1`, [vid, s]), /immutable/i, s);
+    }
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET published_at = NULL WHERE id = $1`, [vid]), /immutable/i);
+    await db.query(`UPDATE marketplace_versions SET state = 'quarantined' WHERE id = $1`, [vid]);
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET manifest = '{"evil":2}' WHERE id = $1`, [vid]), /immutable/i);
+  });
+
+  test('draft_to_published_sets_published_at', async () => {
+    const lid = await listing();
+    const vid = await version(lid, '0.2.0', 'draft');
+    await db.query(`UPDATE marketplace_versions SET state = 'published' WHERE id = $1`, [vid]);
+    const r = await db.query<{ published_at: string | null }>(`SELECT published_at FROM marketplace_versions WHERE id = $1`, [vid]);
+    assert.ok(r.rows[0].published_at);
+    await assert.rejects(db.query(`UPDATE marketplace_versions SET manifest = '{}' WHERE id = $1`, [vid]), /immutable/i);
+  });
+
+  test('release_events_are_append_only', async () => {
+    const r = await db.query<{ id: number }>(`INSERT INTO marketplace_release_events(listing_id, event) VALUES ('acme/x','published') RETURNING id`);
+    await assert.rejects(db.query(`UPDATE marketplace_release_events SET event = 'revoked' WHERE id = $1`, [r.rows[0].id]), /append-only/i);
+    await assert.rejects(db.query(`DELETE FROM marketplace_release_events WHERE id = $1`, [r.rows[0].id]), /append-only/i);
+  });
+
+  test('team_visibility_requires_team_id_and_team_delete_is_blocked_while_listed', async () => {
+    await assert.rejects(db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('acme/noteam','skill','acme','usr_a','team','t')`), /check/i);
+    await db.query(`INSERT INTO marketplace_teams(id, name, owner_user_id) VALUES ('team_1','T','usr_a'), ('team_2','U','usr_a')`);
+    await db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, team_id, title) VALUES ('acme/teamed','skill','acme','usr_a','team','team_1','t')`);
+    await assert.rejects(db.query(`DELETE FROM marketplace_teams WHERE id = 'team_1'`), /foreign key|violates/i);
+    await db.query(`DELETE FROM marketplace_teams WHERE id = 'team_2'`);
+  });
+
+  test('listing_id_must_start_with_publisher_id', async () => {
+    await assert.rejects(db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, title) VALUES ('other/x','skill','acme','usr_a','t')`), /check/i);
+  });
+
+  test('every_valid_enum_value_is_accepted', async () => {
+    const types = ['template','skill','agent','memory','connector','bridge','surface','workflow','hook','routine','bundle'];
+    for (const t of types) {
+      await db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ($1,$2,'acme','usr_a','private','t')`, [`acme/type-${t}`, t]);
+    }
+    for (const v of ['public', 'org', 'private']) {
+      await db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ($1,'skill','acme','usr_a',$2,'t')`, [`acme/vis-${v}`, v]);
+    }
+    await db.query(`INSERT INTO marketplace_teams(id, name, owner_user_id) VALUES ('team_v','T','usr_a')`);
+    await db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, team_id, title) VALUES ('acme/vis-team','skill','acme','usr_a','team','team_v','t')`);
+    for (const t of ['official', 'verified', 'community', 'private']) {
+      await db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, trust, title) VALUES ($1,'skill','acme','usr_a',$2,'t')`, [`acme/trust-${t}`, t]);
+    }
+    const states = ['draft','validating','testing','submitted','in_review','approved','published','rejected','deprecated','quarantined','revoked'];
+    const lid = await listing();
+    let i = 0;
+    for (const s of states) await version(lid, `5.${i++}.0`, s);
+    const istates = ['requested','permission_review','installed','configured','enabled','disabled','update_available','failed','uninstalled'];
+    for (const s of istates) {
+      const l = await listing();
+      await db.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, state, scope) VALUES ($1,'usr_a','dev_a',$2,$3,'user')`, [id('inst'), l, s]);
+    }
+    for (const sc of ['user', 'team', 'device']) {
+      const l = await listing();
+      await db.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, state, scope) VALUES ($1,'usr_a','dev_a',$2,'installed',$3)`, [id('inst'), l, sc]);
+    }
+  });
+
+  test('invalid_trust_and_visibility_rejected', async () => {
+    await assert.rejects(db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, trust, title) VALUES ('acme/bt','skill','acme','usr_a','gold','t')`), /check/i);
+    await assert.rejects(db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('acme/bv','skill','acme','usr_a','everyone','t')`), /check/i);
+  });
+
+  test('counters_follow_favorites_and_installs', async () => {
+    const lid = await listing();
+    await db.query(`INSERT INTO marketplace_favorites(listing_id, user_id) VALUES ($1,'usr_a'),($1,'usr_b')`, [lid]);
+    const iid = id('inst');
+    await db.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, state, scope) VALUES ($1,'usr_a','dev_a',$2,'requested','user')`, [iid, lid]);
+    let r = await db.query<{ favorite_count: number; install_count: number }>(`SELECT * FROM marketplace_listing_stats WHERE listing_id = $1`, [lid]);
+    assert.deepEqual([Number(r.rows[0].favorite_count), Number(r.rows[0].install_count)], [2, 0]);
+    await db.query(`UPDATE marketplace_installs SET state = 'enabled' WHERE id = $1`, [iid]);
+    await db.query(`DELETE FROM marketplace_favorites WHERE listing_id = $1 AND user_id = 'usr_b'`, [lid]);
+    r = await db.query(`SELECT * FROM marketplace_listing_stats WHERE listing_id = $1`, [lid]);
+    assert.deepEqual([Number(r.rows[0].favorite_count), Number(r.rows[0].install_count)], [1, 1]);
+    await db.query(`UPDATE marketplace_installs SET state = 'uninstalled' WHERE id = $1`, [iid]);
+    r = await db.query(`SELECT * FROM marketplace_listing_stats WHERE listing_id = $1`, [lid]);
+    assert.equal(Number(r.rows[0].install_count), 0);
+  });
+
   test('listing_stats_view_computes_from_rows', async () => {
     const lid = await listing();
     const empty = await db.query<{ rating_count: number; rating_avg: string | null; favorite_count: number; install_count: number }>(
@@ -159,7 +254,7 @@ const ownerUrl = process.env.AO_TEST_PG;
 const skip = !ownerUrl && 'AO_TEST_PG not set';
 
 describe('marketplace schema (full migration chain, real Postgres)', { skip }, () => {
-  test('0013 applies on top of the whole chain and ao_app is row-scoped', async () => {
+  test('0015 applies on top of the whole chain and ao_app is row-scoped', async () => {
     execFileSync('node', [join(here, '..', 'db', 'migrate.ts')], { env: { ...process.env, DATABASE_URL: ownerUrl }, stdio: 'pipe' });
     const as = (role: string, pw: string | undefined) => { const u = new URL(ownerUrl!); u.username = role; u.password = pw ?? ''; return u.toString(); };
     const tag = Date.now().toString(36);

@@ -1,0 +1,164 @@
+// Roles, grants and row-level security of migration 0015 on a REAL Postgres (embedded-postgres, a
+// throwaway cluster in its own temp dir). It bootstraps stub users/devices/admin_audit tables instead
+// of the full migration chain, so pgvector is not needed. Skipped if the embedded binary is unusable.
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { after, before, describe, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const migration = readFileSync(join(here, '..', 'db', 'migrations', '0015_marketplace.sql'), 'utf8');
+const SHA = (c: string) => c.repeat(64);
+
+let EmbeddedPostgres: any;
+let skip: string | false = false;
+try { EmbeddedPostgres = (await import('embedded-postgres')).default; } catch (e: any) { skip = `embedded-postgres unavailable: ${e.message}`; }
+
+const freePort = () => new Promise<number>((res, rej) => {
+  const s = createServer(); s.listen(0, '127.0.0.1', () => { const p = (s.address() as any).port; s.close(() => res(p)); }); s.on('error', rej);
+});
+
+describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
+  let dir: string, server: any, port: number;
+  const clients: pg.Client[] = [];
+  let owner: pg.Client, app: pg.Client, admin: pg.Client;
+  const connect = async (user: string, database = 'mkt') => {
+    const c = new pg.Client({ host: '127.0.0.1', port, user, password: 'pw', database }); await c.connect(); clients.push(c); return c;
+  };
+  async function asUser<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    await app.query('BEGIN');
+    await app.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+    try { return await fn(); } finally { await app.query('ROLLBACK'); }
+  }
+  // Run in a transaction and commit (for state a later step reads back).
+  async function asUserCommit(userId: string, fn: () => Promise<unknown>) {
+    await app.query('BEGIN');
+    try { await app.query(`SELECT set_config('app.user_id', $1, true)`, [userId]); await fn(); await app.query('COMMIT'); }
+    catch (e) { await app.query('ROLLBACK'); throw e; }
+  }
+
+  before(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'ao-mkt-pg-'));
+    port = await freePort();
+    server = new EmbeddedPostgres({ databaseDir: join(dir, 'data'), user: 'postgres', password: 'pw', port, persistent: false, onLog: () => {}, onError: () => {} });
+    await server.initialise();
+    await server.start();
+    const su = await connect('postgres', 'postgres');
+    await su.query(`CREATE ROLE ao_owner LOGIN PASSWORD 'pw'`);
+    await su.query(`CREATE ROLE ao_app LOGIN PASSWORD 'pw'`);
+    await su.query(`CREATE ROLE ao_readonly LOGIN BYPASSRLS PASSWORD 'pw'`);
+    await su.query(`CREATE ROLE ao_admin LOGIN BYPASSRLS PASSWORD 'pw'`);
+    await su.query(`CREATE DATABASE mkt OWNER ao_owner`);
+    owner = await connect('ao_owner');
+    await owner.query(`
+      CREATE TABLE users (id text PRIMARY KEY, email text);
+      CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);
+      CREATE TABLE admin_audit (id bigserial PRIMARY KEY);`);
+    await owner.query(migration);
+    app = await connect('ao_app'); admin = await connect('ao_admin');
+    await owner.query(`
+      INSERT INTO users(id) VALUES ('u1'),('u2'),('u3');
+      INSERT INTO devices(id, user_id) VALUES ('d2','u2'),('d3','u3');
+      INSERT INTO marketplace_publishers(id, display_name, owner_user_id) VALUES ('pa','A','u1'),('pb','B','u2');
+      INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES
+        ('pa/open','skill','pa','u1','public','Open'), ('pa/secret','skill','pa','u1','private','Secret');
+      INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ('${SHA('a')}',1,'k');
+      INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size) VALUES
+        ('v_open','pa/open','1.0.0',1,0,0,'published','{}','${SHA('a')}',1),
+        ('v_draft','pa/open','2.0.0',2,0,0,'draft','{}','${SHA('a')}',1),
+        ('v_secret','pa/secret','1.0.0',1,0,0,'draft','{}','${SHA('a')}',1);
+      INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict) VALUES ('sc1','v_secret','s','clean'),('sc2','v_open','s','clean');
+      INSERT INTO marketplace_submissions(id, version_id, submitted_by) VALUES ('sub1','v_open','u1');
+      INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('rep1','pa/open','u1','spam');`);
+  });
+  after(async () => {
+    await Promise.all(clients.map((c) => c.end().catch(() => {})));
+    if (server) await server.stop().catch(() => {});
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('owner_cannot_set_trust_official', async () => {
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_listings SET trust = 'official' WHERE id = 'pa/open'`)), /permission denied/);
+    await assert.rejects(asUser('u1', () => app.query(
+      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, trust, title) VALUES ('pa/new','skill','pa','u1','public','official','t')`)), /permission denied/);
+    // allowed edits still work
+    await asUser('u1', async () => { const r = await app.query(`UPDATE marketplace_listings SET title = 'New' WHERE id = 'pa/open'`); assert.equal(r.rowCount, 1); });
+  });
+
+  test('owner_cannot_publish_own_version_or_set_scan_verdict', async () => {
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_versions SET state = 'published' WHERE id = 'v_draft'`)), /row-level security/);
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_versions SET scan_verdict = 'clean' WHERE id = 'v_draft'`)), /permission denied/);
+    await assert.rejects(asUser('u1', () => app.query(
+      `INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, manifest, sha256, size, state)
+       VALUES ('v_x','pa/open','3.0.0',3,0,0,'{}','${SHA('a')}',1,'published')`)), /permission denied/);
+    await asUser('u1', async () => { const r = await app.query(`UPDATE marketplace_versions SET state = 'submitted' WHERE id = 'v_draft'`); assert.equal(r.rowCount, 1); });
+  });
+
+  test('cannot_create_listing_under_another_publisher', async () => {
+    await assert.rejects(asUser('u1', () => app.query(
+      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pb/steal','skill','pb','u1','public','t')`)), /row-level security/);
+    await assert.rejects(asUser('u1', () => app.query(
+      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pb/steal','skill','pa','u1','public','t')`)), /check/i);
+    await asUser('u1', async () => { await app.query(
+      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pa/ok','skill','pa','u1','public','t')`); });
+  });
+
+  test('submissions_and_reports_are_private', async () => {
+    assert.equal((await asUser('u2', () => app.query('SELECT 1 FROM marketplace_submissions'))).rowCount, 0);
+    assert.equal((await asUser('u1', () => app.query('SELECT 1 FROM marketplace_submissions'))).rowCount, 1);
+    assert.equal((await asUser('u2', () => app.query('SELECT 1 FROM marketplace_reports'))).rowCount, 0);
+    assert.equal((await asUser('u1', () => app.query('SELECT 1 FROM marketplace_reports'))).rowCount, 1);
+    await assert.rejects(asUser('u2', () => app.query(`INSERT INTO marketplace_submissions(id, version_id, submitted_by) VALUES ('s2','v_open','u2')`)), /row-level security/);
+    await assert.rejects(asUser('u2', () => app.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('r2','pa/open','u1','x')`)), /row-level security/);
+    await asUser('u2', async () => { await app.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('r3','pa/open','u2','x')`); });
+  });
+
+  test('security_scans_follow_listing_visibility', async () => {
+    const other = await asUser('u2', () => app.query('SELECT id FROM marketplace_security_scans ORDER BY id'));
+    assert.deepEqual(other.rows.map((r) => r.id), ['sc2']);
+    const mine = await asUser('u1', () => app.query('SELECT id FROM marketplace_security_scans ORDER BY id'));
+    assert.deepEqual(mine.rows.map((r) => r.id), ['sc1', 'sc2']);
+    await assert.rejects(asUser('u1', () => app.query(`INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict) VALUES ('x','v_open','s','clean')`)), /permission denied/);
+  });
+
+  test('counts_are_correct_even_when_others_rows_are_invisible', async () => {
+    await asUserCommit('u2', () => app.query(`INSERT INTO marketplace_favorites(listing_id, user_id) VALUES ('pa/open','u2')`));
+    await asUserCommit('u3', () => app.query(`INSERT INTO marketplace_favorites(listing_id, user_id) VALUES ('pa/open','u3')`));
+    await asUserCommit('u2', () => app.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, scope) VALUES ('i2','u2','d2','pa/open','v_open','enabled','user')`));
+    const r = await asUser('u1', () => app.query(`SELECT * FROM marketplace_listing_stats WHERE listing_id = 'pa/open'`));
+    assert.deepEqual([Number(r.rows[0].favorite_count), Number(r.rows[0].install_count), Number(r.rows[0].rating_count), r.rows[0].rating_avg], [2, 1, 0, null]);
+    // u1 cannot see the others' favorites or installs
+    assert.equal((await asUser('u1', () => app.query('SELECT 1 FROM marketplace_favorites'))).rowCount, 0);
+    assert.equal((await asUser('u1', () => app.query('SELECT 1 FROM marketplace_installs'))).rowCount, 0);
+    // a private listing does not appear in the stats of another user
+    assert.equal((await asUser('u2', () => app.query(`SELECT 1 FROM marketplace_listing_stats WHERE listing_id = 'pa/secret'`))).rowCount, 0);
+  });
+
+  test('revoked_installed_version_is_visible_through_installed_status', async () => {
+    await admin.query(`UPDATE marketplace_versions SET state = 'revoked' WHERE id = 'v_open'`);
+    await admin.query(`INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ('pa/open','v_open','revoked','admin','{"reason":"malware"}')`);
+    const direct = await asUser('u2', () => app.query(`SELECT 1 FROM marketplace_versions WHERE id = 'v_open'`));
+    assert.equal(direct.rowCount, 0, 'catalog policy hides revoked versions');
+    const st = await asUser('u2', () => app.query('SELECT * FROM marketplace_installed_status()'));
+    assert.equal(st.rowCount, 1);
+    assert.deepEqual([st.rows[0].listing_id, st.rows[0].state, st.rows[0].reason], ['pa/open', 'revoked', 'malware']);
+    assert.equal((await asUser('u3', () => app.query('SELECT * FROM marketplace_installed_status()'))).rowCount, 0);
+  });
+
+  test('ao_admin_can_publish', async () => {
+    await admin.query(`UPDATE marketplace_versions SET state = 'published', scan_verdict = 'clean' WHERE id = 'v_secret'`);
+    const r = await admin.query(`SELECT state, scan_verdict, published_at FROM marketplace_versions WHERE id = 'v_secret'`);
+    assert.equal(r.rows[0].state, 'published'); assert.equal(r.rows[0].scan_verdict, 'clean'); assert.ok(r.rows[0].published_at);
+    await admin.query(`UPDATE marketplace_listings SET trust = 'official' WHERE id = 'pa/secret'`);
+  });
+
+  test('install_events_are_private_and_append_only_for_the_app', async () => {
+    await asUser('u2', async () => { await app.query(`INSERT INTO marketplace_install_events(id, user_id, listing_id, event) VALUES ('e1','u2','pa/open','installed')`); });
+    await assert.rejects(asUser('u2', () => app.query(`INSERT INTO marketplace_install_events(id, user_id, listing_id, event) VALUES ('e2','u3','pa/open','installed')`)), /row-level security/);
+    await assert.rejects(asUser('u2', () => app.query(`UPDATE marketplace_install_events SET event = 'x'`)), /permission denied/);
+  });
+});
