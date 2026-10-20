@@ -15,7 +15,7 @@ const SHA = (c: string) => c.repeat(64);
 const BYTES = new Uint8Array(Array.from({ length: 300 }, (_, i) => (i * 7) % 256));
 
 describe('marketplace API (real Postgres)', { skip }, () => {
-  let h: MarketplacePg, admin: pg.Client, api: Server, base: string, limited: Server, limitedBase: string;
+  let h: MarketplacePg, admin: pg.Client, api: Server, base: string, limited: Server, limitedBase: string, readLimited: Server, readLimitedBase: string;
   const store = memoryArtifactStore();
   let artifactSha = '';
 
@@ -47,8 +47,11 @@ describe('marketplace API (real Postgres)', { skip }, () => {
       return createServer(async (req, res) => { if (!(await handler(req, res))) { res.writeHead(404).end(); } });
     };
     api = make(); limited = make(createLimiter({ limit: 3 }));
-    await Promise.all([api, limited].map((s) => new Promise<void>((r) => s.listen(0, '127.0.0.1', r))));
+    { const handler = marketplaceHandler({ app, authenticate, store, readLimiter: createLimiter({ limit: 5 }) });
+      readLimited = createServer(async (req, res) => { if (!(await handler(req, res))) res.writeHead(404).end(); }); }
+    await Promise.all([api, limited, readLimited].map((s) => new Promise<void>((r) => s.listen(0, '127.0.0.1', r))));
     base = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
+    readLimitedBase = `http://127.0.0.1:${(readLimited.address() as AddressInfo).port}`;
     limitedBase = `http://127.0.0.1:${(limited.address() as AddressInfo).port}`;
 
     await h.owner.query(`
@@ -100,7 +103,7 @@ describe('marketplace API (real Postgres)', { skip }, () => {
         ('i1','u2','d2','pa/revoked','v_revoked','enabled',true),
         ('i2','u2','d2','pa/upg','v_upg1','installed',false)`);
   });
-  after(async () => { api?.close(); limited?.close(); if (h) await h.stop(); });
+  after(async () => { api?.close(); limited?.close(); readLimited?.close(); if (h) await h.stop(); });
 
   // ── auth
   test('mutations_require_a_token_and_a_bad_token_is_not_a_downgrade', async () => {
@@ -313,11 +316,89 @@ describe('marketplace API (real Postgres)', { skip }, () => {
     assert.equal(foreign.status, 404);
     assert.equal((await admin.query(`SELECT count(*)::int AS n FROM marketplace_installs WHERE device_id = 'd2' AND user_id = 'u3'`)).rows[0].n, 0);
     // validation
+    // a malformed item is reported per item (the rest of the batch still applies)
     for (const item of [{ listingId: 'pa/rated', state: 'bogus' }, { listingId: 'pa/rated', state: 'failed', lastError: 'x'.repeat(501) }, { listingId: 'NOT AN ID', state: 'failed' }, { listingId: 'pa/rated', state: 'failed', scanVerdict: 'meh' }]) {
-      assert.equal((await call('/v1/marketplace/installs/sync', { user: 'u3', method: 'POST', body: { deviceId: 'd3', items: [item] } })).status, 400, JSON.stringify(item));
+      const r = await call('/v1/marketplace/installs/sync', { user: 'u3', method: 'POST', body: { deviceId: 'd3', items: [item] } });
+      assert.equal(r.status, 200, JSON.stringify(item));
+      assert.equal(r.json.results[0].ok, false);
+      assert.equal(r.json.results[0].code, 'invalid');
     }
-    assert.equal((await call('/v1/marketplace/installs/sync', { user: 'u3', method: 'POST', body: { deviceId: 'd3', items: [{ listingId: 'pa/secret', state: 'installed' }] } })).status, 404);
     assert.equal((await call('/v1/marketplace/installs/sync', { user: 'u3', method: 'POST', body: { items: [] } })).status, 400);
+  });
+
+  // ── review round 1
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  test('forged_page_cursors_are_400_never_500', async () => {
+    const ok = { r: '0.5', u: '2026-01-01T00:00:00.123456+00:00', id: 'pa/open' };
+    const forged = [
+      { ...ok, r: '0x10' }, { ...ok, r: '' }, { ...ok, r: '1e' }, { ...ok, r: 'NaN' }, { ...ok, r: ' 1' },
+      { ...ok, u: '' }, { ...ok, u: 'Jan 1 2020' }, { ...ok, u: '2026-13-45T00:00:00Z' }, { ...ok, u: 'now' },
+      { ...ok, id: 'a\u0000b/c' }, { ...ok, id: '' }, { ...ok, id: 'NOT/ok!' }, { ...ok, id: 5 }, { ...ok, r: 1 },
+    ];
+    for (const c of forged) assert.equal((await call(`/v1/marketplace/listings?page=${b64(c)}`)).status, 400, JSON.stringify(c));
+    for (const raw of ['null', '[]', '"x"', '{']) assert.equal((await call(`/v1/marketplace/listings?page=${Buffer.from(raw).toString('base64url')}`)).status, 400, raw);
+    assert.equal((await call(`/v1/marketplace/listings?page=${b64(ok)}`)).status, 200);
+  });
+
+  test('non_object_json_bodies_are_400', async () => {
+    const routes: Array<[string, string]> = [['/v1/marketplace/listings/pa/open/review', 'PUT'], ['/v1/marketplace/installs/sync', 'POST'], ['/v1/marketplace/reports', 'POST']];
+    for (const [path, method] of routes) {
+      for (const raw of ['null', '[]', '"str"', '7', '{', 'true']) {
+        const r = await fetch(base + path, { method, headers: { authorization: 'Bearer u4', 'content-type': 'application/json' }, body: raw });
+        assert.equal(r.status, 400, `${method} ${path} ${raw}`);
+        assert.ok(typeof (await r.json() as any).error === 'string');
+      }
+    }
+  });
+
+  test('install_sync_is_per_item_and_still_delivers_revocations', async () => {
+    const r = await call('/v1/marketplace/installs/sync', { user: 'u2', method: 'POST', body: { deviceId: 'd2', items: [
+      { listingId: 'pa/secret', state: 'installed', enabled: true },                       // invisible
+      { listingId: 'pa/unrated', versionId: 'v_unrated', state: 'enabled', enabled: true }, // valid
+      { listingId: 'pa/rated', versionId: 'v_agentx', state: 'installed' },                 // version of another listing
+      { listingId: 'pa/nope', state: 'installed' },                                         // unknown
+    ] } });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.results, [
+      { listingId: 'pa/secret', ok: false, code: 'not_found' }, { listingId: 'pa/unrated', ok: true },
+      { listingId: 'pa/rated', ok: false, code: 'not_found' }, { listingId: 'pa/nope', ok: false, code: 'not_found' }]);
+    const row = (await admin.query(`SELECT state FROM marketplace_installs WHERE user_id = 'u2' AND listing_id = 'pa/unrated'`)).rows;
+    assert.deepEqual(row, [{ state: 'enabled' }]);
+    const revoked = (r.json.updates as any[]).find((u) => u.listingId === 'pa/revoked');
+    assert.equal(revoked.reason, 'revoked');
+    assert.equal(revoked.revoked, true);
+    // updating the install of an already revoked version is allowed too (state change only)
+    const upd = await call('/v1/marketplace/installs/sync', { user: 'u2', method: 'POST', body: { deviceId: 'd2', items: [{ listingId: 'pa/revoked', state: 'disabled', enabled: false }] } });
+    assert.deepEqual(upd.json.results, [{ listingId: 'pa/revoked', ok: true }]);
+    assert.ok((upd.json.updates as any[]).some((u) => u.listingId === 'pa/revoked' && u.revoked));
+    await admin.query(`DELETE FROM marketplace_installs WHERE user_id = 'u2' AND listing_id = 'pa/unrated'`);
+  });
+
+  test('install_sync_caps_items_at_200', async () => {
+    const items = Array.from({ length: 201 }, (_, i) => ({ listingId: `pc/bulk-${String(i % 30 + 1).padStart(2, '0')}`, state: 'installed' }));
+    assert.equal((await call('/v1/marketplace/installs/sync', { user: 'u2', method: 'POST', body: { deviceId: 'd2', items } })).status, 400);
+  });
+
+  test('route_regex_is_anchored_for_reserved_looking_slugs', async () => {
+    await admin.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pa/versions','skill','pa','u1','public','Odd one')`);
+    await admin.query(`INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size) VALUES ('v_odd','pa/versions','1.0.0',1,0,0,'published','{}','${SHA('a')}',1)`);
+    const r = await call('/v1/marketplace/listings/pa/versions');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.id, 'pa/versions');
+    assert.equal((await call('/v1/marketplace/listings/pa/versions/versions')).json.versions.length, 1);
+    await admin.query(`DELETE FROM marketplace_listings WHERE id = 'pa/versions'`);
+  });
+
+  test('429_carries_retry_after_and_reads_have_their_own_limiter', async () => {
+    const put = () => call('/v1/marketplace/listings/pa/rated/favorite', { user: 'u3', method: 'PUT', origin: limitedBase });
+    for (let i = 0; i < 3; i++) await put();
+    const r = await put();
+    assert.equal(r.status, 429);
+    assert.ok(Number(r.headers.get('retry-after')) >= 1);
+    for (let i = 0; i < 5; i++) assert.equal((await call('/v1/marketplace/listings', { origin: readLimitedBase })).status, 200);
+    const blocked = await call('/v1/marketplace/listings', { origin: readLimitedBase });
+    assert.equal(blocked.status, 429);
+    assert.ok(Number(blocked.headers.get('retry-after')) >= 1);
   });
 
   // ── reports
@@ -328,7 +409,13 @@ describe('marketplace API (real Postgres)', { skip }, () => {
     assert.equal(row.listing_id, 'pa/open');
     assert.equal(row.reporter_user_id, 'u4');
     assert.equal(row.state, 'open');
-    assert.match(row.reason, /^malware \[version v_open\]: it does bad things$/);
+    assert.equal(row.reason, 'malware');
+    const extra = (await admin.query(`SELECT version_id, details FROM marketplace_reports WHERE id = $1`, [r.json.id])).rows[0];
+    assert.deepEqual(extra, { version_id: 'v_open', details: 'it does bad things' });
+    // the same (reporter, listing, reason) again is idempotent: 200, still one row
+    const again = await call('/v1/marketplace/reports', { user: 'u4', method: 'POST', body: { listingId: 'pa/open', reason: 'malware', details: 'again' } });
+    assert.equal(again.status, 200);
+    assert.equal((await admin.query(`SELECT count(*)::int AS n FROM marketplace_reports WHERE reporter_user_id = 'u4' AND listing_id = 'pa/open' AND reason = 'malware'`)).rows[0].n, 1);
     for (const body of [{ listingId: 'pa/open', reason: 'rude' }, { listingId: 'pa/open', reason: 'other', details: 'x'.repeat(2001) }, { reason: 'other' }]) {
       assert.equal((await call('/v1/marketplace/reports', { user: 'u4', method: 'POST', body })).status, 400);
     }

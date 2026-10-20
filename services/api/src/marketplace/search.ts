@@ -16,10 +16,15 @@ export interface ListParams {
 interface Cursor { r: string; u: string; id: string }
 
 export function encodeCursor(c: Cursor): string { return Buffer.from(JSON.stringify(c)).toString('base64url'); }
+const CURSOR_RANK = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,17})?(?:e[+-]?\d{1,3})?$/;
+const CURSOR_TIME = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)$/;
+const CURSOR_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 function decodeCursor(s: string): Cursor {
   try {
     const c = JSON.parse(Buffer.from(s, 'base64url').toString('utf8'));
-    if (typeof c?.r === 'string' && typeof c.u === 'string' && typeof c.id === 'string' && Number.isFinite(Number(c.r)) && !Number.isNaN(Date.parse(c.u))) return c;
+    // strict shapes: anything Postgres would cast differently (or reject) must be a 400 here, never a 500 there
+    if (c && typeof c === 'object' && typeof c.r === 'string' && CURSOR_RANK.test(c.r) && typeof c.u === 'string' && CURSOR_TIME.test(c.u)
+        && !Number.isNaN(Date.parse(c.u.replace(' ', 'T'))) && typeof c.id === 'string' && c.id.length <= 200 && CURSOR_ID.test(c.id)) return { r: c.r, u: c.u, id: c.id };
   } catch { /* fall through */ }
   throw new BadQuery('page is not a valid cursor.');
 }

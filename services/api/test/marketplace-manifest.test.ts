@@ -43,6 +43,8 @@ test('rejects bad values with JSON path', () => {
   throwsAt(m => { m.schema = 'nope'; }, 'schema');
   throwsAt(m => { m.type = 'bogus'; }, 'type');
   throwsAt(m => { m.compat.app = ''; }, 'compat.app');
+  for (const slug of ['versions', 'review', 'favorite']) throwsAt(m => { m.id = `acme/${slug}`; }, 'id');
+  throwsAt(m => { m.dependencies = [{ id: 'acme/versions', range: '^1.0.0' }]; }, 'dependencies[0].id');
   throwsAt(m => { m.dependencies = [{ id: 'BAD', range: '^1.0.0' }]; }, 'dependencies[0].id');
   throwsAt(m => { m.payload = []; }, 'payload');
 });

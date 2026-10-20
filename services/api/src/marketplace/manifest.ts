@@ -11,6 +11,9 @@ export class ManifestError extends Error {
 
 const CAPABILITIES = ['fs.workspace.read', 'fs.workspace.write', 'network', 'exec.script', 'tool.invoke', 'secrets.use'];
 const ID_RE = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
+/** Slugs that would collide with the API's listing sub-routes (/listings/:id/versions, /review, /favorite). */
+const RESERVED_SLUGS = new Set(['versions', 'review', 'favorite']);
+const reservedSlug = (id: string) => RESERVED_SLUGS.has(id.split('/')[1]);
 const NUM = '(0|[1-9]\\d*)';
 const IDENT = '(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)';
 const SEMVER_RE = new RegExp(`^${NUM}\\.${NUM}\\.${NUM}(?:-(${IDENT}(?:\\.${IDENT})*))?$`);
@@ -157,6 +160,7 @@ export function parseManifest(raw: unknown): ManifestV1 {
   if (raw.schema !== 'agentic.marketplace/1') throw new ManifestError('schema', "must be 'agentic.marketplace/1'");
   const id = str(raw, 'id', 'id');
   if (!ID_RE.test(id)) throw new ManifestError('id', 'must be publisher/slug, lowercase [a-z0-9-]');
+  if (reservedSlug(id)) throw new ManifestError('id', 'the slug must not be versions, review or favorite (reserved)');
   if (!(LISTING_TYPES as readonly unknown[]).includes(raw.type)) throw new ManifestError('type', `must be one of ${LISTING_TYPES.join(', ')}`);
   const version = str(raw, 'version', 'version');
   if (!isSemver(version)) throw new ManifestError('version', 'must be valid semver');
@@ -179,6 +183,7 @@ export function parseManifest(raw: unknown): ManifestV1 {
     if (!isObj(d)) throw new ManifestError(p, 'must be an object');
     const did = str(d, 'id', `${p}.id`);
     if (!ID_RE.test(did)) throw new ManifestError(`${p}.id`, 'must be publisher/slug');
+    if (reservedSlug(did)) throw new ManifestError(`${p}.id`, 'the slug must not be versions, review or favorite (reserved)');
     if (did === id) throw new ManifestError(`${p}.id`, 'a package cannot depend on itself');
     if (depSeen.has(did)) throw new ManifestError(`${p}.id`, `duplicate dependency ${did}`);
     depSeen.add(did);

@@ -32,7 +32,7 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
       INSERT INTO marketplace_team_members(team_id, user_id, role) VALUES ('t1','u2','owner');
       INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict) VALUES ('sc1','v_secret','s','clean'),('sc2','v_open','s','clean');
       INSERT INTO marketplace_submissions(id, version_id, submitted_by) VALUES ('sub1','v_open','u1');
-      INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('rep1','pa/open','u1','spam');`);
+      INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('rep1','pa/open','u1','other');`);
   });
   after(async () => { if (h) await h.stop(); });
 
@@ -68,8 +68,8 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
     assert.equal((await asUser('u2', () => app.query('SELECT 1 FROM marketplace_reports'))).rowCount, 0);
     assert.equal((await asUser('u1', () => app.query('SELECT 1 FROM marketplace_reports'))).rowCount, 1);
     await assert.rejects(asUser('u2', () => app.query(`INSERT INTO marketplace_submissions(id, version_id, submitted_by) VALUES ('s2','v_open','u2')`)), /row-level security/);
-    await assert.rejects(asUser('u2', () => app.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('r2','pa/open','u1','x')`)), /row-level security/);
-    await asUser('u2', async () => { await app.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('r3','pa/open','u2','x')`); });
+    await assert.rejects(asUser('u2', () => app.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('r2','pa/open','u1','broken')`)), /row-level security/);
+    await asUser('u2', async () => { await app.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('r3','pa/open','u2','other')`); });
   });
 
   test('security_scans_follow_listing_visibility', async () => {

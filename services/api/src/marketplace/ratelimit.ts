@@ -1,6 +1,6 @@
 // A tiny in-memory fixed-window limiter, one counter per key (the user id). Per process: good enough
 // to blunt a runaway client on the mutating marketplace routes, not a distributed quota.
-export interface Limiter { allow(key: string): boolean }
+export interface Limiter { allow(key: string): boolean; /** Whole seconds until `key` may try again (>= 1). */ retryAfter(key: string): number }
 
 export function createLimiter(opts: { limit?: number; windowMs?: number; now?: () => number } = {}): Limiter {
   const limit = opts.limit ?? 60, windowMs = opts.windowMs ?? 60_000, now = opts.now ?? Date.now;
@@ -14,6 +14,10 @@ export function createLimiter(opts: { limit?: number; windowMs?: number; now?: (
       if (w.n >= limit) return false;
       w.n++;
       return true;
+    },
+    retryAfter(key) {
+      const w = windows.get(key);
+      return w ? Math.max(1, Math.ceil((w.start + windowMs - now()) / 1000)) : 1;
     },
   };
 }

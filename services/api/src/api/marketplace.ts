@@ -17,6 +17,8 @@ export interface MarketplaceDeps {
   store: ArtifactStore;
   /** Mutating routes only; defaults to 60 requests per minute per user. */
   limiter?: Limiter;
+  /** GET routes: per user, or per client address when anonymous; defaults to 300 requests per minute. */
+  readLimiter?: Limiter;
 }
 
 const LISTING_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
@@ -35,16 +37,23 @@ function oneOf<T extends string>(v: unknown, allowed: readonly T[], what: string
   if (typeof v !== 'string' || !(allowed as readonly string[]).includes(v)) throw bad(`${what} must be one of: ${allowed.join(', ')}.`);
   return v as T;
 }
+/** A request body must be a JSON object: `null`, arrays, strings and numbers are a 400, not a TypeError. */
+async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const d: unknown = await json(req, MAX_BODY);
+  if (!d || typeof d !== 'object' || Array.isArray(d)) throw bad('Body must be a JSON object.');
+  return d as Record<string, unknown>;
+}
 const object = (v: unknown, what: string) => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad(`${what} must be an object.`); return v as Record<string, unknown>; };
 
 export function marketplaceHandler(deps: MarketplaceDeps) {
   const limiter = deps.limiter ?? createLimiter();
+  const readLimiter = deps.readLimiter ?? createLimiter({ limit: 300 });
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
     if (url.pathname !== '/v1/marketplace' && !url.pathname.startsWith('/v1/marketplace/')) return false;
-    const send = (status: number, payload: unknown) => {
-      res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    const send = (status: number, payload: unknown, extra: Record<string, string> = {}) => {
+      res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...extra });
       res.end(JSON.stringify(payload));
     };
     try {
@@ -56,7 +65,9 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       const signedIn = !!req.headers.authorization;
       if (mutating && !signedIn) throw new HttpError(401, 'Sign in first.');
       const uid = signedIn ? (await deps.authenticate(req)).uid : '';
-      if (mutating && !limiter.allow(uid)) throw new HttpError(429, 'Too many requests. Try again in a minute.');
+      const lim = mutating ? limiter : readLimiter;
+      const key = uid || `ip:${req.socket?.remoteAddress ?? '?'}`;
+      if (!lim.allow(key)) throw new HttpError(429, 'Too many requests. Try again in a minute.', { retryAfter: lim.retryAfter(key) });
       const q = <T>(fn: (c: pg.PoolClient) => Promise<T>) => store.withUser(deps.app, uid, fn);
 
       // ── catalog
@@ -65,7 +76,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (p.installed !== null && !signedIn) throw new HttpError(401, 'Sign in to filter by installed.');
         return send(200, await q((c) => store.listListings(c, p))), true;
       }
-      const lm = /^listings\/(.+?)(?:\/(favorite|review|versions))?$/.exec(rest);
+      const lm = /^listings\/([^/]+\/[^/]+)(?:\/(favorite|review|versions))?$/.exec(rest);
       if (lm) {
         const [, id, sub] = lm;
         if (!LISTING_ID.test(id)) throw notFound();
@@ -87,15 +98,15 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
           })), true;
         }
         if (sub === 'review' && (m === 'PUT' || m === 'DELETE')) {
-          let stars = 0, body: string | null = null;
+          let stars = 0, reviewText: string | null = null;
           if (m === 'PUT') {
-            const d = await json(req, MAX_BODY);
+            const d = await body(req);
             if (typeof d.stars !== 'number' || !Number.isInteger(d.stars) || d.stars < 1 || d.stars > 5) throw bad('stars must be an integer from 1 to 5.');
-            stars = d.stars; body = text(d.body, 'body', 4000);
+            stars = d.stars; reviewText = text(d.body, 'body', 4000);
           }
           return send(200, await q(async (c) => {
             if (!(await store.listingVisible(c, id))) throw notFound();
-            return m === 'PUT' ? store.putReview(c, uid, id, stars, body) : store.deleteReview(c, uid, id);
+            return m === 'PUT' ? store.putReview(c, uid, id, stars, reviewText) : store.deleteReview(c, uid, id);
           })), true;
         }
       }
@@ -117,53 +128,57 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
 
       // ── install acknowledgement and update discovery
       if (rest === 'installs/sync' && m === 'POST') {
-        const d = await json(req, MAX_BODY);
+        const d = await body(req);
         const deviceId = text(d.deviceId, 'deviceId', 80);
         if (!deviceId || !OPAQUE_ID.test(deviceId)) throw bad('deviceId is required.');
         if (!Array.isArray(d.items)) throw bad('items must be an array.');
         if (d.items.length > 200) throw bad('items has too many entries (200 at most).');
         const seen = new Set<string>();
-        const items = d.items.map((raw, n): store.InstallItem => {
-          const it = object(raw, `items[${n}]`);
-          const listingId = text(it.listingId, 'listingId', 200);
-          if (!listingId || !LISTING_ID.test(listingId)) throw bad(`items[${n}].listingId is not a valid listing id.`);
-          if (seen.has(listingId)) throw bad(`items[${n}].listingId is repeated.`);
-          seen.add(listingId);
-          const versionId = text(it.versionId, 'versionId', 120);
-          if (versionId !== null && !OPAQUE_ID.test(versionId)) throw bad(`items[${n}].versionId is not valid.`);
-          if (it.enabled !== undefined && typeof it.enabled !== 'boolean') throw bad(`items[${n}].enabled must be a boolean.`);
-          return {
-            listingId, versionId, state: oneOf(it.state, store.INSTALL_STATES, `items[${n}].state`), enabled: it.enabled === true,
-            scanVerdict: it.scanVerdict === undefined || it.scanVerdict === null ? null : oneOf(it.scanVerdict, store.SCAN_VERDICTS, `items[${n}].scanVerdict`),
-            lastError: text(it.lastError, `items[${n}].lastError`, 500),
-          };
+        const entries = d.items.map((raw, n): store.InstallEntry => {
+          const it = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+          const listingId = typeof it?.listingId === 'string' ? it.listingId.slice(0, 200) : `#${n}`;
+          try {
+            if (!it) throw bad('item must be an object');
+            if (!LISTING_ID.test(listingId) || listingId.length > 200) throw bad('listingId');
+            if (seen.has(listingId)) throw bad('repeated');
+            seen.add(listingId);
+            const versionId = text(it.versionId, 'versionId', 120);
+            if (versionId !== null && !OPAQUE_ID.test(versionId)) throw bad('versionId');
+            if (it.enabled !== undefined && typeof it.enabled !== 'boolean') throw bad('enabled');
+            return { listingId, item: {
+              listingId, versionId, state: oneOf(it.state, store.INSTALL_STATES, 'state'), enabled: it.enabled === true,
+              scanVerdict: it.scanVerdict === undefined || it.scanVerdict === null ? null : oneOf(it.scanVerdict, store.SCAN_VERDICTS, 'scanVerdict'),
+              lastError: text(it.lastError, 'lastError', 500),
+            } };
+          } catch (e) { if (e instanceof HttpError) return { listingId, item: null }; throw e; }
         });
-        return send(200, { updates: await q((c) => store.syncInstalls(c, uid, deviceId, items)) }), true;
+        return send(200, await q((c) => store.syncInstalls(c, uid, deviceId, entries))), true;
       }
 
       // ── reports
       if (rest === 'reports' && m === 'POST') {
-        const d = await json(req, MAX_BODY);
+        const d = await body(req);
         const listingId = text(d.listingId, 'listingId', 200);
         if (!listingId || !LISTING_ID.test(listingId)) throw bad('listingId is not a valid listing id.');
         const versionId = text(d.versionId, 'versionId', 120);
         if (versionId !== null && !OPAQUE_ID.test(versionId)) throw bad('versionId is not valid.');
         const reason = oneOf(d.reason, store.REPORT_REASONS, 'reason');
         const details = text(d.details, 'details', 2000);
-        return send(201, await q(async (c) => {
+        const rep = await q(async (c) => {
           if (!(await store.listingVisible(c, listingId))) throw notFound();
           return store.fileReport(c, uid, { listingId, versionId, reason, details });
-        })), true;
+        });
+        return send(rep.created ? 201 : 200, { id: rep.id }), true;
       }
       throw notFound();
     } catch (e) {
-      let status = 500, message = 'Server error.';
-      if (e instanceof HttpError) { status = e.status; message = e.message; }
+      let status = 500, message = 'Server error.', extra: Record<string, string> = {};
+      if (e instanceof HttpError) { status = e.status; message = e.message; if (status === 429) extra = { 'retry-after': String(e.extra?.retryAfter ?? 60) }; }
       else if (e instanceof BadQuery) { status = 400; message = e.message; }
       else if (e instanceof store.StoreError) { status = e.status; message = e.message; }
       else console.error(e instanceof ArtifactCorruptError ? `marketplace: ${e.message}` : e);
       if (res.headersSent) { res.end(); return true; }
-      send(status, { error: message });
+      send(status, { error: message }, extra);
       return true;
     }
   };

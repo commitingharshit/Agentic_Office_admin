@@ -98,7 +98,8 @@ export async function listVersions(c: pg.PoolClient, id: string) {
     SELECT v.id, v.version, v.state, v.scan_verdict, v.published_at, v.created_at, v.sha256, v.size
       FROM marketplace_versions v
      WHERE v.listing_id = $1   -- RLS: published/deprecated for everyone, every state for the owner
-     ORDER BY v.semver_major DESC, v.semver_minor DESC, v.semver_patch DESC, v.created_at DESC, v.id`, [id])).rows.map((v) => ({
+     ORDER BY v.semver_major DESC, v.semver_minor DESC, v.semver_patch DESC, v.created_at DESC, v.id
+     LIMIT 200`, [id])).rows.map((v) => ({
     id: v.id, version: v.version, state: v.state, scanVerdict: v.scan_verdict, publishedAt: v.published_at, createdAt: v.created_at, sha256: v.sha256, size: Number(v.size),
   }));
 }
@@ -138,35 +139,61 @@ export async function fileReport(c: pg.PoolClient, uid: string, r: { listingId: 
   if (r.versionId && !(await c.query(`SELECT 1 FROM marketplace_versions WHERE id = $1 AND listing_id = $2`, [r.versionId, r.listingId])).rowCount) {
     throw new StoreError(404, 'Version not found.');
   }
-  // marketplace_reports has one free-text column the app role may write; version and details ride in it.
-  const text = r.reason + (r.versionId ? ` [version ${r.versionId}]` : '') + (r.details ? `: ${r.details}` : '');
-  const id = newId('rpt');
-  await c.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ($1,$2,$3,$4)`, [id, r.listingId, uid, text]);
-  return { id };
+  // One report per (reporter, listing, reason): a repeat is a no-op that answers with the existing report.
+  const ins = await c.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, version_id, reason, details) VALUES ($1,$2,$3,$4,$5,$6)
+    ON CONFLICT (reporter_user_id, listing_id, reason) DO NOTHING RETURNING id`, [newId('rpt'), r.listingId, uid, r.versionId, r.reason, r.details]);
+  if (ins.rows[0]) return { id: ins.rows[0].id as string, created: true };
+  const ex = await c.query(`SELECT id FROM marketplace_reports WHERE reporter_user_id = $1 AND listing_id = $2 AND reason = $3`, [uid, r.listingId, r.reason]);
+  return { id: ex.rows[0]?.id as string, created: false };
 }
 
 export interface InstallItem { listingId: string; versionId: string | null; state: InstallState; enabled: boolean; scanVerdict: string | null; lastError: string | null }
+/** One entry per request item: a parsed item, or null when the item failed validation. */
+export interface InstallEntry { listingId: string; item: InstallItem | null }
+export interface InstallResult { listingId: string; ok: boolean; code?: 'not_found' | 'invalid' | 'rejected' }
 export interface InstallUpdate { listingId: string; installedVersion: string; latest?: string; state: string; reason?: string; detail?: string; revoked?: true }
+export const MAX_UPDATES = 500;
 
-export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: string, items: InstallItem[]): Promise<InstallUpdate[]> {
+async function applyInstall(c: pg.PoolClient, uid: string, deviceId: string, it: InstallItem) {
+  const ex = (await c.query(`SELECT id, version_id, state FROM marketplace_installs WHERE user_id = $1 AND device_id = $2 AND listing_id = $3`, [uid, deviceId, it.listingId])).rows[0];
+  if (it.versionId && it.versionId !== ex?.version_id
+      && !(await c.query(`SELECT 1 FROM marketplace_versions WHERE id = $1 AND listing_id = $2`, [it.versionId, it.listingId])).rowCount) {
+    throw new StoreError(404, `Version ${it.versionId} not found for ${it.listingId}.`);
+  }
+  if (ex) {
+    await c.query(`UPDATE marketplace_installs SET version_id = coalesce($2, version_id), state = $3, enabled = $4, scan_verdict = $5, last_error = $6, updated_at = now() WHERE id = $1`,
+      [ex.id, it.versionId, it.state, it.enabled, it.scanVerdict, it.lastError]);
+  } else {
+    if (!(await c.query(`SELECT 1 FROM marketplace_listings l WHERE l.id = $1 AND ${SHOWN}`, [it.listingId])).rowCount) throw new StoreError(404, `Listing ${it.listingId} not found.`);
+    await c.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, enabled, scan_verdict, last_error) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [newId('ins'), uid, deviceId, it.listingId, it.versionId, it.state, it.enabled, it.scanVerdict, it.lastError]);
+  }
+  if (!ex || ex.state !== it.state || (it.versionId && it.versionId !== ex.version_id)) {
+    await c.query(`INSERT INTO marketplace_install_events(id, user_id, device_id, listing_id, version_id, event, detail) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [newId('ie'), uid, deviceId, it.listingId, it.versionId ?? ex?.version_id ?? null, it.state, JSON.stringify(it.lastError ? { error: it.lastError } : {})]);
+  }
+}
+
+/**
+ * Applies each item inside its own savepoint, so one bad item never blocks the rest, then computes what the
+ * device must do from the caller's existing install rows (never from the request). A device that is not the
+ * caller's is the only whole-request failure.
+ */
+export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: string, entries: InstallEntry[]): Promise<{ results: InstallResult[]; updates: InstallUpdate[] }> {
   if (!(await c.query(`SELECT 1 FROM devices WHERE id = $1 AND user_id = $2`, [deviceId, uid])).rowCount) throw new StoreError(404, 'Unknown device.');
-  for (const it of items) {
-    const ex = (await c.query(`SELECT id, version_id, state FROM marketplace_installs WHERE user_id = $1 AND device_id = $2 AND listing_id = $3`, [uid, deviceId, it.listingId])).rows[0];
-    if (it.versionId && it.versionId !== ex?.version_id
-        && !(await c.query(`SELECT 1 FROM marketplace_versions WHERE id = $1 AND listing_id = $2`, [it.versionId, it.listingId])).rowCount) {
-      throw new StoreError(404, `Version ${it.versionId} not found for ${it.listingId}.`);
-    }
-    if (ex) {
-      await c.query(`UPDATE marketplace_installs SET version_id = coalesce($2, version_id), state = $3, enabled = $4, scan_verdict = $5, last_error = $6, updated_at = now() WHERE id = $1`,
-        [ex.id, it.versionId, it.state, it.enabled, it.scanVerdict, it.lastError]);
-    } else {
-      if (!(await c.query(`SELECT 1 FROM marketplace_listings l WHERE l.id = $1 AND ${SHOWN}`, [it.listingId])).rowCount) throw new StoreError(404, `Listing ${it.listingId} not found.`);
-      await c.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, enabled, scan_verdict, last_error) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [newId('ins'), uid, deviceId, it.listingId, it.versionId, it.state, it.enabled, it.scanVerdict, it.lastError]);
-    }
-    if (!ex || ex.state !== it.state || (it.versionId && it.versionId !== ex.version_id)) {
-      await c.query(`INSERT INTO marketplace_install_events(id, user_id, device_id, listing_id, version_id, event, detail) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [newId('ie'), uid, deviceId, it.listingId, it.versionId ?? ex?.version_id ?? null, it.state, JSON.stringify(it.lastError ? { error: it.lastError } : {})]);
+  const results: InstallResult[] = [];
+  for (const { listingId, item } of entries) {
+    if (!item) { results.push({ listingId, ok: false, code: 'invalid' }); continue; }
+    await c.query('SAVEPOINT item');
+    try {
+      await applyInstall(c, uid, deviceId, item);
+      await c.query('RELEASE SAVEPOINT item');
+      results.push({ listingId, ok: true });
+    } catch (e: any) {
+      await c.query('ROLLBACK TO SAVEPOINT item');
+      if (e instanceof StoreError) results.push({ listingId, ok: false, code: 'not_found' });
+      else if (typeof e?.code === 'string' && /^(22|23|42)/.test(e.code)) results.push({ listingId, ok: false, code: 'rejected' });
+      else throw e;
     }
   }
   // What the device should do next, for every live install on it: pulled versions and newer releases.
@@ -175,9 +202,10 @@ export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: stri
       FROM marketplace_installs i
       JOIN marketplace_installed_status() st ON st.version_id = i.version_id AND st.listing_id = i.listing_id
       LEFT JOIN LATERAL ${latestPublished('i.listing_id')} lv ON true
-     WHERE i.device_id = $1 AND i.state IN ${LIVE_INSTALL}
-     ORDER BY i.listing_id`, [deviceId])).rows;
-  return rows.flatMap((r): InstallUpdate[] => {
+     WHERE i.device_id = $1 AND i.user_id = $2 AND i.state IN ${LIVE_INSTALL}
+     ORDER BY i.listing_id
+     LIMIT ${MAX_UPDATES}`, [deviceId, uid])).rows;
+  const updates = rows.flatMap((r): InstallUpdate[] => {
     const base = { listingId: r.listing_id, installedVersion: r.installed_version, ...(r.latest ? { latest: r.latest } : {}) };
     if (r.version_state === 'revoked' || r.version_state === 'quarantined') {
       return [{ ...base, state: 'update_available', reason: r.version_state, ...(r.reason ? { detail: r.reason } : {}), revoked: true }];
@@ -185,4 +213,5 @@ export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: stri
     if (r.latest && compareSemver(r.latest, r.installed_version) > 0) return [{ ...base, state: 'update_available', reason: 'newer_version' }];
     return [];
   });
+  return { results, updates };
 }

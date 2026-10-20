@@ -262,10 +262,13 @@ CREATE TABLE marketplace_reports (
   id                text PRIMARY KEY,
   listing_id        text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
   reporter_user_id  text REFERENCES users(id) ON DELETE SET NULL,
-  reason            text NOT NULL,
+  version_id        text REFERENCES marketplace_versions(id) ON DELETE SET NULL,
+  reason            text NOT NULL CHECK (reason IN ('malware','copyright','broken','misleading','other')),
+  details           text CHECK (length(details) <= 2000),
   state             text NOT NULL DEFAULT 'open' CHECK (state IN ('open','triaged','actioned','dismissed')),
   created_at        timestamptz NOT NULL DEFAULT now(),
-  resolved_at       timestamptz
+  resolved_at       timestamptz,
+  UNIQUE (reporter_user_id, listing_id, reason)   -- one report per reporter, listing and reason; a repeat is a no-op
 );
 CREATE INDEX ix_mkt_reports_state ON marketplace_reports (state, created_at);
 CREATE INDEX ix_mkt_reports_listing ON marketplace_reports (listing_id);
@@ -480,7 +483,7 @@ BEGIN
   GRANT UPDATE (state, manifest, sha256, size, compat) ON marketplace_versions TO ao_app;
   GRANT INSERT, DELETE ON marketplace_dependencies TO ao_app;
   GRANT INSERT (id, version_id, submitted_by, notes) ON marketplace_submissions TO ao_app;
-  GRANT INSERT (id, listing_id, reporter_user_id, reason) ON marketplace_reports TO ao_app;
+  GRANT INSERT (id, listing_id, reporter_user_id, version_id, reason, details) ON marketplace_reports TO ao_app;
   GRANT SELECT, INSERT, DELETE ON marketplace_reviews TO ao_app;
   GRANT UPDATE (stars, body) ON marketplace_reviews TO ao_app;
   GRANT SELECT, INSERT, DELETE ON marketplace_favorites TO ao_app;
