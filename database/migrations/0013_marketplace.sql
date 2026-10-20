@@ -1,0 +1,352 @@
+-- Extension marketplace: catalog, versions, artifacts, submissions, reviews, favorites, installs and
+-- their audit trails. Ids are text (usr_<ulid>, 'publisher/slug' for listings). Derived numbers
+-- (rating average/count, favorites, installs) are never stored: see marketplace_listing_stats.
+-- Role GRANT/POLICY statements are in the guarded section at the end, so this file also loads into
+-- a database that has none of the app roles (the PGlite schema test).
+
+CREATE TABLE marketplace_publishers (
+  id             text PRIMARY KEY CHECK (id ~ '^[a-z0-9][a-z0-9-]*$'),
+  display_name   text NOT NULL,
+  owner_user_id  text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  verified       boolean NOT NULL DEFAULT false,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_mkt_publishers_owner ON marketplace_publishers (owner_user_id);
+
+CREATE TABLE marketplace_teams (
+  id             text PRIMARY KEY,
+  name           text NOT NULL,
+  owner_user_id  text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE marketplace_team_members (
+  team_id     text NOT NULL REFERENCES marketplace_teams(id) ON DELETE CASCADE,
+  user_id     text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role        text NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (team_id, user_id)
+);
+CREATE INDEX ix_mkt_team_members_user ON marketplace_team_members (user_id);
+
+CREATE TABLE marketplace_listings (
+  id             text PRIMARY KEY CHECK (id ~ '^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$'),   -- publisher/slug
+  type           text NOT NULL CHECK (type IN ('template','skill','agent','memory','connector','bridge','surface','workflow','hook','routine','bundle')),
+  publisher_id   text NOT NULL REFERENCES marketplace_publishers(id),
+  owner_user_id  text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  visibility     text NOT NULL DEFAULT 'private' CHECK (visibility IN ('public','org','team','private')),
+  team_id        text REFERENCES marketplace_teams(id) ON DELETE SET NULL,
+  trust          text NOT NULL DEFAULT 'community' CHECK (trust IN ('official','verified','community','private')),
+  title          text NOT NULL,
+  summary        text NOT NULL DEFAULT '',
+  tags           text[] NOT NULL DEFAULT '{}',
+  forked_from    text REFERENCES marketplace_listings(id) ON DELETE SET NULL,
+  search         tsvector,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  CHECK (visibility <> 'team' OR team_id IS NOT NULL)
+);
+CREATE INDEX ix_mkt_listings_search ON marketplace_listings USING gin (search);
+CREATE INDEX ix_mkt_listings_type ON marketplace_listings (type, visibility);
+CREATE INDEX ix_mkt_listings_owner ON marketplace_listings (owner_user_id);
+CREATE INDEX ix_mkt_listings_tags ON marketplace_listings USING gin (tags);
+
+-- array_to_string is not immutable, so a generated column is not allowed: a trigger maintains it.
+CREATE FUNCTION marketplace_listings_search_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.search :=
+    setweight(to_tsvector('simple', coalesce(NEW.title, '')), 'A') ||
+    setweight(to_tsvector('simple', coalesce(array_to_string(NEW.tags, ' '), '')), 'B') ||
+    setweight(to_tsvector('simple', coalesce(NEW.summary, '')), 'C');
+  RETURN NEW;
+END $$;
+CREATE TRIGGER trg_mkt_listings_search BEFORE INSERT OR UPDATE OF title, summary, tags ON marketplace_listings
+  FOR EACH ROW EXECUTE FUNCTION marketplace_listings_search_update();
+
+CREATE TABLE marketplace_artifacts (
+  sha256       text PRIMARY KEY CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+  size         bigint NOT NULL CHECK (size >= 0),
+  storage_key  text NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE marketplace_versions (
+  id            text PRIMARY KEY,
+  listing_id    text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+  version       text NOT NULL,
+  semver_major  int NOT NULL CHECK (semver_major >= 0),
+  semver_minor  int NOT NULL CHECK (semver_minor >= 0),
+  semver_patch  int NOT NULL CHECK (semver_patch >= 0),
+  state         text NOT NULL DEFAULT 'draft' CHECK (state IN ('draft','validating','testing','submitted','in_review','approved','published','rejected','deprecated','quarantined','revoked')),
+  manifest      jsonb NOT NULL,
+  sha256        text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$') REFERENCES marketplace_artifacts(sha256),
+  size          bigint NOT NULL CHECK (size >= 0),
+  compat        jsonb NOT NULL DEFAULT '{}',
+  scan_verdict  text NOT NULL DEFAULT 'pending' CHECK (scan_verdict IN ('pending','clean','warnings','blocked')),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  published_at  timestamptz,
+  UNIQUE (listing_id, version)
+);
+CREATE INDEX ix_mkt_versions_listing ON marketplace_versions (listing_id, semver_major DESC, semver_minor DESC, semver_patch DESC);
+CREATE INDEX ix_mkt_versions_sha ON marketplace_versions (sha256);
+
+-- A published version is what people installed and what was scanned: its content never changes.
+-- Lifecycle moves (deprecated, quarantined, revoked) stay possible.
+CREATE FUNCTION marketplace_versions_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.state = 'published' AND (
+       NEW.sha256 IS DISTINCT FROM OLD.sha256 OR NEW.manifest IS DISTINCT FROM OLD.manifest OR
+       NEW.version IS DISTINCT FROM OLD.version OR NEW.listing_id IS DISTINCT FROM OLD.listing_id) THEN
+    RAISE EXCEPTION 'marketplace_versions: published version % is immutable', OLD.id USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER trg_mkt_versions_immutable BEFORE UPDATE ON marketplace_versions
+  FOR EACH ROW EXECUTE FUNCTION marketplace_versions_immutable();
+
+CREATE TABLE marketplace_dependencies (
+  version_id         text NOT NULL REFERENCES marketplace_versions(id) ON DELETE CASCADE,
+  depends_on_listing text NOT NULL,                 -- may name a listing that is not (yet) in the catalog
+  range              text NOT NULL,                 -- semver range
+  PRIMARY KEY (version_id, depends_on_listing)
+);
+
+CREATE TABLE marketplace_submissions (
+  id            text PRIMARY KEY,
+  version_id    text NOT NULL REFERENCES marketplace_versions(id) ON DELETE CASCADE,
+  submitted_by  text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  state         text NOT NULL DEFAULT 'submitted' CHECK (state IN ('submitted','in_review','approved','rejected','withdrawn')),
+  reviewer_id   text REFERENCES users(id) ON DELETE SET NULL,
+  notes         text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  decided_at    timestamptz
+);
+CREATE INDEX ix_mkt_submissions_state ON marketplace_submissions (state, created_at);
+CREATE INDEX ix_mkt_submissions_version ON marketplace_submissions (version_id);
+
+CREATE TABLE marketplace_reviews (
+  id          text PRIMARY KEY,
+  listing_id  text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+  user_id     text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  stars       int NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  body        text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (listing_id, user_id)
+);
+CREATE INDEX ix_mkt_reviews_user ON marketplace_reviews (user_id);
+
+CREATE TABLE marketplace_favorites (
+  listing_id  text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+  user_id     text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (listing_id, user_id)
+);
+CREATE INDEX ix_mkt_favorites_user ON marketplace_favorites (user_id);
+
+CREATE TABLE marketplace_installs (
+  id            text PRIMARY KEY,
+  user_id       text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_id     text NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  listing_id    text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+  version_id    text REFERENCES marketplace_versions(id),
+  state         text NOT NULL DEFAULT 'requested' CHECK (state IN ('requested','permission_review','installed','configured','enabled','disabled','update_available','failed','uninstalled')),
+  scope         text NOT NULL DEFAULT 'user' CHECK (scope IN ('user','team','device')),
+  enabled       boolean NOT NULL DEFAULT false,
+  scan_verdict  text CHECK (scan_verdict IN ('pending','clean','warnings','blocked')),
+  last_error    text,
+  installed_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, device_id, listing_id)
+);
+CREATE INDEX ix_mkt_installs_listing ON marketplace_installs (listing_id, state);
+
+-- Append-only audit trail. Deliberately no foreign keys: erasing a user or a listing must not be
+-- blocked by (or rewrite) history, and the trigger below refuses UPDATE and DELETE outright.
+CREATE TABLE marketplace_install_events (
+  id          text PRIMARY KEY,
+  user_id     text NOT NULL,
+  device_id   text,
+  listing_id  text NOT NULL,
+  version_id  text,
+  event       text NOT NULL,
+  detail      jsonb NOT NULL DEFAULT '{}',
+  at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_mkt_install_events_user ON marketplace_install_events (user_id, at DESC);
+CREATE INDEX ix_mkt_install_events_listing ON marketplace_install_events (listing_id, at DESC);
+CREATE FUNCTION marketplace_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION '% is append-only', TG_TABLE_NAME USING ERRCODE = 'integrity_constraint_violation';
+END $$;
+CREATE TRIGGER trg_mkt_install_events_append_only BEFORE UPDATE OR DELETE ON marketplace_install_events
+  FOR EACH ROW EXECUTE FUNCTION marketplace_append_only();
+
+CREATE TABLE marketplace_usage_events (
+  id          bigserial PRIMARY KEY,
+  user_id     text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  listing_id  text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+  version_id  text REFERENCES marketplace_versions(id) ON DELETE SET NULL,
+  kind        text NOT NULL,
+  at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_mkt_usage_listing ON marketplace_usage_events (listing_id, at DESC);
+
+CREATE TABLE marketplace_collections (
+  id          text PRIMARY KEY,
+  title       text NOT NULL,
+  summary     text NOT NULL DEFAULT '',
+  created_by  text REFERENCES users(id) ON DELETE SET NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE marketplace_collection_items (
+  collection_id  text NOT NULL REFERENCES marketplace_collections(id) ON DELETE CASCADE,
+  listing_id     text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+  position       int NOT NULL DEFAULT 0,
+  PRIMARY KEY (collection_id, listing_id)
+);
+
+CREATE TABLE marketplace_security_scans (
+  id          text PRIMARY KEY,
+  version_id  text NOT NULL REFERENCES marketplace_versions(id) ON DELETE CASCADE,
+  scanner     text NOT NULL,
+  verdict     text NOT NULL CHECK (verdict IN ('pending','clean','warnings','blocked')),
+  findings    jsonb NOT NULL DEFAULT '[]',
+  at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_mkt_scans_version ON marketplace_security_scans (version_id, at DESC);
+
+CREATE TABLE marketplace_reports (
+  id                text PRIMARY KEY,
+  listing_id        text NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+  reporter_user_id  text REFERENCES users(id) ON DELETE SET NULL,
+  reason            text NOT NULL,
+  state             text NOT NULL DEFAULT 'open' CHECK (state IN ('open','triaged','actioned','dismissed')),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  resolved_at       timestamptz
+);
+CREATE INDEX ix_mkt_reports_state ON marketplace_reports (state, created_at);
+
+-- Release / revocation history. Append-only, no foreign keys (same reasoning as install events).
+CREATE TABLE marketplace_release_events (
+  id          bigserial PRIMARY KEY,
+  listing_id  text NOT NULL,
+  version_id  text,
+  event       text NOT NULL,              -- published | deprecated | quarantined | revoked | restored
+  actor       text,
+  detail      jsonb NOT NULL DEFAULT '{}',
+  at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_mkt_release_events_listing ON marketplace_release_events (listing_id, at DESC);
+CREATE TRIGGER trg_mkt_release_events_append_only BEFORE UPDATE OR DELETE ON marketplace_release_events
+  FOR EACH ROW EXECUTE FUNCTION marketplace_append_only();
+
+-- Ratings, favorites and installs are computed from their rows. No reviews: count 0, average NULL.
+CREATE VIEW marketplace_listing_stats AS
+  SELECT l.id AS listing_id,
+         (SELECT count(*) FROM marketplace_reviews r WHERE r.listing_id = l.id) AS rating_count,
+         (SELECT round(avg(r.stars)::numeric, 2) FROM marketplace_reviews r WHERE r.listing_id = l.id) AS rating_avg,
+         (SELECT count(*) FROM marketplace_favorites f WHERE f.listing_id = l.id) AS favorite_count,
+         (SELECT count(*) FROM marketplace_installs i WHERE i.listing_id = l.id
+            AND i.state IN ('installed','configured','enabled','disabled','update_available')) AS install_count
+  FROM marketplace_listings l;
+
+-- ---------------------------------------------------------------------------------------------
+-- Roles, grants and row-level security. Guarded so the file loads where the roles do not exist.
+-- ---------------------------------------------------------------------------------------------
+DO $$
+DECLARE t text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ao_app') THEN RETURN; END IF;
+
+  -- Per-user tables: a user sees and writes only their own rows (app.user_id set per request).
+  FOREACH t IN ARRAY ARRAY['marketplace_favorites','marketplace_installs','marketplace_usage_events'] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    EXECUTE format($p$CREATE POLICY own_rows ON %I USING (user_id = current_setting('app.user_id', true))
+                     WITH CHECK (user_id = current_setting('app.user_id', true))$p$, t);
+  END LOOP;
+
+  -- Install events: a user reads and appends only their own history.
+  ALTER TABLE marketplace_install_events ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE marketplace_install_events FORCE ROW LEVEL SECURITY;
+  CREATE POLICY own_rows ON marketplace_install_events USING (user_id = current_setting('app.user_id', true))
+    WITH CHECK (user_id = current_setting('app.user_id', true));
+
+  -- Reviews are public to read, but only the author writes.
+  ALTER TABLE marketplace_reviews ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE marketplace_reviews FORCE ROW LEVEL SECURITY;
+  CREATE POLICY read_all ON marketplace_reviews FOR SELECT USING (true);
+  CREATE POLICY own_write ON marketplace_reviews FOR INSERT WITH CHECK (user_id = current_setting('app.user_id', true));
+  CREATE POLICY own_update ON marketplace_reviews FOR UPDATE USING (user_id = current_setting('app.user_id', true))
+    WITH CHECK (user_id = current_setting('app.user_id', true));
+  CREATE POLICY own_delete ON marketplace_reviews FOR DELETE USING (user_id = current_setting('app.user_id', true));
+
+  -- Teams and membership: visible to members.
+  ALTER TABLE marketplace_team_members ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE marketplace_team_members FORCE ROW LEVEL SECURITY;
+  CREATE POLICY own_rows ON marketplace_team_members USING (user_id = current_setting('app.user_id', true));
+  ALTER TABLE marketplace_teams ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE marketplace_teams FORCE ROW LEVEL SECURITY;
+  CREATE POLICY member_read ON marketplace_teams FOR SELECT USING (
+    owner_user_id = current_setting('app.user_id', true)
+    OR id IN (SELECT team_id FROM marketplace_team_members));
+
+  -- Catalog: public listings are readable by everyone; the rest by owner or team members.
+  ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE marketplace_listings FORCE ROW LEVEL SECURITY;
+  CREATE POLICY visible ON marketplace_listings FOR SELECT USING (
+    visibility = 'public'
+    OR owner_user_id = current_setting('app.user_id', true)
+    OR (visibility = 'team' AND team_id IN (SELECT team_id FROM marketplace_team_members)));
+  CREATE POLICY owner_write ON marketplace_listings FOR INSERT WITH CHECK (owner_user_id = current_setting('app.user_id', true));
+  CREATE POLICY owner_update ON marketplace_listings FOR UPDATE USING (owner_user_id = current_setting('app.user_id', true))
+    WITH CHECK (owner_user_id = current_setting('app.user_id', true));
+
+  ALTER TABLE marketplace_versions ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE marketplace_versions FORCE ROW LEVEL SECURITY;
+  CREATE POLICY visible ON marketplace_versions FOR SELECT USING (
+    listing_id IN (SELECT id FROM marketplace_listings)
+    AND (state IN ('published','deprecated')
+         OR listing_id IN (SELECT id FROM marketplace_listings WHERE owner_user_id = current_setting('app.user_id', true))));
+  CREATE POLICY owner_write ON marketplace_versions FOR INSERT WITH CHECK (
+    listing_id IN (SELECT id FROM marketplace_listings WHERE owner_user_id = current_setting('app.user_id', true)));
+  CREATE POLICY owner_update ON marketplace_versions FOR UPDATE USING (
+    listing_id IN (SELECT id FROM marketplace_listings WHERE owner_user_id = current_setting('app.user_id', true)))
+    WITH CHECK (listing_id IN (SELECT id FROM marketplace_listings WHERE owner_user_id = current_setting('app.user_id', true)));
+
+  -- ao_app: read the catalog; write only what the policies above allow. Moderation (state moves past
+  -- 'submitted', trust, publishers, scans, collections, release events) goes through ao_admin.
+  GRANT SELECT ON marketplace_publishers, marketplace_teams, marketplace_team_members, marketplace_listings,
+        marketplace_versions, marketplace_artifacts, marketplace_dependencies, marketplace_collections,
+        marketplace_collection_items, marketplace_security_scans, marketplace_listing_stats TO ao_app;
+  GRANT INSERT, UPDATE ON marketplace_listings, marketplace_versions TO ao_app;
+  GRANT INSERT ON marketplace_artifacts, marketplace_dependencies, marketplace_submissions, marketplace_reports TO ao_app;
+  GRANT SELECT ON marketplace_submissions TO ao_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON marketplace_reviews, marketplace_favorites TO ao_app;
+  GRANT SELECT, INSERT, UPDATE ON marketplace_installs TO ao_app;
+  GRANT DELETE ON marketplace_installs TO ao_app;
+  GRANT SELECT, INSERT ON marketplace_install_events, marketplace_usage_events TO ao_app;
+  GRANT USAGE ON SEQUENCE marketplace_usage_events_id_seq TO ao_app;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ao_admin') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON marketplace_publishers, marketplace_teams, marketplace_team_members,
+      marketplace_listings, marketplace_versions, marketplace_artifacts, marketplace_dependencies,
+      marketplace_submissions, marketplace_reviews, marketplace_favorites, marketplace_installs,
+      marketplace_usage_events, marketplace_collections, marketplace_collection_items,
+      marketplace_security_scans, marketplace_reports TO ao_admin;
+    GRANT SELECT, INSERT ON marketplace_install_events, marketplace_release_events TO ao_admin;
+    GRANT SELECT ON marketplace_listing_stats TO ao_admin;
+    GRANT USAGE ON SEQUENCE marketplace_usage_events_id_seq, marketplace_release_events_id_seq TO ao_admin;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ao_readonly') THEN
+    GRANT SELECT ON marketplace_publishers, marketplace_teams, marketplace_team_members, marketplace_listings,
+      marketplace_versions, marketplace_artifacts, marketplace_dependencies, marketplace_submissions,
+      marketplace_reviews, marketplace_favorites, marketplace_installs, marketplace_install_events,
+      marketplace_usage_events, marketplace_collections, marketplace_collection_items,
+      marketplace_security_scans, marketplace_reports, marketplace_release_events,
+      marketplace_listing_stats TO ao_readonly;
+  END IF;
+END $$;
