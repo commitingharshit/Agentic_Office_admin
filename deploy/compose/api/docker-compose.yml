@@ -55,7 +55,7 @@ services:
     image: chainguard/minio-client@sha256:d8a93c5d335509ff353774eefec8f82fa2a2a975e800139702232d8be3dbe6b9
     depends_on: [minio]
     restart: on-failure
-    command: ["mb", "--ignore-existing", "ao/ao-backups", "ao/ao-user-blobs"]
+    command: ["mb", "--ignore-existing", "ao/ao-backups", "ao/ao-user-blobs", "ao/ao-marketplace"]
     environment:
       MC_HOST_ao: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio:9000
 

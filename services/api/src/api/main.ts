@@ -12,7 +12,9 @@ import pg from 'pg';
 import { adminHandler, parseTokens } from './admin.ts';
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { S3 } from './s3.ts';
+import { marketplaceHandler } from './marketplace.ts';
 import { syncHandler } from './sync.ts';
+import { s3ArtifactStore } from '../marketplace/artifacts.ts';
 
 const env = process.env;
 const need = (k: string) => { const v = env[k]; if (!v) { console.error(`${k} is not set`); process.exit(2); } return v; };
@@ -45,11 +47,13 @@ const sync = app && clerk ? syncHandler({ app, verify: (t) => clerk.verify(t), s
     return (u.external_accounts ?? []).filter((x) => x.provider && x.verification?.status !== 'unverified')
       .map((x) => ({ provider: x.provider!, email: x.email_address ?? null, image: x.image_url || x.avatar_url || (u.has_image ? u.image_url : null) || null }));
   } : undefined }) : undefined;
+const marketplace = sync && app && s3 ? marketplaceHandler({ app, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') }) : undefined;
 const admin = adminHandler(deps);
 
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);
 const server = createServer(async (req, res) => {
+  if (marketplace && (await marketplace(req, res))) return;   // before sync, whose /v1 catch-all answers 404
   if (sync && (await sync(req, res))) return;
   if (!sync && req.url?.startsWith('/v1/')) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'Sign-in is not configured on this server yet (CLERK_PUBLISHABLE_KEY).' })); return; }
   await admin(req, res);

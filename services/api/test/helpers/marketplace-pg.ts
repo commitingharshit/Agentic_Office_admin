@@ -24,6 +24,8 @@ export interface MarketplacePg {
   asUser<T>(userId: string, fn: () => Promise<T>): Promise<T>;
   /** Same, but commit (for state a later step reads back). */
   asUserCommit(userId: string, fn: () => Promise<unknown>): Promise<void>;
+  /** A pg.Pool connecting as `user` (ao_app, ao_admin ...), ended by stop(): what the HTTP handlers need. */
+  pool(user: string, max?: number): pg.Pool;
   stop(): Promise<void>;
 }
 
@@ -31,6 +33,7 @@ export async function startMarketplacePg(): Promise<MarketplacePg> {
   const dir = mkdtempSync(join(tmpdir(), 'ao-mkt-pg-'));
   const port = await freePort();
   const clients: pg.Client[] = [];
+  const pools: pg.Pool[] = [];
   const connect = async (user: string, database = 'mkt') => {
     const c = new pg.Client({ host: '127.0.0.1', port, user, password: 'pw', database }); await c.connect(); clients.push(c); return c;
   };
@@ -65,7 +68,9 @@ export async function startMarketplacePg(): Promise<MarketplacePg> {
       try { await app.query(`SELECT set_config('app.user_id', $1, true)`, [userId]); await fn(); await app.query('COMMIT'); }
       catch (e) { await app.query('ROLLBACK'); throw e; }
     },
+    pool(user, max = 4) { const p = new pg.Pool({ host: '127.0.0.1', port, user, password: 'pw', database: 'mkt', max }); pools.push(p); return p; },
     async stop() {
+      await Promise.all(pools.map((p) => p.end().catch(() => {})));
       await Promise.all(clients.map((c) => c.end().catch(() => {})));
       await server.stop().catch(() => {});
       rmSync(dir, { recursive: true, force: true });
