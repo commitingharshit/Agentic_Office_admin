@@ -22,5 +22,7 @@ export interface PermissionRequest { capability: 'fs.workspace.read'|'fs.workspa
 /** An unpacked package: path -> bytes. Paths are already normalized and safe (Task 3 produces this). */
 export interface UnpackedPackage { files: Map<string, Uint8Array>; manifest: ManifestV1 }
 
-export interface ValidationCheck { name: string; ok: boolean; detail?: string }
-export interface ValidationReport { ok: boolean; checks: ValidationCheck[] }
+/** `skipped` checks did not run (ok is true so they never fail a report) and must never be read as verification. `required` marks a check whose skip means the report is not `verified`. */
+export interface ValidationCheck { name: string; ok: boolean; detail?: string; skipped?: boolean; required?: boolean }
+/** `verified`: every check that ran passed AND no required check was skipped. */
+export interface ValidationReport { ok: boolean; verified?: boolean; checks: ValidationCheck[] }

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { parseManifest, pathProblem } from '../manifest.ts';
+import { createTemplateValidator } from './template.ts';
 import type { ListingType, UnpackedPackage, ValidationCheck, ValidationReport } from '../types.ts';
 
 export type Validator = (pkg: UnpackedPackage) => Promise<ValidationCheck[]> | ValidationCheck[];
@@ -45,11 +46,15 @@ export async function validateArtifact(type: ListingType, pkg: UnpackedPackage):
   const checks = commonChecks(type, pkg);
   const v = validators.get(type);
   // Type validators only ever see a manifest that passed manifest-valid.
-  if (checks.some(c => c.name === 'manifest-valid' && !c.ok)) return { ok: false, checks };
+  if (checks.some(c => c.name === 'manifest-valid' && !c.ok)) return { ok: false, verified: false, checks };
   if (!v) checks.push({ name: 'type-supported', ok: false, detail: `no validator for type ${type}` });
   else {
     try { checks.push(...((await v(pkg)) ?? [])); }
     catch (e) { checks.push({ name: 'validator-error', ok: false, detail: e instanceof Error ? e.message : String(e) }); }
   }
-  return { ok: checks.every(c => c.ok), checks };
+  const ok = checks.every(c => c.ok);
+  return { ok, verified: ok && !checks.some(c => c.skipped && c.required), checks };
 }
+
+// template.ts must not import this module (no cycle); the registry wires it here. officecli is injected, none by default.
+registerValidator('template', createTemplateValidator());

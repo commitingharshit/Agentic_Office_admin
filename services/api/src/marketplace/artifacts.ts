@@ -172,6 +172,27 @@ function extract(b: Uint8Array, e: CdEntry): Uint8Array {
   return out;
 }
 
+/**
+ * Reads a plain zip (e.g. an Office document nested in a package) into path -> bytes through the same hardened
+ * central-directory reader and bounded inflater as unpack(). Directory entries are skipped; names are NOT path-checked
+ * (they are only map keys here). Throws UnpackError.
+ */
+export function readZipFiles(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: number } = {}): Map<string, Uint8Array> {
+  const maxTotal = opts.maxTotal ?? MAX_ARTIFACT_BYTES, maxFiles = opts.maxFiles ?? 5000;
+  const entries = readCentralDirectory(bytes);
+  if (entries.length > maxFiles) throw new UnpackError('too-many-files', `archive has ${entries.length} entries, over the ${maxFiles} limit`);
+  const out = new Map<string, Uint8Array>();
+  let total = 0;
+  for (const e of entries) {
+    if (e.name.endsWith('/')) continue;
+    total += e.declared;
+    if (total > maxTotal) throw new UnpackError('too-large', `archive declares more than ${maxTotal} bytes uncompressed`);
+    if (out.has(e.name)) throw new UnpackError('duplicate', `duplicate entry ${JSON.stringify(e.name)}`);
+    out.set(e.name, extract(bytes, e));
+  }
+  return out;
+}
+
 const S_IFMT = 0o170000, S_IFLNK = 0o120000;
 
 function checkEntryPath(rel: string): void {
