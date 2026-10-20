@@ -25,7 +25,7 @@ export interface MarketplacePg {
   /** Same, but commit (for state a later step reads back). */
   asUserCommit(userId: string, fn: () => Promise<unknown>): Promise<void>;
   /** A pg.Pool connecting as `user` (ao_app, ao_admin ...), ended by stop(): what the HTTP handlers need. */
-  pool(user: string, max?: number): pg.Pool;
+  pool(user: string, max?: number, extra?: pg.PoolConfig): pg.Pool;
   stop(): Promise<void>;
 }
 
@@ -68,7 +68,7 @@ export async function startMarketplacePg(): Promise<MarketplacePg> {
       try { await app.query(`SELECT set_config('app.user_id', $1, true)`, [userId]); await fn(); await app.query('COMMIT'); }
       catch (e) { await app.query('ROLLBACK'); throw e; }
     },
-    pool(user, max = 4) { const p = new pg.Pool({ host: '127.0.0.1', port, user, password: 'pw', database: 'mkt', max }); pools.push(p); return p; },
+    pool(user, max = 4, extra = {}) { const p = new pg.Pool({ host: '127.0.0.1', port, user, password: 'pw', database: 'mkt', max, ...extra }); pools.push(p); return p; },
     async stop() {
       await Promise.all(pools.map((p) => p.end().catch(() => {})));
       await Promise.all(clients.map((c) => c.end().catch(() => {})));

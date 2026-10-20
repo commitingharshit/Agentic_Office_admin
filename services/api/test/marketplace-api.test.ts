@@ -329,15 +329,54 @@ describe('marketplace API (real Postgres)', { skip }, () => {
   // ── review round 1
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
   test('forged_page_cursors_are_400_never_500', async () => {
-    const ok = { r: '0.5', u: '2026-01-01T00:00:00.123456+00:00', id: 'pa/open' };
+    const ok = { r: '0.5', u: '2026-01-01T00:00:00.123456Z', id: 'pa/open' };
     const forged = [
-      { ...ok, r: '0x10' }, { ...ok, r: '' }, { ...ok, r: '1e' }, { ...ok, r: 'NaN' }, { ...ok, r: ' 1' },
+      { ...ok, r: '1e999' }, { ...ok, r: '0.5e-400' }, { ...ok, r: '-1' }, { ...ok, u: '2026-02-31T00:00:00.000000Z' }, { ...ok, u: '0000-01-01T00:00:00Z' }, { ...ok, u: '2101-01-01T00:00:00Z' }, { ...ok, u: '2026-01-01T00:00:00+00' }, { ...ok, u: '2026-01-01 00:00:00.123456+00' }, { ...ok, r: '0x10' }, { ...ok, r: '' }, { ...ok, r: '1e' }, { ...ok, r: 'NaN' }, { ...ok, r: ' 1' },
       { ...ok, u: '' }, { ...ok, u: 'Jan 1 2020' }, { ...ok, u: '2026-13-45T00:00:00Z' }, { ...ok, u: 'now' },
       { ...ok, id: 'a\u0000b/c' }, { ...ok, id: '' }, { ...ok, id: 'NOT/ok!' }, { ...ok, id: 5 }, { ...ok, r: 1 },
     ];
     for (const c of forged) assert.equal((await call(`/v1/marketplace/listings?page=${b64(c)}`)).status, 400, JSON.stringify(c));
     for (const raw of ['null', '[]', '"x"', '{']) assert.equal((await call(`/v1/marketplace/listings?page=${Buffer.from(raw).toString('base64url')}`)).status, 400, raw);
     assert.equal((await call(`/v1/marketplace/listings?page=${b64(ok)}`)).status, 200);
+    // well-formed cursor naming a listing that does not exist: a valid (here empty or later) page, never an error
+    assert.equal((await call(`/v1/marketplace/listings?page=${b64({ ...ok, id: 'zz/nothing' })}`)).status, 200);
+  });
+
+  // The cursor must not depend on the Postgres session time zone (production runs UTC).
+  for (const tz of ['UTC', 'Asia/Kolkata', 'Etc/GMT+8']) {
+    test(`pagination_is_timezone_independent_${tz.replace(/\W/g, '_')}`, async () => {
+      const pool = h.pool('ao_app', 2, { options: `-c TimeZone=${tz}` });
+      const handler = marketplaceHandler({ app: pool, authenticate, store });
+      const srv = createServer(async (req, res) => { if (!(await handler(req, res))) res.writeHead(404).end(); });
+      await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+      try {
+        const origin = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+        assert.equal((await pool.query('SHOW TimeZone')).rows[0].TimeZone, tz);
+        const seen: string[] = []; let page: string | null = null, pages = 0;
+        do {
+          const r: any = await call(`/v1/marketplace/listings?q=bulkword&limit=7${page ? `&page=${encodeURIComponent(page)}` : ''}`, { origin });
+          assert.equal(r.status, 200, `page ${pages} in ${tz}`);
+          seen.push(...ids(r)); page = r.json.nextPage; pages++;
+        } while (page && pages < 20);
+        assert.equal(seen.length, 30);
+        assert.equal(new Set(seen).size, 30);
+      } finally { srv.close(); }
+    });
+  }
+
+  test('install_sync_survives_a_sql_error_in_one_item', async () => {
+    // a NUL byte passes the code's validation but Postgres rejects it (22021) inside the item's savepoint
+    const r = await call('/v1/marketplace/installs/sync', { user: 'u2', method: 'POST', body: { deviceId: 'd2', items: [
+      { listingId: 'pa/unrated', state: 'installed', enabled: true },
+      { listingId: 'pa/rated', state: 'failed', lastError: 'bad \u0000 byte' },
+      { listingId: 'pa/dl', versionId: 'v_dl', state: 'enabled', enabled: true },
+    ] } });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.results, [{ listingId: 'pa/unrated', ok: true }, { listingId: 'pa/rated', ok: false, code: 'rejected' }, { listingId: 'pa/dl', ok: true }]);
+    const rows = (await admin.query(`SELECT listing_id FROM marketplace_installs WHERE user_id = 'u2' AND device_id = 'd2' ORDER BY listing_id`)).rows.map((x) => x.listing_id);
+    assert.deepEqual(rows, ['pa/dl', 'pa/revoked', 'pa/unrated', 'pa/upg']);
+    assert.ok((r.json.updates as any[]).some((u) => u.listingId === 'pa/revoked' && u.revoked));
+    await admin.query(`DELETE FROM marketplace_installs WHERE user_id = 'u2' AND listing_id IN ('pa/unrated','pa/dl')`);
   });
 
   test('non_object_json_bodies_are_400', async () => {

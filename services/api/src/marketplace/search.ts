@@ -17,14 +17,30 @@ interface Cursor { r: string; u: string; id: string }
 
 export function encodeCursor(c: Cursor): string { return Buffer.from(JSON.stringify(c)).toString('base64url'); }
 const CURSOR_RANK = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,17})?(?:e[+-]?\d{1,3})?$/;
-const CURSOR_TIME = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)$/;
+// Always UTC with a Z (the query emits it that way), so it never depends on the session time zone.
+const CURSOR_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?Z$/;
 const CURSOR_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
+function validRank(r: string): boolean {
+  if (!CURSOR_RANK.test(r)) return false;
+  const n = Number(r);
+  if (!Number.isFinite(n) || n > 1e6) return false;
+  // an underflowing literal (0.5e-400) parses to 0 in JS but is out of range for float8
+  return n !== 0 || /^0(?:\.0+)?$/.test(r);
+}
+function validTime(u: string): boolean {
+  const m = CURSOR_TIME.exec(u);
+  if (!m) return false;
+  const year = +m[1];
+  if (year < 1970 || year > 2100) return false;
+  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`);
+  // Date rolls 2026-02-31 over to March: the round trip must give back the same calendar date and time
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 19) === `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
+}
 function decodeCursor(s: string): Cursor {
   try {
     const c = JSON.parse(Buffer.from(s, 'base64url').toString('utf8'));
-    // strict shapes: anything Postgres would cast differently (or reject) must be a 400 here, never a 500 there
-    if (c && typeof c === 'object' && typeof c.r === 'string' && CURSOR_RANK.test(c.r) && typeof c.u === 'string' && CURSOR_TIME.test(c.u)
-        && !Number.isNaN(Date.parse(c.u.replace(' ', 'T'))) && typeof c.id === 'string' && c.id.length <= 200 && CURSOR_ID.test(c.id)) return { r: c.r, u: c.u, id: c.id };
+    if (c && typeof c === 'object' && typeof c.r === 'string' && validRank(c.r) && typeof c.u === 'string' && validTime(c.u)
+        && typeof c.id === 'string' && c.id.length <= 200 && CURSOR_ID.test(c.id)) return { r: c.r, u: c.u, id: c.id };
   } catch { /* fall through */ }
   throw new BadQuery('page is not a valid cursor.');
 }
@@ -84,7 +100,7 @@ export function buildListQuery(p: ListParams): { text: string; values: unknown[]
              CASE WHEN ${qp}::text IS NULL THEN 0::float8 ELSE ts_rank(l.search, websearch_to_tsquery('simple', ${qp}::text))::float8 END AS rank
         FROM marketplace_listings l WHERE ${where.join(' AND ')})
     SELECT b.id, b.type, b.title, b.summary, b.publisher_id, b.trust, b.visibility,
-           b.rank::text AS rank_raw, b.updated_at::text AS updated_raw,
+           b.rank::text AS rank_raw, to_char(b.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_raw,
            lv.version AS latest_version,
            s.rating_avg, s.rating_count, s.favorite_count, s.install_count,
            EXISTS (SELECT 1 FROM marketplace_favorites f WHERE f.listing_id = b.id) AS favorited,

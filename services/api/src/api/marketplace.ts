@@ -74,7 +74,12 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       if (rest === 'listings' && m === 'GET') {
         const p = parseListParams(url.searchParams);
         if (p.installed !== null && !signedIn) throw new HttpError(401, 'Sign in to filter by installed.');
-        return send(200, await q((c) => store.listListings(c, p))), true;
+        try { return send(200, await q((c) => store.listListings(c, p))), true; }
+        catch (e: any) {
+          // belt and braces: a data exception (SQLSTATE class 22) from a query that used the cursor is the caller's bad cursor
+          if (p.cursor && typeof e?.code === 'string' && e.code.startsWith('22')) throw bad('invalid page cursor');
+          throw e;
+        }
       }
       const lm = /^listings\/([^/]+\/[^/]+)(?:\/(favorite|review|versions))?$/.exec(rest);
       if (lm) {
