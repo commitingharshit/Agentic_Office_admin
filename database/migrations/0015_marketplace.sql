@@ -279,7 +279,7 @@ CREATE TABLE marketplace_listing_counters (
   install_count   int NOT NULL DEFAULT 0 CHECK (install_count >= 0)
 );
 CREATE FUNCTION marketplace_bump(p_listing text, p_fav int, p_inst int) RETURNS void
-  LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   INSERT INTO marketplace_listing_counters(listing_id, favorite_count, install_count)
     VALUES (p_listing, greatest(p_fav, 0), greatest(p_inst, 0))
   ON CONFLICT (listing_id) DO UPDATE SET
@@ -287,7 +287,7 @@ CREATE FUNCTION marketplace_bump(p_listing text, p_fav int, p_inst int) RETURNS 
     install_count  = greatest(marketplace_listing_counters.install_count + p_inst, 0)
 $$;
 CREATE FUNCTION marketplace_count_favorites() RETURNS trigger
-  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
   IF TG_OP IN ('INSERT') THEN PERFORM marketplace_bump(NEW.listing_id, 1, 0); END IF;
   IF TG_OP IN ('DELETE') THEN PERFORM marketplace_bump(OLD.listing_id, -1, 0); END IF;
@@ -296,7 +296,7 @@ END $$;
 CREATE TRIGGER trg_mkt_favorites_count AFTER INSERT OR DELETE ON marketplace_favorites
   FOR EACH ROW EXECUTE FUNCTION marketplace_count_favorites();
 CREATE FUNCTION marketplace_count_installs() RETURNS trigger
-  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE live text[] := ARRAY['installed','configured','enabled','disabled','update_available'];
 BEGIN
   IF TG_OP IN ('UPDATE','DELETE') AND OLD.state = ANY (live) THEN PERFORM marketplace_bump(OLD.listing_id, 0, -1); END IF;
@@ -319,7 +319,7 @@ CREATE VIEW marketplace_listing_stats WITH (security_invoker = true) AS
 -- policies hide from ao_app), so the client can find out an installed version was pulled and why.
 CREATE FUNCTION marketplace_installed_status()
   RETURNS TABLE (listing_id text, version_id text, version text, state text, reason text)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   SELECT i.listing_id, i.version_id, v.version, v.state,
          (SELECT e.detail ->> 'reason' FROM marketplace_release_events e
            WHERE e.version_id = v.id AND e.event IN ('revoked','quarantined')
@@ -327,6 +327,12 @@ CREATE FUNCTION marketplace_installed_status()
   FROM marketplace_installs i JOIN marketplace_versions v ON v.id = i.version_id
   WHERE i.user_id = current_setting('app.user_id', true)
 $$;
+
+-- Functions are executable by PUBLIC by default. The SECURITY DEFINER ones must not be: anyone able to
+-- call marketplace_bump() could forge counters. Trigger functions need no EXECUTE grant to fire.
+REVOKE EXECUTE ON FUNCTION marketplace_bump(text, int, int), marketplace_count_favorites(),
+  marketplace_count_installs(), marketplace_installed_status(), marketplace_versions_guard(),
+  marketplace_listings_search_update(), marketplace_append_only() FROM PUBLIC;
 
 -- ---------------------------------------------------------------------------------------------
 -- Roles, grants and row-level security. Guarded so the file loads where the roles do not exist.
@@ -337,7 +343,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ao_app') THEN RETURN; END IF;
 
   -- Per-user tables: a user sees and writes only their own rows (app.user_id set per request).
-  FOREACH t IN ARRAY ARRAY['marketplace_favorites','marketplace_installs','marketplace_usage_events','marketplace_install_events'] LOOP
+  FOREACH t IN ARRAY ARRAY['marketplace_usage_events','marketplace_install_events'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format($p$CREATE POLICY own_rows ON %I USING (user_id = current_setting('app.user_id', true))
                      WITH CHECK (user_id = current_setting('app.user_id', true))$p$, t);
@@ -361,9 +367,11 @@ BEGIN
     OR (visibility = 'team' AND team_id IN (SELECT team_id FROM marketplace_team_members)));
   CREATE POLICY owner_insert ON marketplace_listings FOR INSERT WITH CHECK (
     owner_user_id = current_setting('app.user_id', true)
-    AND publisher_id IN (SELECT id FROM marketplace_publishers WHERE owner_user_id = current_setting('app.user_id', true)));
+    AND publisher_id IN (SELECT id FROM marketplace_publishers WHERE owner_user_id = current_setting('app.user_id', true))
+    AND (team_id IS NULL OR team_id IN (SELECT team_id FROM marketplace_team_members)));
   CREATE POLICY owner_update ON marketplace_listings FOR UPDATE USING (owner_user_id = current_setting('app.user_id', true))
-    WITH CHECK (owner_user_id = current_setting('app.user_id', true));
+    WITH CHECK (owner_user_id = current_setting('app.user_id', true)
+                AND (team_id IS NULL OR team_id IN (SELECT team_id FROM marketplace_team_members)));
 
   -- Versions: everyone sees published/deprecated versions of listings they can see; the owner sees all
   -- of their own. Owners create drafts and may move a draft to 'submitted'; every later state is set
@@ -421,6 +429,29 @@ BEGIN
     WITH CHECK (user_id = current_setting('app.user_id', true));
   CREATE POLICY own_delete ON marketplace_reviews FOR DELETE USING (user_id = current_setting('app.user_id', true));
 
+  -- Favorites and installs: own rows only; the listing must be visible to the caller, and an install
+  -- must be on one of the caller's own devices. (devices has its own RLS, so the subquery is already
+  -- scoped.) device_id/listing_id cannot be changed afterwards (column grants).
+  ALTER TABLE marketplace_favorites ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY own_select ON marketplace_favorites FOR SELECT USING (user_id = current_setting('app.user_id', true));
+  CREATE POLICY own_insert ON marketplace_favorites FOR INSERT WITH CHECK (
+    user_id = current_setting('app.user_id', true) AND listing_id IN (SELECT id FROM marketplace_listings));
+  CREATE POLICY own_delete ON marketplace_favorites FOR DELETE USING (user_id = current_setting('app.user_id', true));
+  ALTER TABLE marketplace_installs ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY own_select ON marketplace_installs FOR SELECT USING (user_id = current_setting('app.user_id', true));
+  CREATE POLICY own_insert ON marketplace_installs FOR INSERT WITH CHECK (
+    user_id = current_setting('app.user_id', true)
+    AND device_id IN (SELECT id FROM devices WHERE user_id = current_setting('app.user_id', true))
+    AND listing_id IN (SELECT id FROM marketplace_listings));
+  CREATE POLICY own_update ON marketplace_installs FOR UPDATE USING (user_id = current_setting('app.user_id', true))
+    WITH CHECK (user_id = current_setting('app.user_id', true)
+                AND device_id IN (SELECT id FROM devices WHERE user_id = current_setting('app.user_id', true)));
+  CREATE POLICY own_delete ON marketplace_installs FOR DELETE USING (user_id = current_setting('app.user_id', true));
+
+  -- Artifact rows are written by the server (ao_admin) during publish; readers see only referenced ones.
+  ALTER TABLE marketplace_artifacts ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY read_visible ON marketplace_artifacts FOR SELECT USING (sha256 IN (SELECT sha256 FROM marketplace_versions));
+
   -- Grants. Column lists keep trust, scan verdicts, publication and moderation states with ao_admin.
   GRANT SELECT ON marketplace_publishers, marketplace_teams, marketplace_team_members, marketplace_listings,
         marketplace_versions, marketplace_artifacts, marketplace_dependencies, marketplace_collections,
@@ -431,11 +462,13 @@ BEGIN
   GRANT INSERT (id, listing_id, version, semver_major, semver_minor, semver_patch, manifest, sha256, size, compat) ON marketplace_versions TO ao_app;
   GRANT UPDATE (state, manifest, sha256, size, compat) ON marketplace_versions TO ao_app;
   GRANT INSERT, DELETE ON marketplace_dependencies TO ao_app;
-  GRANT INSERT ON marketplace_artifacts TO ao_app;
   GRANT INSERT (id, version_id, submitted_by, notes) ON marketplace_submissions TO ao_app;
   GRANT INSERT (id, listing_id, reporter_user_id, reason) ON marketplace_reports TO ao_app;
-  GRANT SELECT, INSERT, UPDATE, DELETE ON marketplace_reviews, marketplace_favorites TO ao_app;
-  GRANT SELECT, INSERT, UPDATE, DELETE ON marketplace_installs TO ao_app;
+  GRANT SELECT, INSERT, DELETE ON marketplace_reviews TO ao_app;
+  GRANT UPDATE (stars, body) ON marketplace_reviews TO ao_app;
+  GRANT SELECT, INSERT, DELETE ON marketplace_favorites TO ao_app;
+  GRANT SELECT, INSERT, DELETE ON marketplace_installs TO ao_app;
+  GRANT UPDATE (version_id, state, scope, enabled, scan_verdict, last_error, updated_at) ON marketplace_installs TO ao_app;
   GRANT SELECT, INSERT ON marketplace_install_events, marketplace_usage_events TO ao_app;
   GRANT USAGE ON SEQUENCE marketplace_usage_events_id_seq TO ao_app;
   GRANT EXECUTE ON FUNCTION marketplace_installed_status() TO ao_app;
