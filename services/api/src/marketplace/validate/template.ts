@@ -99,6 +99,7 @@ export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<st
       i++;
       const name = readName();
       const attrs = new Map<string, string>();
+      const seenLower = new Set<string>();
       for (;;) {
         const before = i;
         skipWs();
@@ -106,6 +107,8 @@ export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<st
         if (i === before) throw new XmlError(`malformed start tag <${name}`);
         const an = readName();
         if (attrs.has(an)) throw new XmlError(`duplicate attribute ${an} on <${name}>`);
+        if (seenLower.has(an.toLowerCase())) throw new XmlError(`attributes on <${name}> collide case-insensitively: ${an}`);
+        seenLower.add(an.toLowerCase());
         skipWs();
         if (s[i++] !== '=') throw new XmlError(`attribute ${an} has no value`);
         skipWs();
@@ -116,7 +119,13 @@ export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<st
         const v = s.slice(i, e);
         if (v.includes('<')) throw new XmlError(`"<" in attribute ${an}`);
         checkText(v);
-        attrs.set(an, v.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, (_, r: string) => ENT[r] ?? (r[1] === 'x' ? String.fromCodePoint(parseInt(r.slice(2), 16)) : String.fromCodePoint(parseInt(r.slice(1), 10)))));
+        const decoded = v.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, (_, r: string) => {
+          if (ENT[r] !== undefined) return ENT[r];
+          const cp = r[1] === 'x' ? parseInt(r.slice(2), 16) : parseInt(r.slice(1), 10);
+          if (!Number.isInteger(cp) || cp > 0x10ffff || (cp < 0x20 && cp !== 9 && cp !== 10 && cp !== 13) || (cp >= 0xd800 && cp <= 0xdfff)) throw new XmlError(`illegal character reference &${r};`);
+          return String.fromCodePoint(cp);
+        });
+        attrs.set(an, decoded);
         i = e + 1;
       }
       if (stack.length === 0) { if (roots++ > 0) throw new XmlError('more than one root element'); }
@@ -157,30 +166,36 @@ function payloadShape(p: Record<string, unknown>): { check: ValidationCheck; for
 }
 
 const ACTIVE_CT = /macroenabled|vbaproject|activex|macrosheet|dialogsheet|\.macro\b|ms-office\.vba/i;
-const ACTIVE_REL_TYPE = /\/(oleObject|oleLink|package|vbaProject|activeXControl|activeXControlBinary|macroSheet|dialogSheet)$/i;
-const EXTERNAL_OK_TYPE = /\/hyperlink$/i;
 
 const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
-const attrCI = (attrs: Map<string, string>, name: string): string | undefined => {
-  for (const [k, v] of attrs) if (k.toLowerCase() === name.toLowerCase()) return v;
-  return undefined;
-};
+/** OPC consumers read exact-case attribute names; the tokenizer already rejects case-colliding duplicates. */
+const attrCI = (attrs: Map<string, string>, name: string): string | undefined => attrs.get(name);
+/** Relationship type by its last path segment, ignoring a trailing '/' or '#fragment', lowercased. */
+const relKind = (type: string): string => type.replace(/#.*$/, '').replace(/\/+$/, '').replace(/^.*\//, '').toLowerCase();
+const ACTIVE_KINDS = new Set(['oleobject', 'olelink', 'package', 'vbaproject', 'activexcontrol', 'activexcontrolbinary', 'macrosheet', 'dialogsheet']);
+const MACRO_EXT = /\.(xlsm|dotm|docm|pptm|xlam|xltm|potm|ppam|sldm)$/i;
+const EXEC_MAGIC = (b: Uint8Array) => b.length >= 2 && ((b[0] === 0x4d && b[1] === 0x5a) || (b.length >= 4 && ((b[0] === 0x7f && b[1] === 0x45 && b[2] === 0x4c && b[3] === 0x46)
+  || (b[0] === 0xfe && b[1] === 0xed && b[2] === 0xfa && (b[3] === 0xce || b[3] === 0xcf)) || (b[3] === 0xfe && b[2] === 0xed && b[1] === 0xfa && (b[0] === 0xce || b[0] === 0xcf))
+  || (b[0] === 0xca && b[1] === 0xfe && b[2] === 0xba && b[3] === 0xbe))));
+function resolvePart(relsName: string, target: string): string {
+  const base = relsName.replace(/_rels\/[^/]*$/, '');
+  const segs = (target.startsWith('/') ? target.slice(1) : base + target).split('/'), res: string[] = [];
+  for (const sg of segs) { if (sg === '..') res.pop(); else if (sg !== '.' && sg !== '') res.push(sg); }
+  return res.join('/');
+}
 
-/** Chart parts reach their data workbook through a `package` relationship; returns those targets (resolved part names). */
+/** Chart workbooks: resolved targets of a chart part's internal `package` relationship that are a .xlsx/.docx/.pptx directly under embeddings/ and exist in the package. */
 function chartPackageTargets(parts: Map<string, Uint8Array>): Set<string> {
   const out = new Set<string>();
   for (const [name, b] of parts) {
     if (!/(^|\/)charts\/_rels\/[^/]+\.rels$/i.test(name)) continue;
     const r = readTags(b);
     if ('problem' in r) continue;
-    const base = name.replace(/_rels\/[^/]+$/, '');
     for (const t of r.tags) {
-      if (t.name !== 'Relationship' || !/\/package$/i.test(attrCI(t.attrs, 'Type') ?? '')) continue;
-      if ((attrCI(t.attrs, 'TargetMode') ?? '').toLowerCase() === 'external') continue;
-      const tgt = attrCI(t.attrs, 'Target') ?? '';
-      const segs = (tgt.startsWith('/') ? tgt.slice(1) : base + tgt).split('/'), res: string[] = [];
-      for (const sg of segs) { if (sg === '..') res.pop(); else if (sg !== '.' && sg !== '') res.push(sg); }
-      out.add(res.join('/'));
+      if (t.name !== 'Relationship' || relKind(t.attrs.get('Type') ?? '') !== 'package') continue;
+      if ((t.attrs.get('TargetMode') ?? '').toLowerCase() === 'external') continue;
+      const res = resolvePart(name, (t.attrs.get('Target') ?? '').trim());
+      if (/(^|\/)embeddings\/[^/]+\.(xlsx|docx|pptx)$/i.test(res) && parts.has(res)) out.add(res);
     }
   }
   return out;
@@ -204,7 +219,7 @@ function scanActive(parts: Map<string, Uint8Array>, depth: number): string[] {
     const n = name.toLowerCase();
     if (/(^|\/)vbaproject(signature)?\.bin$/.test(n) || /(^|\/)vbadata\.xml$/.test(n)) act.push(`macro part ${name}`);
     else if (/(^|\/)(macrosheets|dialogsheets)\//.test(n)) act.push(`Excel 4.0 macro/dialog sheet ${name}`);
-    else if (/(^|\/)embeddings\/[^/]*\.(docx|xlsx|pptx)$/.test(n) && chartPackages.has(name)) {
+    else if (chartPackages.has(name)) {
       // A chart's data workbook (reached only via a chart part's `package` relationship) is legitimate; it is scanned
       // recursively (one level) and must itself be free of active content.
       let inner: Map<string, Uint8Array> | undefined;
@@ -212,6 +227,8 @@ function scanActive(parts: Map<string, Uint8Array>, depth: number): string[] {
       if (inner) for (const a of scanActive(inner, 1)) act.push(`${name}: ${a}`);
     }
     else if (/(^|\/)embeddings\/[^/]*\.(bin|ole|docm|xlsm|pptm|docx|xlsx|pptx|dotm|xltm|potm)$/.test(n) || /(^|\/)oleobject[^/]*\.bin$/.test(n)) act.push(`embedded OLE/package ${name}`);
+    else if (MACRO_EXT.test(n)) act.push(`macro-enabled document part ${name}`);
+    else if (!/\.(xml|rels)$/.test(n) && EXEC_MAGIC(parts.get(name)!)) act.push(`executable binary (MZ/ELF/Mach-O) ${name}`);
     else if (/(^|\/)activex\//.test(n)) act.push(`ActiveX part ${name}`);
   }
   for (const [name, b] of parts) {
@@ -224,9 +241,10 @@ function scanActive(parts: Map<string, Uint8Array>, depth: number): string[] {
       const type = attrCI(t.attrs, 'Type') ?? '';
       const external = (attrCI(t.attrs, 'TargetMode') ?? '').toLowerCase() === 'external';
       const where = `${name} (${q(type.replace(/^.*\//, ''))} -> ${q(target)})`;
-      const chartPkg = !external && /\/package$/i.test(type) && /(^|\/)charts\/_rels\//i.test(name);
-      if (ACTIVE_REL_TYPE.test(type) && !chartPkg) act.push(`active-content relationship in ${where}`);
-      else if (external && !(EXTERNAL_OK_TYPE.test(type) && /^https:\/\//i.test(target))) act.push(`external relationship in ${where}: only https hyperlinks are allowed`);
+      const kind = relKind(type);
+      const chartPkg = !external && kind === 'package' && /(^|\/)charts\/_rels\//i.test(name) && chartPackages.has(resolvePart(name, target));
+      if (ACTIVE_KINDS.has(kind) && !chartPkg) act.push(`active-content relationship in ${where}`);
+      else if (external && !(kind === 'hyperlink' && /^https:\/\//i.test(target))) act.push(`external relationship in ${where}: only https hyperlinks are allowed`);
       else if (!external && (/^(https?|file|ftp):/i.test(target) || /^[\\/]{2}/.test(target) || target.startsWith('\\'))) act.push(`absolute/remote target in ${where}`);
     }
   }

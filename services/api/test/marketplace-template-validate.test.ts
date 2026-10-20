@@ -322,6 +322,78 @@ describe('officecli renderer hardening', () => {
   });
 });
 
+describe('round 2: exact-case attributes, chart package binding, macro extensions, magic bytes', () => {
+  const T = (t: string) => `http://schemas.openxmlformats.org/officeDocument/2006/relationships/${t}`;
+  const R = (inner: string) => `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${inner}</Relationships>`;
+  const active = async (p: UnpackedPackage) => get(await run(p), 'no-active-content')!;
+  const rejected = async (p: UnpackedPackage) => { const r = await run(p); return !r.ok; };
+  const withRels = (xml: string, path = 'word/_rels/x.rels') => pkgOf('docx', mutate(DOCX, z => { z[path] = strToU8(xml); }));
+
+  test('NEW-1: case-variant duplicate attributes are rejected (rels)', async () => {
+    for (const x of [
+      `<Relationship Id="a" target="https://ok" Type="${T('hyperlink')}" Target="file:///x" TargetMode="External"/>`,
+      `<Relationship Id="a" type="${T('hyperlink')}" Type="${T('oleObject')}" Target="x"/>`,
+      `<Relationship Id="a" Type="${T('hyperlink')}" targetmode="Internal" Target="file:///x" TargetMode="External"/>`,
+    ]) assert.equal(await rejected(withRels(R(x))), true, x);
+  });
+  test('NEW-1: case-variant ContentType decoy is rejected', async () => {
+    const p = pkgOf('docx', mutate(DOCX, z => {
+      const ct = new TextDecoder().decode(z['[Content_Types].xml']);
+      z['[Content_Types].xml'] = strToU8(ct.replace('</Types>', '<Default Extension="bin" contenttype="text/plain" ContentType="application/vnd.ms-office.vbaProject"/></Types>'));
+    }));
+    assert.equal(await rejected(p), true);
+  });
+  test('NEW-1: decoy inside a chart-reached embedded workbook is rejected', async () => {
+    const p = pkgOf('pptx', mutate(PPTX, z => {
+      const k = Object.keys(z).find(n => /embeddings\/.*\.xlsx$/.test(n))!;
+      const inner = unzipSync(z[k]);
+      inner['xl/_rels/x.rels'] = strToU8(R(`<Relationship Id="a" target="https://ok" Type="${T('hyperlink')}" Target="file:///x" TargetMode="External"/>`));
+      z[k] = zipSync(inner as Zippable);
+    }));
+    assert.equal((await active(p)).ok, false);
+  });
+
+  const chartPkg = (target: string, partName: string, bytes: Uint8Array) => pkgOf('pptx', mutate(PPTX, z => {
+    const rk = Object.keys(z).find(n => /charts\/_rels\/.*\.rels$/.test(n))!;
+    z[rk] = strToU8(R(`<Relationship Id="rId1" Type="${T('package')}" Target="${target}"/>`));
+    z[partName] = bytes;
+  }));
+  test('NEW-2: chart package pointing anywhere but a scanned embeddings workbook is rejected', async () => {
+    const MZ = strToU8('MZ\x90\x00');
+    for (const [t, n] of [['../media/p.xlsm', 'ppt/media/p.xlsm'], ['../media/p.exe', 'ppt/media/p.exe'], ['../x/p.bin', 'ppt/x/p.bin'], ['../embeddings/s/p.xlsm', 'ppt/embeddings/s/p.xlsm'], ['../embeddings/p.bin', 'ppt/embeddings/p.bin']] as const)
+      assert.equal((await active(chartPkg(t, n, MZ))).ok, false, t);
+  });
+  test('NEW-2: chart package that resolves to a missing file is not exempt', async () => {
+    assert.equal((await active(chartPkg('../embeddings/ghost.xlsx', 'ppt/other.txt', strToU8('x')))).ok, false);
+  });
+  test('NEW-2: macro-extension parts at any path are rejected, even via an internal absolute attachedTemplate', async () => {
+    for (const n of ['word/x/a.dotm', 'xl/a.xlam', 'xl/media/a.xlsm', 'ppt/a.sldm', 'ppt/a.ppam'])
+      assert.equal((await active(pkgOf('docx', mutate(DOCX, z => { z[n] = strToU8('x'); z['word/_rels/x.rels'] = strToU8(R(`<Relationship Id="z" Type="${T('attachedTemplate')}" Target="/${n}"/>`)); })))).ok, false, n);
+  });
+  test('NEW-2: executable magic in any non-XML part is rejected', async () => {
+    for (const [n, b] of [['word/media/p.exe', [0x4d, 0x5a, 0x90, 0]], ['word/media/p.png', [0x7f, 0x45, 0x4c, 0x46]], ['word/media/q.dat', [0xcf, 0xfa, 0xed, 0xfe]]] as const)
+      assert.equal((await active(pkgOf('docx', mutate(DOCX, z => { z[n] = new Uint8Array(b); })))).ok, false, n);
+  });
+  test('quick win: relationship Type is matched by last segment, ignoring trailing slash / fragment', async () => {
+    for (const ty of [T('oleObject') + '/', T('oleObject') + '#x', T('OLEOBJECT')])
+      assert.equal(await rejected(withRels(R(`<Relationship Id="a" Type="${ty}" Target="embeddings/a.dat"/>`))), true, ty);
+  });
+  test('quick win: control characters smuggled via character references in attributes are rejected', async () => {
+    assert.equal(await rejected(withRels(R(`<Relationship Id="a" Type="${T('hyperlink')}" Target="https://x&#1;y" TargetMode="External"/>`))), true);
+  });
+});
+
+describe('officecli: slot is released when mkdtemp fails', () => {
+  test('bad TMPDIR does not leak the concurrency slot', async () => {
+    const old = process.env.TMPDIR;
+    process.env.TMPDIR = '/nonexistent-dir-for-test';
+    try {
+      const r = officecliRenderer({ bin: '/bin/true', timeoutMs: 1000 });
+      for (let i = 0; i < 4; i++) await assert.rejects(() => r(PPTX, 'pptx'));
+    } finally { if (old === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = old; }
+  });
+});
+
 const BIN =  process.env.OFFICECLI_BIN ?? '/Users/harshitverma/.local/bin/officecli';
 describe('officecli integration', { skip: !existsSync(BIN) && 'officecli binary not installed' }, () => {
   test('renders templates/pptx/board-update.pptx', async () => {

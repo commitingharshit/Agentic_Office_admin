@@ -29,8 +29,9 @@ export function officecliRenderer(opts: { bin?: string; timeoutMs?: number } = {
   return async (file, format) => {
     if (!FORMATS.has(format)) return { ok: false, detail: `unsupported format ${format}` };
     await acquire();
-    const dir = await mkdtemp(join(tmpdir(), 'mkt-officecli-'));
+    let dir: string | undefined;
     try {
+      dir = await mkdtemp(join(tmpdir(), 'mkt-officecli-'));
       const input = join(dir, `in.${format}`), out = join(dir, 'page1.png');
       await writeFile(input, file);
       const args = ['view', input, 'screenshot', '--out', out, '--page', '1', '--screenshot-width', '900', '--screenshot-height', '700'];
@@ -62,7 +63,7 @@ export function officecliRenderer(opts: { bin?: string; timeoutMs?: number } = {
       if (png.length < 8 || png[0] !== 0x89 || png[1] !== 0x50 || png[2] !== 0x4e || png[3] !== 0x47) return { ok: false, detail: 'officecli output is not a PNG' };
       return { ok: true };
     } finally {
-      await rm(dir, { recursive: true, force: true });
+      if (dir) await rm(dir, { recursive: true, force: true });
       release();
     }
   };
