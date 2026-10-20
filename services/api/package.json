@@ -8,11 +8,11 @@
     "test:postgres": "bash test/run-with-postgres.sh"
   },
   "dependencies": {
-    "fflate": "0.8.3",
     "pg": "^8.13.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.10",
-    "embedded-postgres": "^18.4.0-beta.17"
+    "embedded-postgres": "^18.4.0-beta.17",
+    "fflate": "0.8.3"
   }
 }

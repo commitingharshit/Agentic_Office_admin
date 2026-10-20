@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { zipSync, type Zippable } from 'fflate';
 import type pg from 'pg';
+import { S3 } from '../src/api/s3.ts';
+import { ManifestError } from '../src/marketplace/manifest.ts';
 import {
   ArtifactCorruptError, MANIFEST_NAME, UnpackError, memoryArtifactStore, openArtifact, putArtifact, sha256Hex, unpack,
 } from '../src/marketplace/artifacts.ts';
@@ -81,6 +84,121 @@ describe('unpack', () => {
   test('manifest in a subdirectory does not count', () =>
     rejectsWith(() => unpack(zipSync({ ['sub/' + MANIFEST_NAME]: enc(JSON.stringify(manifest())) })), 'missing-manifest'));
   test('not a zip rejected', () => rejectsWith(() => unpack(enc('hello world, definitely not a zip file')), 'bad-zip'));
+});
+
+// ---- fix round 1 ------------------------------------------------------------------------------
+const u32 = (z: Uint8Array) => new DataView(z.buffer, z.byteOffset, z.byteLength);
+/** offsets of every header with signature `sig` */
+const findSig = (z: Uint8Array, sig: number) => { const out: number[] = []; for (let i = 0; i + 4 <= z.length; i++) if (u32(z).getUint32(i, true) === sig) out.push(i); return out; };
+const name = (z: Uint8Array, off: number, nameAt: number, lenAt: number) => new TextDecoder().decode(z.subarray(off + nameAt, off + nameAt + u32(z).getUint16(off + lenAt, true)));
+
+describe('unpack hardening', () => {
+  test('CPU bomb: 256 MiB of zeros with a lying declared size is rejected fast without big allocations', () => {
+    const z = pkg({ 'big.bin': new Uint8Array(256 * 1024 * 1024) });
+    const d = u32(z);
+    for (const i of findSig(z, 0x02014b50)) if (name(z, i, 46, 28) === 'big.bin') d.setUint32(i + 24, 10, true);
+    const before = process.memoryUsage().arrayBuffers;
+    const t = performance.now();
+    rejectsWith(() => unpack(z), 'bad-zip');
+    assert.ok(performance.now() - t < 200, `took ${performance.now() - t} ms`);
+    assert.ok(process.memoryUsage().arrayBuffers - before < 8 * 1024 * 1024, 'no allocation beyond the declared size');
+  });
+  test('non-ASCII name with the UTF-8 flag is accepted; without it, rejected as bad-path', () => {
+    const z = pkg({ 'café.md': enc('x') });
+    assert.ok(unpack(z).files.has('café.md'));
+    const d = u32(z);
+    for (const i of findSig(z, 0x04034b50)) d.setUint16(i + 6, d.getUint16(i + 6, true) & ~0x800, true);
+    for (const i of findSig(z, 0x02014b50)) d.setUint16(i + 8, d.getUint16(i + 8, true) & ~0x800, true);
+    rejectsWith(() => unpack(z), 'bad-path');
+  });
+  test('zip64 locator rejected', () => {
+    const z = pkg({ 'a.md': enc('x') });
+    const e = findSig(z, 0x06054b50).at(-1)!;
+    const out = new Uint8Array(z.length + 20); out.set(z.subarray(0, e)); out.set(z.subarray(e), e + 20);
+    u32(out).setUint32(e, 0x07064b50, true);
+    rejectsWith(() => unpack(out), 'bad-zip');
+  });
+  test('truncated / inconsistent central directory rejected', () => {
+    const z = pkg({ 'a.md': enc('x') });
+    rejectsWith(() => unpack(z.subarray(0, z.length - 30)), 'bad-zip');
+    const bad = new Uint8Array(z); const e = findSig(bad, 0x06054b50).at(-1)!;
+    u32(bad).setUint16(e + 10, 5, true); // total entries != this-disk entries
+    rejectsWith(() => unpack(bad), 'bad-zip');
+    const bad2 = new Uint8Array(z); u32(bad2).setUint16(e + 8, 5, true); u32(bad2).setUint16(e + 10, 5, true); // claims more than exist
+    rejectsWith(() => unpack(bad2), 'bad-zip');
+    const multi = new Uint8Array(z); u32(multi).setUint16(e + 4, 1, true);
+    rejectsWith(() => unpack(multi), 'bad-zip');
+  });
+  test('EOCD signature inside the zip comment: the real (last consistent) EOCD is used', () => {
+    const z = pkg({ 'a.md': enc('x') });
+    const comment = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0), 0x78, 0x78, 0x78, 0x78]);
+    const out = new Uint8Array(z.length + comment.length); out.set(z); out.set(comment, z.length);
+    const e = findSig(z, 0x06054b50).at(-1)!;
+    u32(out).setUint16(e + 20, comment.length, true);
+    assert.ok(unpack(out).files.has('a.md'));
+  });
+  test('local header name mismatch: the central directory name wins, nothing escapes', () => {
+    const z = pkg({ 'ok.md': enc('x') });
+    const li = findSig(z, 0x04034b50).find((i) => name(z, i, 30, 26) === 'ok.md')!;
+    z.set(enc('../xx'), li + 30);
+    const u = unpack(z);
+    assert.deepEqual([...u.files.keys()], ['ok.md']);
+  });
+  test('symlink-flagged directory entry rejected', () => {
+    rejectsWith(() => unpack(pkg({ 'd/': [new Uint8Array(0), { attrs: (0o120777 << 16) >>> 0 }] })), 'symlink');
+  });
+  test('invalid manifest surfaces as UnpackError bad-manifest with the ManifestError as cause', () => {
+    const z = zipSync({ [MANIFEST_NAME]: enc(JSON.stringify({ schema: 'nope' })) });
+    assert.throws(() => unpack(z), (e: any) => e instanceof UnpackError && e.code === 'bad-manifest' && e.cause instanceof ManifestError);
+    assert.throws(() => unpack(zipSync({ [MANIFEST_NAME]: enc('{not json') })), (e: any) => e instanceof UnpackError && e.code === 'bad-manifest');
+  });
+});
+
+describe('ArtifactStore.has and putArtifact', () => {
+  test('putArtifact consults has() and skips put for an existing blob', async () => {
+    const calls: string[] = [];
+    const inner = memoryArtifactStore();
+    const store = { ...inner, async has(s: string) { calls.push('has'); return inner.has(s); }, async put(s: string, b: Uint8Array) { calls.push('put'); return inner.put(s, b); } };
+    await putArtifact(store, enc('same')); await putArtifact(store, enc('same'));
+    assert.deepEqual(calls, ['has', 'put', 'has']);
+  });
+});
+
+describe('openArtifact connection hygiene', () => {
+  test('a failing ROLLBACK destroys the pooled connection (release(err))', async () => {
+    let released: unknown = 'not-called';
+    const client = {
+      async query(t: string) { if (t === 'ROLLBACK') throw new Error('rollback boom'); return { rows: [] }; },
+      release(err?: unknown) { released = err; },
+    };
+    const pool: any = { totalCount: 1, async connect() { return client; }, query: client.query };
+    assert.equal(await openArtifact(pool, memoryArtifactStore(), { userId: 'u' }, 'v'), undefined);
+    assert.ok(released instanceof Error);
+  });
+});
+
+describe('S3 byte methods', () => {
+  test('putBytes/getBytes/head against a local server; getBytes enforces maxBytes', async () => {
+    const blobs = new Map<string, Buffer>();
+    const srv = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        const k = req.url!;
+        if (req.method === 'PUT') { blobs.set(k, Buffer.concat(chunks)); res.writeHead(200).end(); }
+        else if (req.method === 'HEAD') { const b = blobs.get(k); res.writeHead(b ? 200 : 404, b ? { 'content-length': String(b.length) } : {}).end(); }
+        else { const b = blobs.get(k); b ? res.writeHead(200, { 'content-length': String(b.length) }).end(b) : res.writeHead(404).end(); }
+      });
+    });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    try {
+      const s3 = new S3({ endpoint: `http://127.0.0.1:${(srv.address() as any).port}`, accessKey: 'a', secretKey: 'b' });
+      await s3.putBytes('bkt', 'k/1', enc('hello'));
+      assert.deepEqual(await s3.getBytes('bkt', 'k/1', 100), enc('hello'));
+      assert.equal(await s3.getBytes('bkt', 'nope', 100), undefined);
+      await assert.rejects(s3.getBytes('bkt', 'k/1', 3), /exceeds/);
+    } finally { srv.close(); }
+  });
 });
 
 describe('putArtifact', () => {
