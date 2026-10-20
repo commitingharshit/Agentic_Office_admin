@@ -229,4 +229,35 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
     await assert.rejects(asUser('u3', () => app.query(`UPDATE marketplace_reviews SET listing_id = 'pa/secret' WHERE id = 'rv1'`)), /permission denied/);
     await asUser('u3', async () => { const r = await app.query(`UPDATE marketplace_reviews SET stars = 5 WHERE id = 'rv1'`); assert.equal(r.rowCount, 1); });
   });
+
+  test('install_version_must_belong_to_the_install_listing_and_be_visible', async () => {
+    // v_secret (draft, private listing of u1) and a version of a different public listing
+    await assert.rejects(asUser('u3', () => app.query(
+      `INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, scope) VALUES ('iv1','u3','d3','pa/open','v_secret','installed','user')`)), /row-level security/);
+    await owner.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pa/other','skill','pa','u1','public','o') ON CONFLICT DO NOTHING`);
+    await owner.query(`INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size)
+                       VALUES ('v_other','pa/other','1.0.0',1,0,0,'published','{}','${SHA('a')}',1) ON CONFLICT DO NOTHING`);
+    await assert.rejects(asUser('u3', () => app.query(
+      `INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, scope) VALUES ('iv2','u3','d3','pa/open','v_other','installed','user')`)), /row-level security/);
+    // legit insert (version of the same listing, visible) and update still work; so does a NULL version
+    await asUserCommit('u3', () => app.query(
+      `INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, scope) VALUES ('iv3','u3','d3','pa/other','v_other','installed','user')`));
+    await asUser('u3', async () => { const r = await app.query(`UPDATE marketplace_installs SET state = 'enabled', enabled = true WHERE id = 'iv3'`); assert.equal(r.rowCount, 1); });
+    await assert.rejects(asUser('u3', () => app.query(`UPDATE marketplace_installs SET version_id = 'v_secret' WHERE id = 'iv3'`)), /not an available version/);
+    await assert.rejects(asUser('u3', () => app.query(`UPDATE marketplace_installs SET version_id = 'v_open' WHERE id = 'iv3'`)), /not an available version/);   // other listing's version
+    // an already-installed row whose version is later revoked can still be updated (state moves)
+    await admin.query(`UPDATE marketplace_versions SET state = 'revoked' WHERE id = 'v_other'`);
+    await asUser('u3', async () => { const r = await app.query(`UPDATE marketplace_installs SET state = 'disabled' WHERE id = 'iv3'`); assert.equal(r.rowCount, 1); });
+  });
+
+  test('installed_status_never_returns_a_version_of_another_listing', async () => {
+    // a poisoned row (written by the owner role, bypassing RLS) must not leak v_secret through the definer function
+    await owner.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, scope) VALUES ('ipoison','u3','d3','pa/open','v_secret','installed','device') ON CONFLICT DO NOTHING`).catch(() => {});
+    await owner.query(`DELETE FROM marketplace_installs WHERE id = 'ipoison'`).catch(() => {});
+    await owner.query(`INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, scope) VALUES ('ipoison2','u3','d3','pa/secret','v_other','installed','team')`).catch(() => {});
+    const st = await asUser('u3', () => app.query('SELECT * FROM marketplace_installed_status()'));
+    assert.ok(st.rows.every((r) => r.version_id !== 'v_secret'));
+    assert.ok(!st.rows.some((r) => r.listing_id === 'pa/secret'), 'mismatched listing/version row is not returned');
+    assert.ok(st.rows.some((r) => r.version_id === 'v_other' && r.state === 'revoked'), 'legit revoked install still reported');
+  });
 });

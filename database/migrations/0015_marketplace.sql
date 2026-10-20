@@ -185,6 +185,20 @@ CREATE INDEX ix_mkt_installs_listing ON marketplace_installs (listing_id, state)
 CREATE INDEX ix_mkt_installs_device ON marketplace_installs (device_id);
 CREATE INDEX ix_mkt_installs_version ON marketplace_installs (version_id);
 
+-- Moving an install onto another version requires that version to belong to the same listing and be
+-- visible to the caller (SECURITY INVOKER, so the caller's RLS applies to the lookup).
+CREATE FUNCTION marketplace_installs_version_check() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.version_id IS NOT NULL AND NEW.version_id IS DISTINCT FROM OLD.version_id AND NOT EXISTS (
+       SELECT 1 FROM marketplace_versions v WHERE v.id = NEW.version_id AND v.listing_id = NEW.listing_id) THEN
+    RAISE EXCEPTION 'marketplace_installs: version % is not an available version of %', NEW.version_id, NEW.listing_id
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER trg_mkt_installs_version BEFORE UPDATE OF version_id ON marketplace_installs
+  FOR EACH ROW EXECUTE FUNCTION marketplace_installs_version_check();
+
 -- Append-only audit trail. Deliberately no foreign keys: a cascade from users/listings would fire the
 -- append-only trigger and block erasure, and history must not be rewritten. user_id is therefore
 -- unvalidated text by design.
@@ -324,7 +338,7 @@ CREATE FUNCTION marketplace_installed_status()
          (SELECT e.detail ->> 'reason' FROM marketplace_release_events e
            WHERE e.version_id = v.id AND e.event IN ('revoked','quarantined')
            ORDER BY e.at DESC, e.id DESC LIMIT 1)
-  FROM marketplace_installs i JOIN marketplace_versions v ON v.id = i.version_id
+  FROM marketplace_installs i JOIN marketplace_versions v ON v.id = i.version_id AND v.listing_id = i.listing_id
   WHERE i.user_id = current_setting('app.user_id', true)
 $$;
 
@@ -332,7 +346,7 @@ $$;
 -- call marketplace_bump() could forge counters. Trigger functions need no EXECUTE grant to fire.
 REVOKE EXECUTE ON FUNCTION marketplace_bump(text, int, int), marketplace_count_favorites(),
   marketplace_count_installs(), marketplace_installed_status(), marketplace_versions_guard(),
-  marketplace_listings_search_update(), marketplace_append_only() FROM PUBLIC;
+  marketplace_listings_search_update(), marketplace_append_only(), marketplace_installs_version_check() FROM PUBLIC;
 
 -- ---------------------------------------------------------------------------------------------
 -- Roles, grants and row-level security. Guarded so the file loads where the roles do not exist.
@@ -442,10 +456,13 @@ BEGIN
   CREATE POLICY own_insert ON marketplace_installs FOR INSERT WITH CHECK (
     user_id = current_setting('app.user_id', true)
     AND device_id IN (SELECT id FROM devices WHERE user_id = current_setting('app.user_id', true))
-    AND listing_id IN (SELECT id FROM marketplace_listings));
+    AND listing_id IN (SELECT id FROM marketplace_listings)
+    AND (version_id IS NULL OR version_id IN (SELECT v.id FROM marketplace_versions v WHERE v.listing_id = marketplace_installs.listing_id)));
   CREATE POLICY own_update ON marketplace_installs FOR UPDATE USING (user_id = current_setting('app.user_id', true))
     WITH CHECK (user_id = current_setting('app.user_id', true)
                 AND device_id IN (SELECT id FROM devices WHERE user_id = current_setting('app.user_id', true)));
+  -- (version_id on UPDATE is checked by trg_mkt_installs_version, so an install whose version was later
+  -- revoked can still change state; it just cannot be moved onto a version the caller cannot see.)
   CREATE POLICY own_delete ON marketplace_installs FOR DELETE USING (user_id = current_setting('app.user_id', true));
 
   -- Artifact rows are written by the server (ao_admin) during publish; readers see only referenced ones.
