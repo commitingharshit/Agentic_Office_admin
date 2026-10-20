@@ -2,67 +2,21 @@
 // throwaway cluster in its own temp dir). It bootstraps stub users/devices/admin_audit tables instead
 // of the full migration chain, so pgvector is not needed. Skipped if the embedded binary is unusable.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
-import pg from 'pg';
+import type pg from 'pg';
+import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const migration = readFileSync(join(here, '..', 'db', 'migrations', '0015_marketplace.sql'), 'utf8');
 const SHA = (c: string) => c.repeat(64);
 
-let EmbeddedPostgres: any;
-let skip: string | false = false;
-try { EmbeddedPostgres = (await import('embedded-postgres')).default; } catch (e: any) { skip = `embedded-postgres unavailable: ${e.message}`; }
-
-const freePort = () => new Promise<number>((res, rej) => {
-  const s = createServer(); s.listen(0, '127.0.0.1', () => { const p = (s.address() as any).port; s.close(() => res(p)); }); s.on('error', rej);
-});
-
 describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
-  let dir: string, server: any, port: number;
-  const clients: pg.Client[] = [];
+  let h: MarketplacePg;
   let owner: pg.Client, app: pg.Client, admin: pg.Client;
-  const connect = async (user: string, database = 'mkt') => {
-    const c = new pg.Client({ host: '127.0.0.1', port, user, password: 'pw', database }); await c.connect(); clients.push(c); return c;
-  };
-  async function asUser<T>(userId: string, fn: () => Promise<T>): Promise<T> {
-    await app.query('BEGIN');
-    await app.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
-    try { return await fn(); } finally { await app.query('ROLLBACK'); }
-  }
-  // Run in a transaction and commit (for state a later step reads back).
-  async function asUserCommit(userId: string, fn: () => Promise<unknown>) {
-    await app.query('BEGIN');
-    try { await app.query(`SELECT set_config('app.user_id', $1, true)`, [userId]); await fn(); await app.query('COMMIT'); }
-    catch (e) { await app.query('ROLLBACK'); throw e; }
-  }
+  const asUser = <T>(u: string, fn: () => Promise<T>) => h.asUser(u, fn);
+  const asUserCommit = (u: string, fn: () => Promise<unknown>) => h.asUserCommit(u, fn);
 
   before(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'ao-mkt-pg-'));
-    port = await freePort();
-    server = new EmbeddedPostgres({ databaseDir: join(dir, 'data'), user: 'postgres', password: 'pw', port, persistent: false, onLog: () => {}, onError: () => {} });
-    await server.initialise();
-    await server.start();
-    const su = await connect('postgres', 'postgres');
-    await su.query(`CREATE ROLE ao_owner LOGIN PASSWORD 'pw'`);
-    await su.query(`CREATE ROLE ao_app LOGIN PASSWORD 'pw'`);
-    await su.query(`CREATE ROLE ao_readonly LOGIN BYPASSRLS PASSWORD 'pw'`);
-    await su.query(`CREATE ROLE ao_admin LOGIN BYPASSRLS PASSWORD 'pw'`);
-    await su.query(`CREATE DATABASE mkt OWNER ao_owner`);
-    owner = await connect('ao_owner');
-    await owner.query(`
-      CREATE TABLE users (id text PRIMARY KEY, email text);
-      CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);
-      ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
-      CREATE POLICY own_rows ON devices USING (user_id = current_setting('app.user_id', true));
-      GRANT SELECT ON devices TO ao_app;
-      CREATE TABLE admin_audit (id bigserial PRIMARY KEY);`);
-    await owner.query(migration);
-    app = await connect('ao_app'); admin = await connect('ao_admin');
+    h = await startMarketplacePg();
+    ({ owner, app, admin } = h);
     await owner.query(`
       INSERT INTO users(id) VALUES ('u1'),('u2'),('u3');
       INSERT INTO devices(id, user_id) VALUES ('d2','u2'),('d3','u3');
@@ -80,11 +34,7 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
       INSERT INTO marketplace_submissions(id, version_id, submitted_by) VALUES ('sub1','v_open','u1');
       INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason) VALUES ('rep1','pa/open','u1','spam');`);
   });
-  after(async () => {
-    await Promise.all(clients.map((c) => c.end().catch(() => {})));
-    if (server) await server.stop().catch(() => {});
-    if (dir) rmSync(dir, { recursive: true, force: true });
-  });
+  after(async () => { if (h) await h.stop(); });
 
   test('owner_cannot_set_trust_official', async () => {
     await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_listings SET trust = 'official' WHERE id = 'pa/open'`)), /permission denied/);

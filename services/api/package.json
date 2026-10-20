@@ -8,6 +8,7 @@
     "test:postgres": "bash test/run-with-postgres.sh"
   },
   "dependencies": {
+    "fflate": "0.8.3",
     "pg": "^8.13.1"
   },
   "devDependencies": {

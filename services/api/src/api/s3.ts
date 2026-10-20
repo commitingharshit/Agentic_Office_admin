@@ -67,6 +67,17 @@ export class S3 {
     if (!r.ok) throw new Error(`S3 PUT ${bucket}/${key}: ${r.status}`);
   }
 
+  async putBytes(bucket: string, key: string, data: Uint8Array): Promise<void> {
+    await this.put(bucket, key, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+  }
+
+  async getBytes(bucket: string, key: string): Promise<Uint8Array | undefined> {
+    const r = await this.request('GET', bucket, key);
+    if (r.status === 404) return undefined;
+    if (!r.ok) throw new Error(`S3 GET ${bucket}/${key}: ${r.status}`);
+    return new Uint8Array(await r.arrayBuffer());
+  }
+
   async delete(bucket: string, key: string): Promise<void> {
     const r = await this.request('DELETE', bucket, key);
     if (!r.ok && r.status !== 404) throw new Error(`S3 DELETE ${bucket}/${key}: ${r.status}`);
