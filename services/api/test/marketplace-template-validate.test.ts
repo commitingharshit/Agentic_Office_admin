@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { unzipSync, zipSync, strToU8, type Zippable } from 'fflate';
-import { validateArtifact } from '../src/marketplace/validate/index.ts';
+import { registerValidator, validateArtifact } from '../src/marketplace/validate/index.ts';
 import { createTemplateValidator } from '../src/marketplace/validate/template.ts';
 import { officecliRenderer } from '../src/marketplace/validate/officecli.ts';
 import { sha256Hex } from '../src/marketplace/artifacts.ts';
@@ -52,10 +54,13 @@ describe('template validator: real fixtures', () => {
     assert.deepEqual({ ok: c.ok, skipped: c.skipped, detail: c.detail }, { ok: true, skipped: true, detail: 'skipped: no renderer configured' });
     assert.equal(r.verified, true);
   });
-  test('a required skipped check makes the report unverified', async () => {
-    const v = createTemplateValidator();
-    const checks = await v(pkgOf('pptx', PPTX));
-    assert.ok(checks.every(c => !(c.skipped && c.required)));
+  test('a required skipped check makes the report unverified (through validateArtifact)', async () => {
+    registerValidator('template', () => [{ name: 'x-req', ok: true, skipped: true, required: true, detail: 'skipped: nope' }]);
+    try {
+      const r = await run(pkgOf('pptx', PPTX));
+      assert.equal(r.ok, true);
+      assert.equal(r.verified, false);
+    } finally { registerValidator('template', createTemplateValidator()); }
   });
   test('injected renderer failure fails officecli-open; success is not skipped', async () => {
     const bad = createTemplateValidator({ officecli: async () => ({ ok: false, detail: 'boom' }) });
@@ -209,7 +214,115 @@ describe('template validator: previews and payload', () => {
   });
 });
 
-const BIN = process.env.OFFICECLI_BIN ?? '/Users/harshitverma/.local/bin/officecli';
+describe('no-active-content: parser-based hardening (review round 1)', () => {
+  const R = (inner: string) => `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${inner}</Relationships>`;
+  const T = (t: string) => `http://schemas.openxmlformats.org/officeDocument/2006/relationships/${t}`;
+  const rel = (type: string, target: string, mode = ' TargetMode="External"', id = 'rIdX') => `<Relationship Id="${id}" Type="${T(type)}" Target="${target}"${mode}/>`;
+  const withRels = (path: string, xml: string | Uint8Array, fmt: 'docx' | 'pptx' = 'docx') =>
+    pkgOf(fmt, mutate(fmt === 'docx' ? DOCX : PPTX, z => { z[path] = typeof xml === 'string' ? strToU8(xml) : xml; }));
+  const active = async (p: UnpackedPackage) => get(await run(p), 'no-active-content')!;
+  const utf16 = (s: string) => { const b = new Uint8Array(2 + s.length * 2); b[0] = 0xff; b[1] = 0xfe; for (let i = 0; i < s.length; i++) { b[2 + 2 * i] = s.charCodeAt(i) & 255; b[3 + 2 * i] = s.charCodeAt(i) >> 8; } return b; };
+
+  test('1: ">" inside an attribute value does not truncate the tag', async () => {
+    assert.equal((await active(withRels('word/_rels/x.rels', R(`<Relationship Id="a" Type="${T('hyperlink')}" Target="file:///c:/x>" TargetMode="External"/>`)))).ok, false);
+    const p = pkgOf('docx', mutate(DOCX, z => {
+      const ct = new TextDecoder().decode(z['[Content_Types].xml']);
+      z['[Content_Types].xml'] = strToU8(ct.replace('</Types>', '<Override PartName="/a>" ContentType="application/vnd.ms-office.vbaProject"/></Types>'));
+    }));
+    assert.equal((await active(p)).ok, false);
+  });
+  test('2: attribute injection cannot hide TargetMode', async () => {
+    const x = R(`<Relationship Id=' TargetMode="Internal"' Type="${T('hyperlink')}" Target="file:///x" TargetMode="External"/>`);
+    assert.equal((await active(withRels('word/_rels/x.rels', x))).ok, false);
+  });
+  test('3: UTF-16LE rels with a file: external target are caught', async () => {
+    const c = await active(withRels('word/_rels/x.rels', utf16(R(rel('hyperlink', 'file:///etc/passwd')))));
+    assert.equal(c.ok, false);
+  });
+  test('3b: undecodable rels fails closed', async () => {
+    const r = await run(withRels('word/_rels/x.rels', new Uint8Array([0xff, 0xff, 0xfe, 0x80])));
+    assert.equal(get(r, 'ooxml-zip')!.ok, false);
+  });
+  test('3c: UTF-16 [Content_Types].xml with macro type is caught', async () => {
+    const p = pkgOf('docx', mutate(DOCX, z => {
+      z['[Content_Types].xml'] = utf16('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.ms-word.document.macroEnabled.main+xml"/></Types>');
+    }));
+    assert.equal((await active(p)).ok, false);
+  });
+  test('nested rels (ppt/_rels/slide1.xml.rels style) are scanned', async () => {
+    assert.equal((await active(withRels('ppt/slides/_rels/slide1.xml.rels', R(rel('image', 'file:///x.png')), 'pptx'))).ok, false);
+  });
+  test('4: https attachedTemplate rejected, https hyperlink accepted', async () => {
+    assert.equal((await active(withRels('word/_rels/x.rels', R(rel('attachedTemplate', 'https://example.com/t.dotm'))))).ok, false);
+    assert.equal((await active(withRels('word/_rels/x.rels', R(rel('image', 'https://example.com/i.png'))))).ok, false);
+    assert.equal((await active(withRels('word/_rels/x.rels', R(rel('hyperlink', 'https://example.com/'))))).ok, true);
+  });
+  test('4: uppercase scheme, //host, UNC and single quotes, even without TargetMode', async () => {
+    for (const t of ['HTTP://x.example/a', 'http://x.example/a', 'FILE:///etc/passwd', '//host/share', '\\\\host\\share'])
+      assert.equal((await active(withRels('word/_rels/x.rels', R(rel('hyperlink', t, ''))))).ok, false, t);
+    assert.equal((await active(withRels('word/_rels/x.rels', R(`<Relationship Id='a' Type='${T('hyperlink')}' Target='HTTP://e.example/' TargetMode='External'/>`)))).ok, false);
+  });
+  test('4: oleObject / package / vbaProject relationships with internal targets are rejected', async () => {
+    for (const t of ['oleObject', 'package', 'vbaProject'])
+      assert.equal((await active(withRels('word/_rels/x.rels', R(rel(t, 'embeddings/a.dat', ''))))).ok, false, t);
+  });
+  test('5: macrosheet content type, macrosheet/dialogsheet parts, embedded packages, case-insensitive types', async () => {
+    const ctWith = (c: string) => pkgOf('docx', mutate(DOCX, z => {
+      const ct = new TextDecoder().decode(z['[Content_Types].xml']);
+      z['[Content_Types].xml'] = strToU8(ct.replace('</Types>', `<Override PartName="/word/document.xml" ContentType="${c}"/></Types>`));
+    }));
+    assert.equal((await active(ctWith('application/vnd.ms-excel.macrosheet+xml'))).ok, false);
+    assert.equal((await active(ctWith('application/vnd.ms-word.document.MACROENABLED.main+xml'))).ok, false);
+    for (const part of ['xl/macrosheets/sheet1.xml', 'xl/dialogsheets/sheet1.xml', 'word/embeddings/evil.docm', 'ppt/embeddings/a.xlsm', 'word/embeddings/x.docx', 'word/embeddings/x.ole', 'word/ActiveX/a.xml'])
+      assert.equal((await active(pkgOf('docx', mutate(DOCX, z => { z[part] = strToU8('<a/>'); })))).ok, false, part);
+  });
+  test('minor: Override existence is case-insensitive and percent-decoded; case-colliding part names rejected', async () => {
+    const p = pkgOf('docx', mutate(DOCX, z => {
+      const ct = new TextDecoder().decode(z['[Content_Types].xml']);
+      z['[Content_Types].xml'] = strToU8(ct.replace('</Types>', '<Override PartName="/WORD/Document.xml" ContentType="application/xml"/><Override PartName="/word/doc%75ment.xml" ContentType="application/xml"/></Types>'));
+    }));
+    assert.equal(get(await run(p), 'ooxml-zip')!.ok, true);
+    const q2 = pkgOf('docx', mutate(DOCX, z => { z['word/Document.xml'] = strToU8('<a/>'); }));
+    assert.equal(get(await run(q2), 'ooxml-zip')!.ok, false);
+  });
+});
+
+describe('chart-embedded workbooks', () => {
+  test('a macro inside a chart workbook is rejected; the untouched workbook passes', async () => {
+    const p = pkgOf('pptx', mutate(PPTX, z => {
+      const k = Object.keys(z).find(n => /embeddings\/.*\.xlsx$/.test(n))!;
+      z[k] = zipSync({ ...unzipSync(z[k]), 'xl/vbaProject.bin': new Uint8Array([1]) } as Zippable);
+    }));
+    const c = get(await run(p), 'no-active-content')!;
+    assert.equal(c.ok, false); assert.match(c.detail!, /vbaProject/);
+  });
+});
+
+describe('officecli renderer hardening', () => {
+  const fake = (body: string) => {
+    const d = mkdtempSync(join(tmpdir(), 'fakecli-')); const f = join(d, 'fake.sh');
+    writeFileSync(f, `#!/bin/sh\n${body}\n`); chmodSync(f, 0o755); return f;
+  };
+  test('timeout returns promptly even when a grandchild holds stderr open', async () => {
+    const bin = fake('sleep 30 &\nsleep 30');
+    const t0 = Date.now();
+    const r = await officecliRenderer({ bin, timeoutMs: 500 })(PPTX, 'pptx');
+    assert.equal(r.ok, false);
+    assert.match(r.detail!, /timed out/);
+    assert.ok(Date.now() - t0 < 2500, `took ${Date.now() - t0} ms`);
+  });
+  test('child does not inherit server secrets', async () => {
+    process.env.MKT_TEST_SECRET = 's3cret';
+    try {
+      const bin = fake('if [ -n "$MKT_TEST_SECRET" ]; then echo leaked >&2; exit 3; fi\nexit 4');
+      const r = await officecliRenderer({ bin, timeoutMs: 5000 })(PPTX, 'pptx');
+      assert.doesNotMatch(r.detail!, /leaked/);
+      assert.match(r.detail!, /exited 4/);
+    } finally { delete process.env.MKT_TEST_SECRET; }
+  });
+});
+
+const BIN =  process.env.OFFICECLI_BIN ?? '/Users/harshitverma/.local/bin/officecli';
 describe('officecli integration', { skip: !existsSync(BIN) && 'officecli binary not installed' }, () => {
   test('renders templates/pptx/board-update.pptx', async () => {
     const r = await officecliRenderer({ bin: BIN })(PPTX, 'pptx');

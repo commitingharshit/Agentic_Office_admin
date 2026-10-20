@@ -23,6 +23,7 @@ const q = (s: string) => JSON.stringify(s.length > 200 ? s.slice(0, 200) + '...'
 // ------------------------------------------------------------------ XML well-formedness
 
 class XmlError extends Error {}
+const ENT: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 const NAME_START = /[A-Za-z_:À-￿]/, NAME_CHAR = /[A-Za-z0-9_:.\-·À-￿]/;
 
 function decodeXml(b: Uint8Array): string {
@@ -37,7 +38,7 @@ function decodeXml(b: Uint8Array): string {
  * references. It does NO entity or DTD processing at all: any DOCTYPE is rejected (OOXML parts never carry one), so
  * no entity can ever be expanded. Throws XmlError with a short reason.
  */
-export function assertWellFormedXml(bytes: Uint8Array): void {
+export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<string, string>) => void): void {
   let s: string;
   try { s = decodeXml(bytes); } catch (e) { throw e instanceof XmlError ? e : new XmlError('not valid UTF-8/UTF-16 text'); }
   const n = s.length;
@@ -97,15 +98,14 @@ export function assertWellFormedXml(bytes: Uint8Array): void {
     } else {
       i++;
       const name = readName();
-      const seen = new Set<string>();
+      const attrs = new Map<string, string>();
       for (;;) {
         const before = i;
         skipWs();
         if (s[i] === '>' || s.startsWith('/>', i)) break;
         if (i === before) throw new XmlError(`malformed start tag <${name}`);
         const an = readName();
-        if (seen.has(an)) throw new XmlError(`duplicate attribute ${an} on <${name}>`);
-        seen.add(an);
+        if (attrs.has(an)) throw new XmlError(`duplicate attribute ${an} on <${name}>`);
         skipWs();
         if (s[i++] !== '=') throw new XmlError(`attribute ${an} has no value`);
         skipWs();
@@ -116,9 +116,11 @@ export function assertWellFormedXml(bytes: Uint8Array): void {
         const v = s.slice(i, e);
         if (v.includes('<')) throw new XmlError(`"<" in attribute ${an}`);
         checkText(v);
+        attrs.set(an, v.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, (_, r: string) => ENT[r] ?? (r[1] === 'x' ? String.fromCodePoint(parseInt(r.slice(2), 16)) : String.fromCodePoint(parseInt(r.slice(1), 10)))));
         i = e + 1;
       }
       if (stack.length === 0) { if (roots++ > 0) throw new XmlError('more than one root element'); }
+      onTag?.(name, attrs);
       if (s[i] === '/') { i += 2; } else { i++; stack.push(name); }
     }
   }
@@ -126,8 +128,17 @@ export function assertWellFormedXml(bytes: Uint8Array): void {
   if (!roots) throw new XmlError('no root element');
 }
 
+export const assertWellFormedXml = (bytes: Uint8Array): void => parseXml(bytes);
+
+/** Parses a part through the one tokenizer (UTF-8/UTF-16 aware), collecting start/empty tags. Returns a problem string on failure. */
+function readTags(bytes: Uint8Array): { tags: { name: string; attrs: Map<string, string> }[] } | { problem: string } {
+  const tags: { name: string; attrs: Map<string, string> }[] = [];
+  try { parseXml(bytes, (name, attrs) => tags.push({ name: name.replace(/^.*:/, ''), attrs })); return { tags }; }
+  catch (e) { return { problem: e instanceof XmlError ? e.message : String(e) }; }
+}
 const xmlProblem = (bytes: Uint8Array): string | undefined => {
-  try { assertWellFormedXml(bytes); return undefined; } catch (e) { return e instanceof XmlError ? e.message : String(e); }
+  const r = readTags(bytes);
+  return 'problem' in r ? r.problem : undefined;
 };
 
 // ------------------------------------------------------------------ checks
@@ -145,9 +156,82 @@ function payloadShape(p: Record<string, unknown>): { check: ValidationCheck; for
   return { check: ok('payload-shape'), format: p.format as Format, file: p.file as string, previews: pv as string[] };
 }
 
-const attr = (tag: string, name: string): string | undefined => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag)?.slice(1).find((x) => x !== undefined);
-const tags = (xml: string, el: string): string[] => [...xml.matchAll(new RegExp(`<(?:[A-Za-z0-9_.-]+:)?${el}\\b[^>]*>`, 'g'))].map((m) => m[0]);
-const dec = (b: Uint8Array) => new TextDecoder('utf-8').decode(b);
+const ACTIVE_CT = /macroenabled|vbaproject|activex|macrosheet|dialogsheet|\.macro\b|ms-office\.vba/i;
+const ACTIVE_REL_TYPE = /\/(oleObject|oleLink|package|vbaProject|activeXControl|activeXControlBinary|macroSheet|dialogSheet)$/i;
+const EXTERNAL_OK_TYPE = /\/hyperlink$/i;
+
+const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+const attrCI = (attrs: Map<string, string>, name: string): string | undefined => {
+  for (const [k, v] of attrs) if (k.toLowerCase() === name.toLowerCase()) return v;
+  return undefined;
+};
+
+/** Chart parts reach their data workbook through a `package` relationship; returns those targets (resolved part names). */
+function chartPackageTargets(parts: Map<string, Uint8Array>): Set<string> {
+  const out = new Set<string>();
+  for (const [name, b] of parts) {
+    if (!/(^|\/)charts\/_rels\/[^/]+\.rels$/i.test(name)) continue;
+    const r = readTags(b);
+    if ('problem' in r) continue;
+    const base = name.replace(/_rels\/[^/]+$/, '');
+    for (const t of r.tags) {
+      if (t.name !== 'Relationship' || !/\/package$/i.test(attrCI(t.attrs, 'Type') ?? '')) continue;
+      if ((attrCI(t.attrs, 'TargetMode') ?? '').toLowerCase() === 'external') continue;
+      const tgt = attrCI(t.attrs, 'Target') ?? '';
+      const segs = (tgt.startsWith('/') ? tgt.slice(1) : base + tgt).split('/'), res: string[] = [];
+      for (const sg of segs) { if (sg === '..') res.pop(); else if (sg !== '.' && sg !== '') res.push(sg); }
+      out.add(res.join('/'));
+    }
+  }
+  return out;
+}
+
+/** Everything that makes a package carry executable / remote content. Parsed with the real tokenizer only; undecodable => fail closed. */
+function scanActive(parts: Map<string, Uint8Array>, depth: number): string[] {
+  const act: string[] = [];
+  const chartPackages = depth === 0 ? chartPackageTargets(parts) : new Set<string>();
+  const ct = parts.get('[Content_Types].xml');
+  if (ct) {
+    const r = readTags(ct);
+    if ('problem' in r) act.push(`[Content_Types].xml cannot be inspected: ${r.problem}`);
+    else for (const t of r.tags) {
+      if (t.name !== 'Override' && t.name !== 'Default') continue;
+      const c = attrCI(t.attrs, 'ContentType') ?? '';
+      if (ACTIVE_CT.test(c)) act.push(`macro/ActiveX content type ${q(c)}`);
+    }
+  }
+  for (const name of parts.keys()) {
+    const n = name.toLowerCase();
+    if (/(^|\/)vbaproject(signature)?\.bin$/.test(n) || /(^|\/)vbadata\.xml$/.test(n)) act.push(`macro part ${name}`);
+    else if (/(^|\/)(macrosheets|dialogsheets)\//.test(n)) act.push(`Excel 4.0 macro/dialog sheet ${name}`);
+    else if (/(^|\/)embeddings\/[^/]*\.(docx|xlsx|pptx)$/.test(n) && chartPackages.has(name)) {
+      // A chart's data workbook (reached only via a chart part's `package` relationship) is legitimate; it is scanned
+      // recursively (one level) and must itself be free of active content.
+      let inner: Map<string, Uint8Array> | undefined;
+      try { inner = readZipFiles(parts.get(name)!, { maxTotal: MAX_TEMPLATE_UNCOMPRESSED }); } catch { act.push(`embedded package ${name} is not a readable zip`); }
+      if (inner) for (const a of scanActive(inner, 1)) act.push(`${name}: ${a}`);
+    }
+    else if (/(^|\/)embeddings\/[^/]*\.(bin|ole|docm|xlsm|pptm|docx|xlsx|pptx|dotm|xltm|potm)$/.test(n) || /(^|\/)oleobject[^/]*\.bin$/.test(n)) act.push(`embedded OLE/package ${name}`);
+    else if (/(^|\/)activex\//.test(n)) act.push(`ActiveX part ${name}`);
+  }
+  for (const [name, b] of parts) {
+    if (!name.toLowerCase().endsWith('.rels')) continue;
+    const r = readTags(b);
+    if ('problem' in r) { act.push(`${name} cannot be inspected: ${r.problem}`); continue; }
+    for (const t of r.tags) {
+      if (t.name !== 'Relationship') continue;
+      const target = (attrCI(t.attrs, 'Target') ?? '').trim();
+      const type = attrCI(t.attrs, 'Type') ?? '';
+      const external = (attrCI(t.attrs, 'TargetMode') ?? '').toLowerCase() === 'external';
+      const where = `${name} (${q(type.replace(/^.*\//, ''))} -> ${q(target)})`;
+      const chartPkg = !external && /\/package$/i.test(type) && /(^|\/)charts\/_rels\//i.test(name);
+      if (ACTIVE_REL_TYPE.test(type) && !chartPkg) act.push(`active-content relationship in ${where}`);
+      else if (external && !(EXTERNAL_OK_TYPE.test(type) && /^https:\/\//i.test(target))) act.push(`external relationship in ${where}: only https hyperlinks are allowed`);
+      else if (!external && (/^(https?|file|ftp):/i.test(target) || /^[\\/]{2}/.test(target) || target.startsWith('\\'))) act.push(`absolute/remote target in ${where}`);
+    }
+  }
+  return act;
+}
 
 function ooxmlChecks(format: string, bytes: Uint8Array): { zip: ValidationCheck; active: ValidationCheck } {
   let parts: Map<string, Uint8Array>;
@@ -157,46 +241,36 @@ function ooxmlChecks(format: string, bytes: Uint8Array): { zip: ValidationCheck;
     return { zip: fail('ooxml-zip', `not a valid zip archive: ${msg}`), active: skip('no-active-content', 'the file is not a readable zip') };
   }
   const problems: string[] = [];
-  const ct = parts.get('[Content_Types].xml');
-  if (!ct) problems.push('missing [Content_Types].xml');
+  const lower = new Map<string, string>(); // lowercased name -> real name
+  for (const name of parts.keys()) {
+    const k = name.toLowerCase();
+    if (lower.has(k)) problems.push(`part names differ only by case: ${q(lower.get(k)!)} and ${q(name)}`);
+    else lower.set(k, name);
+  }
+  const ctBytes = parts.get('[Content_Types].xml');
+  if (!ctBytes) problems.push('missing [Content_Types].xml');
   if (!parts.has('_rels/.rels')) problems.push('missing _rels/.rels');
   const main = MAIN_PART[format];
   if (!parts.has(main)) problems.push(`missing main part ${main}`);
-  const contentTypes = ct ? dec(ct) : '';
-  if (ct) {
-    const missing: string[] = [];
-    for (const t of tags(contentTypes, 'Override')) {
-      const pn = attr(t, 'PartName');
-      if (pn && !parts.has(pn.replace(/^\//, ''))) missing.push(pn);
-    }
-    if (missing.length) problems.push(`content types name parts that do not exist: ${list(missing)}`);
-  }
-  for (const name of ['[Content_Types].xml', '_rels/.rels', main]) {
-    const b = parts.get(name);
-    const p = b && xmlProblem(b);
+  for (const [name, b] of parts) {
+    if (name !== '[Content_Types].xml' && name !== main && !name.toLowerCase().endsWith('.rels')) continue;
+    const p = xmlProblem(b);
     if (p) problems.push(`${name} is not well-formed XML: ${p}`);
   }
-
-  const act: string[] = [];
-  for (const name of parts.keys()) {
-    if (/(^|\/)vbaProject(Signature)?\.bin$/i.test(name) || /(^|\/)vbaData\.xml$/i.test(name)) act.push(`macro part ${name}`);
-    else if (/(^|\/)embeddings\/[^/]+\.bin$/i.test(name) || /(^|\/)oleObject[^/]*\.bin$/i.test(name)) act.push(`embedded OLE binary ${name}`);
-    else if (/(^|\/)activeX\//i.test(name)) act.push(`ActiveX part ${name}`);
-  }
-  for (const t of tags(contentTypes, 'Override').concat(tags(contentTypes, 'Default'))) {
-    const c = attr(t, 'ContentType') ?? '';
-    if (/macroEnabled|vbaProject|activex/i.test(c)) act.push(`macro/ActiveX content type ${c}`);
-  }
-  for (const [name, b] of parts) {
-    if (!name.endsWith('.rels')) continue;
-    for (const t of tags(dec(b), 'Relationship')) {
-      if (attr(t, 'TargetMode')?.toLowerCase() !== 'external') continue;
-      const target = attr(t, 'Target') ?? '';
-      if (!/^https:\/\//i.test(target)) act.push(`external relationship in ${name} to ${q(target)} (only https:// is allowed)`);
+  if (ctBytes) {
+    const r = readTags(ctBytes);
+    if (!('problem' in r)) {
+      const missing: string[] = [];
+      for (const t of r.tags) {
+        const pn = t.name === 'Override' ? attrCI(t.attrs, 'PartName') : undefined;
+        if (pn && !lower.has(safeDecode(pn).replace(/^\//, '').toLowerCase()) && !lower.has(pn.replace(/^\//, '').toLowerCase())) missing.push(pn);
+      }
+      if (missing.length) problems.push(`content types name parts that do not exist: ${list(missing)}`);
     }
   }
+  const act = scanActive(parts, 0);
   return {
-    zip: problems.length ? fail('ooxml-zip', problems.join('; ')) : ok('ooxml-zip'),
+    zip: problems.length ? fail('ooxml-zip', list(problems)) : ok('ooxml-zip'),
     active: act.length ? fail('no-active-content', list(act)) : ok('no-active-content'),
   };
 }
