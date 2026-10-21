@@ -1,7 +1,10 @@
 // DEV ONLY. A real marketplace API on your machine, seeded with a few real packages, so the desktop Marketplace UI can be
 // run and looked at against real data instead of mocks. Never deploy this: it accepts a fixed bearer token.
 //
-//   node scripts/marketplace-dev-server.ts [--port 8791] [--http] [--bulk 30] [--hostile] [--state <file>]
+//   node scripts/marketplace-dev-server.ts [--port 8791] [--http] [--bulk 30] [--hostile] [--admin] [--state <file>]
+//   --admin also serves the /admin/marketplace/* API (marketplace-admin.ts) for the control-plane console, as ONE dev admin (role from
+//   AO_DEV_ADMIN_ROLE, default superadmin) behind the same dev bearer, plus stand-ins for /admin/me, /healthz and /admin/users/:id,
+//   and seeds a few installs and a report so the console pages have rows. DEV ONLY, like the rest of this file.
 //   OFFICECLI_TIMEOUT_MS=120000 raises the render-check budget (30 s) on a loaded machine.
 //
 // What it does
@@ -33,6 +36,8 @@ import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
 import { HttpError } from '../src/api/sync.ts';
 import { marketplaceHandler } from '../src/api/marketplace.ts';
+import { marketplaceAdminHandler } from '../src/api/marketplace-admin.ts';
+import { isAdminRole, permissionsOf, type AdminRole } from '../src/marketplace/permissions.ts';
 import { memoryArtifactStore, putArtifact, sha256Hex, unpack } from '../src/marketplace/artifacts.ts';
 import { officecliRenderer } from '../src/marketplace/validate/officecli.ts';
 import { registerValidator, validateArtifact } from '../src/marketplace/validate/index.ts';
@@ -56,6 +61,7 @@ const BULK = Number(opt('--bulk') ?? 0);
 const HTTP = args.includes('--http');
 const STATE = opt('--state');
 const HOSTILE = args.includes('--hostile');
+const ADMIN = args.includes('--admin');
 
 /** DEV ONLY: the one bearer this server accepts. */
 export const DEV_TOKEN = 'dev-token';
@@ -190,7 +196,42 @@ async function main() {
 
   const app = h.pool('ao_app');
   const handler = marketplaceHandler({ app, admin: h.pool('ao_admin'), authenticate, store });
-  const onReq = async (req: any, res: any) => { if (!(await handler(req, res))) { res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"Not found."}'); } };
+  // --admin: the console's admin API surface, dev only. One admin, the dev bearer; the role is AO_DEV_ADMIN_ROLE (default superadmin).
+  let adminHandlerFn: ((req: any, res: any) => Promise<boolean>) | undefined;
+  if (ADMIN) {
+    const devRole: AdminRole = isAdminRole(process.env.AO_DEV_ADMIN_ROLE) ? process.env.AO_DEV_ADMIN_ROLE : 'superadmin';
+    const authAdmin = async (req: any) => {
+      if (req.headers.authorization !== `Bearer ${DEV_TOKEN}`) throw new HttpError(401, 'Sign in again (the dev server accepts only the dev token).');
+      return 'usr_dev_admin';
+    };
+    const marketAdmin = marketplaceAdminHandler({ admin: h.pool('ao_admin'), authenticate: authAdmin, roleOf: () => devRole, store });
+    const ao = h.pool('ao_admin');
+    await h.owner.query(`INSERT INTO devices(id, user_id) VALUES ('dev-device-2','usr_r1') ON CONFLICT DO NOTHING`);
+    const ins = (id: string, user: string, device: string, listing: string, state: string, enabled: boolean, err: string | null) => ao.query(
+      `INSERT INTO marketplace_installs(id, user_id, device_id, listing_id, version_id, state, enabled, scan_verdict, last_error) VALUES ($1,$2,$3,$4,(SELECT id FROM marketplace_versions WHERE listing_id = $4 ORDER BY created_at LIMIT 1),$5,$6,'clean',$7)`, [id, user, device, listing, state, enabled, err]);
+    await ins('ins_dev_1', 'usr_dev', 'dev-device', 'agentic-office/board-memo', 'enabled', true, null);
+    await ins('ins_dev_2', 'usr_dev', 'dev-device', 'dev-community/docx-outline', 'failed', false, 'permission denied: exec.script');
+    await ins('ins_r1_1', 'usr_r1', 'dev-device-2', 'agentic-office/board-memo', 'installed', true, null);
+    await ao.query(`INSERT INTO marketplace_reports(id, listing_id, reporter_user_id, reason, details) VALUES ('rep_dev_1','dev-community/docx-outline','usr_r2','broken','Dev seed: crashes on a document with no headings.')`);
+    adminHandlerFn = async (req, res) => {
+      const path = new URL(req.url ?? '/', 'http://x').pathname;
+      if (path === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}'); return true; }
+      if (path === '/admin/me') {
+        if (req.headers.authorization !== `Bearer ${DEV_TOKEN}`) { res.writeHead(401, { 'content-type': 'application/json' }).end('{"error":"Sign in again."}'); return true; }
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ admin: 'usr_dev_admin', role: devRole, permissions: [...permissionsOf(devRole), ...(devRole === 'superadmin' ? ['overview.read', 'users.read'] : [])] }));
+        return true;
+      }
+      const m = /^\/admin\/users\/([A-Za-z0-9_.:-]+)$/.exec(path);
+      if (m) {   // minimal stand-in for the user page's header (the real one is admin.ts in the control-plane tree)
+        const u = (await h.owner.query('SELECT id, email FROM users WHERE id = $1', [m[1]])).rows[0];
+        if (!u) { res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"No such user."}'); return true; }
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ user: { ...u, status: 'active', role: 'user', created_at: new Date().toISOString(), devices: 0, workspaces: 0, sessions: 0, memories: 0, storage_bytes: 0 }, identities: [], devices: [] }));
+        return true;
+      }
+      return marketAdmin(req, res);
+    };
+  }
+  const onReq = async (req: any, res: any) => { if (adminHandlerFn && (await adminHandlerFn(req, res))) return; if (!(await handler(req, res))) { res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"Not found."}'); } };
   let certDir: string | undefined;
   let server;
   if (HTTP) server = createHttpServer(onReq);

@@ -129,7 +129,19 @@ Analytics are computed from rows only. Metrics this release does not collect (`i
 `workflow_completions`, `first_use_activation`) are listed in `notCollected`, and `telemetryCoverage`
 reports devices with install rows against devices known, so partial telemetry is visible as partial.
 
+### Admin console pages
+
+The Marketplace section of the Next.js control-plane console (Overview, Catalog, Publish New, Submissions, Review
+Queue, Installations, Usage Analytics, Ratings & Reviews, Publishers, Versions & Releases, Security Reports,
+Settings, a Marketplace tab on the user page; Collections & Bundles is an honest placeholder until Plan 2) is
+delivered as an **overlay patch**, not as files in this tree, because `services/control-plane` is not committed on
+this branch: apply [`docs/audits/marketplace-admin-pages.patch`](/../docs/audits/marketplace-admin-pages.patch)
+once the control-plane code is merged (command, env and what was verified are in
+[`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)). The pages call only the
+routes above; the console shows nav items by `marketplace.*` permission and the API enforces them again.
+
 # Citations
 
 - [`docs/superpowers/plans/2026-10-21-extension-marketplace.md`](/../docs/superpowers/plans/2026-10-21-extension-marketplace.md)
+- [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)
 - [`services/accounts-sync/README.md`](/../services/accounts-sync/README.md)
