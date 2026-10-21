@@ -88,7 +88,7 @@
     },
     {
       "id": "python-malformed-read-errors",
-      "reason": "zipfile raises while reading a damaged archive (bad offset for central directory, 'File is not a zip file', cannot read entry). The TS readers did not need those bytes, or located the real end-of-central-directory record differently, and read correct content; Python failing closed is the safe side. NOTE the opposite direction (Python reading a different archive than the TS readers) is the open gap fake-eocd-last-signature below.",
+      "reason": "zipfile raises while reading a damaged archive (bad offset for central directory, 'File is not a zip file', cannot read entry). The TS readers did not need those bytes, or located the real end-of-central-directory record differently, and read correct content; Python failing closed is the safe side. The opposite direction (Python reading a different archive than the TS readers) was closed in Plan 4 Task 12: unpack_package applies the TS end-of-central-directory rule before zipfile.",
       "match": {
         "cls": ".*",
         "accept": [
@@ -105,7 +105,7 @@
     },
     {
       "id": "python-lenient-eocd-structure",
-      "reason": "zipfile tolerates what the TS readers refuse: entry-count lies, a non-zero disk number, a wrong comment length, trailing bytes after the EOCD, bytes before the first header, concatenated archives, zip64 markers without a record. In every such case the TS readers fail closed. Python reads the central directory by offset/size, so the entries it extracts are the ones the archive lists, and the content comparison still applies if a TS reader ever accepts the same zip. The one place this laxity changes WHICH archive is read is the open gap fake-eocd-last-signature.",
+      "reason": "zipfile tolerates what the TS readers refuse: entry-count lies, a non-zero disk number, a wrong comment length, trailing bytes after the EOCD, bytes before the first header, concatenated archives, zip64 markers without a record. In every such case the TS readers fail closed. Python reads the central directory by offset/size, so the entries it extracts are the ones the archive lists, and the content comparison still applies if a TS reader ever accepts the same zip. The one place this laxity could change WHICH archive is read (fake-eocd-comment-lying-len) is closed by the framing check in unpack_package (Task 12).",
       "match": {
         "cls": "eocd-.*|prefix-.*|suffix-.*|concat-.*|zip64-.*|mut-eocd-.*|mut-flip-eocd|mut-flip-cd|mut-trunc",
         "accept": [
@@ -146,25 +146,6 @@
       "waiveExpect": true,
       "match": {
         "cls": "name-cp437-noflag",
-        "accept": [
-          "python"
-        ],
-        "reject": [
-          "server",
-          "desktop"
-        ],
-        "rejectCodes": [
-          "bad-path"
-        ]
-      }
-    },
-    {
-      "id": "python-no-path-length-cap",
-      "reason": "Server and desktop cap a path at 240 characters (pathProblem MAX_PATH); Hermes has no length cap. A long name cannot escape the install root or collide with another file; it can only fail to install on a file system with a smaller limit. Not a safety gap; align when Task 12 touches the file.",
-      "allowPolicy": true,
-      "waiveExpect": true,
-      "match": {
-        "cls": "name-too-long",
         "accept": [
           "python"
         ],
@@ -229,43 +210,6 @@
       }
     }
   ],
-  "crashes": [
-    {
-      "id": "hermes-unpack-raises-generic-exceptions",
-      "reader": "python",
-      "msg": "^(ValueError|UnicodeDecodeError|error|OverflowError|struct\\.error|zlib\\.error):",
-      "reason": "unpack_package() only converts zipfile.BadZipFile (on open) and BadZipFile/NotImplementedError/RuntimeError/OSError/EOFError (on read) into MarketplaceError. A crafted end-of-central-directory offset raises ValueError (negative seek), a bad name raises UnicodeDecodeError, and a corrupt deflate stream raises zlib.error. The install still fails closed (an exception aborts it), but callers that catch only MarketplaceError would surface a traceback. Follow-up for Task 12: wrap the whole of unpack_package in 'except Exception' -> MarketplaceError."
-    }
-  ],
-  "openHoles": [
-    {
-      "id": "fake-eocd-last-signature",
-      "kind": "CONTENT",
-      "severity": "high",
-      "reason": "A zip whose real EOCD is followed (inside its comment) by a second archive ending in a fake EOCD whose comment-length field lies is read as archive A by the server and the desktop (both require the EOCD to end exactly at the end of the file) and as archive B by Hermes (zipfile uses the LAST end-of-central-directory signature in the final 64 KiB and does not check that it ends the file). The same name set with different bytes: the server's scan, hash and review cover A, Hermes installs B. FIX (Task 12, owns agentic_marketplace.py): in unpack_package, before zipfile.ZipFile, apply the same rule as the TS readers: scan the last 22+65535 bytes backwards for 0x06054b50 whose offset+22+commentLength equals len(data) and require that to be the only/last signature Python would use (data.rfind(b'PK\\x05\\x06') must equal that offset), reject zip64 locator, non-zero disk numbers and entry-count mismatches. Regression: corpus classes fake-eocd-comment-lying-len.",
-      "match": {
-        "cls": "fake-eocd-comment-lying-len"
-      }
-    },
-    {
-      "id": "hermes-casefold-collisions",
-      "kind": "DIVERGENCE",
-      "severity": "medium",
-      "reason": "Hermes detects name collisions with unicodedata NFC + str.lower(); the TS readers now fold with NFD + upper/lower round trip, which also folds sharp s (strasse / ss), long s and dotless i. A skill with both 'stra\u00dfe.md' and 'strasse.md' passes Hermes' duplicate check but collides on a case-insensitive file system (APFS, NTFS) where the second file overwrites the first, so the installed bytes differ from the manifest. FIX (Task 12): key = unicodedata.normalize('NFD', rel).upper().lower() normalised back to NFC, or str.casefold() after NFKC, in unpack_package's collision key.",
-      "allowPolicy": true,
-      "match": {
-        "cls": "dup-sharp-s|dup-dotless-i|dup-long-s",
-        "accept": [
-          "python"
-        ],
-        "reject": [
-          "server",
-          "desktop"
-        ],
-        "rejectCodes": [
-          "duplicate"
-        ]
-      }
-    }
-  ]
+  "crashes": [],
+  "openHoles": []
 }
