@@ -109,3 +109,45 @@ export function withMarketplacePermissions(base: readonly string[], mine: { role
   const extra = Array.isArray(mine?.permissions) ? (mine!.permissions as unknown[]).filter((p): p is string => typeof p === 'string' && (MARKETPLACE_PERMISSIONS as readonly string[]).includes(p)) : [];
   return [...new Set([...base, ...extra])];
 }
+
+// ── verification views (Plan 4 Task 14). Words, never a score; every string from a package stays a string (React escapes it).
+
+/** The Catalog column and the review heading: Pass / Partly / None / Failed. An unknown value is never shown as a pass. */
+export function verificationWord(v: string | null | undefined): 'Pass' | 'Partly' | 'None' | 'Failed' {
+  return v === 'pass' ? 'Pass' : v === 'incomplete' ? 'Partly' : v === 'fail' ? 'Failed' : 'None';
+}
+export const verificationTone = (v: string | null | undefined) => (v === 'pass' ? 'active' : v === 'incomplete' ? 'pending' : v === 'fail' ? 'failed' : '');
+
+/** The sentence an admin types to approve a version whose verification is incomplete; the API stores it in admin_audit. */
+export function incompleteAck(raw: string | null | undefined): { ok: true; text: string } | { ok: false; error: string } {
+  const t = (raw ?? '').trim();
+  if (t.length < 20) return { ok: false, error: 'Type a sentence saying why you accept the skipped checks (at least 20 characters).' };
+  if (t.length > 500) return { ok: false, error: 'The acknowledgement is too long (500 characters at most).' };
+  return { ok: true, text: t };
+}
+
+/** Evidence images go through the console's own route (which forwards the service token); never a direct blob URL. */
+export function evidencePath(versionId: string, sha: string): string | null {
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(versionId) || !/^[0-9a-f]{64}$/.test(sha)) return null;
+  return `/admin/marketplace/evidence/${versionId}?sha=${sha}`;
+}
+
+export interface VerificationRow {
+  id: string; title: string; word: 'Pass' | 'Fail' | 'Skipped'; required: boolean; reason?: string;
+  /** a failed stage, or a skipped REQUIRED stage: what keeps a version from `pass` */
+  blocking: boolean;
+  evidence: Array<{ kind: string; label: string; detail?: string; imagePath?: string }>;
+}
+export function verificationRows(v: { stages?: unknown } | null | undefined, versionId = ''): VerificationRow[] {
+  if (!v || !Array.isArray(v.stages)) return [];
+  return (v.stages as any[]).filter((s) => s && typeof s.id === 'string' && ['pass', 'fail', 'skipped'].includes(s.status)).map((s) => ({
+    id: s.id, title: String(s.title ?? ''), word: s.status === 'pass' ? 'Pass' : s.status === 'fail' ? 'Fail' : 'Skipped', required: s.required === true,
+    ...(typeof s.reason === 'string' ? { reason: s.reason } : {}),
+    blocking: s.status === 'fail' || (s.required === true && s.status === 'skipped'),
+    evidence: (Array.isArray(s.evidence) ? s.evidence : []).slice(0, 50).map((e: any) => {
+      const m = typeof e?.blobUrl === 'string' && e.blobMime === 'image/png' ? /\/evidence\/([0-9a-f]{64})$/.exec(e.blobUrl) : null;
+      const imagePath = m && versionId ? evidencePath(versionId, m[1]) : null;
+      return { kind: String(e?.kind ?? 'text'), label: String(e?.label ?? ''), ...(typeof e?.detail === 'string' ? { detail: e.detail } : {}), ...(imagePath ? { imagePath } : {}) };
+    }),
+  }));
+}

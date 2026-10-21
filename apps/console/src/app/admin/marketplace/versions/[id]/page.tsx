@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Timeline } from '../../../../../components/admin/Feed';
 import { AgentReview, BundleReview } from '../../../../../components/admin/marketplace-agents';
-import { StateBadge, ValidationReport, VerdictBadge, VersionActions } from '../../../../../components/admin/marketplace';
+import { StateBadge, ValidationReport, VerdictBadge, VerificationPanel, VersionActions } from '../../../../../components/admin/marketplace';
 import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, bytes, when } from '../../../../../components/admin/bits';
 import { load } from '../../../../../lib/admin-api';
 import { isSensitiveCapability, label } from '../../../../../lib/marketplace';
@@ -15,7 +15,7 @@ export default async function VersionPage({ params, searchParams }: { params: Pr
   const { id } = await params;
   const q = await searchParams;
   const { person, permissions } = await adminContext();
-  const res = await load<any>(`/admin/marketplace/versions/${encodeURIComponent(id)}`, person.id);
+  const [res, ver] = await Promise.all([load<any>(`/admin/marketplace/versions/${encodeURIComponent(id)}`, person.id), load<any>(`/admin/marketplace/versions/${encodeURIComponent(id)}/verification`, person.id)]);
   if (!res.ok) return <><PageHeader title="Version" /><ErrorState message={res.error} /></>;
   const v = res.data, m = v.manifest ?? {};
   const overall = (v.scans as any[]).filter((s) => s.scanner === 'validation').pop();
@@ -29,7 +29,7 @@ export default async function VersionPage({ params, searchParams }: { params: Pr
   return (
     <>
       <PageHeader title={m.title ?? v.listingId} subtitle={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><StateBadge state={v.state} /><VerdictBadge verdict={v.scanVerdict} /><span className="mono">{v.listingId} {v.version}</span></span>}
-        actions={<VersionActions versionId={v.id} state={v.state} permissions={permissions} back={back} />} />
+        actions={<VersionActions versionId={v.id} state={v.state} permissions={permissions} back={back} verification={ver.ok ? ver.data?.verification?.verdict ?? null : null} />} />
       <Flash q={q} />
       <Section title="Manifest">
         <div className="card"><div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 180px) 1fr', gap: '8px 16px' }}>
@@ -67,6 +67,9 @@ export default async function VersionPage({ params, searchParams }: { params: Pr
         <ValidationReport report={report} />
         {v.state === 'submitted' && !v.validation?.verified && <p className="hint">Approve and publish stay blocked until a scan is verified; “Rescan” re-runs the validators on the stored package.</p>}
         {perChecks.length > 0 && <p className="hint">{perChecks.length} per-check scan row{perChecks.length === 1 ? '' : 's'} on record; latest summary {overall ? when(overall.at) : 'none'}.</p>}
+      </Section>
+      <Section title="Verification">
+        {ver.ok ? <VerificationPanel versionId={v.id} data={ver.data} permissions={permissions} state={v.state} back={back} summaryHash={sub?.ok && sub.data.manualReview ? sub.data.summarySha256 : undefined} /> : <ErrorState message={ver.error} />}
       </Section>
       <Section title="Release events" count={(v.events as any[]).length}>
         {(v.events as any[]).length ? <Timeline items={(v.events as any[]).map((e) => ({ at: e.at, title: <>{e.event} <span className="faint">by {e.actor ?? 'system'}</span></>, detail: e.detail?.reason ? `Reason: ${e.detail.reason}` : e.detail?.from ? `${e.detail.from} to ${e.detail.to}` : undefined, tone: ['rejected', 'quarantined', 'revoked'].includes(e.event) ? 'bad' : e.event === 'published' ? 'ok' : undefined }))} /> : <p className="hint">No release events.</p>}

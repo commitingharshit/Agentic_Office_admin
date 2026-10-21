@@ -1,0 +1,2507 @@
+{
+  "eval": "verification",
+  "pipeline": {
+    "name": "template",
+    "version": 1
+  },
+  "tools": {
+    "officecli": true,
+    "kernel": true
+  },
+  "allowSkip": [
+    "not-discriminating",
+    "prerequisite-skipped:render-pages"
+  ],
+  "passed": true,
+  "corpus": {
+    "total": 75,
+    "benign": 9,
+    "hostile": 60,
+    "broken": 6
+  },
+  "skippedStageReasonsOnBenign": {
+    "not-discriminating:docx: the pixel/SSIM comparison does not separate docx previews from other templates (they are not produced by this renderer); needs the visual comparator": 2,
+    "not-discriminating:xlsx: the pixel/SSIM comparison does not separate xlsx previews from other templates (they are not produced by this renderer); needs the visual comparator": 2,
+    "prerequisite-skipped:render-pages": 1
+  },
+  "skippedCases": [],
+  "failures": [],
+  "cases": [
+    {
+      "id": "b01-pptx-board-update-pptx",
+      "label": "benign",
+      "verdict": "pass",
+      "failedStages": [],
+      "skippedRequired": [],
+      "measured": {
+        "preview-fidelity:luma-mad": "0.0017 <= 0.02",
+        "preview-fidelity:luma-ssim": "0.9979 >= 0.9"
+      }
+    },
+    {
+      "id": "b02-pptx-investor-pitch-pptx",
+      "label": "benign",
+      "verdict": "pass",
+      "failedStages": [],
+      "skippedRequired": [],
+      "measured": {
+        "preview-fidelity:luma-mad": "0.0032 <= 0.02",
+        "preview-fidelity:luma-ssim": "0.9961 >= 0.9"
+      }
+    },
+    {
+      "id": "b03-pptx-product-roadmap-pptx",
+      "label": "benign",
+      "verdict": "pass",
+      "failedStages": [],
+      "skippedRequired": [],
+      "measured": {
+        "preview-fidelity:luma-mad": "0.0022 <= 0.02",
+        "preview-fidelity:luma-ssim": "0.9973 >= 0.9"
+      }
+    },
+    {
+      "id": "b04-pptx-quarterly-review-pptx",
+      "label": "benign",
+      "verdict": "pass",
+      "failedStages": [],
+      "skippedRequired": [],
+      "measured": {
+        "preview-fidelity:luma-mad": "0.0024 <= 0.02",
+        "preview-fidelity:luma-ssim": "0.9976 >= 0.9"
+      }
+    },
+    {
+      "id": "b05-docx-board-memo-docx",
+      "label": "benign",
+      "verdict": "incomplete",
+      "failedStages": [],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "not-discriminating:docx: the pixel/SSIM comparison does not separate docx previews from other templates (they are not produced by this renderer); needs the visual comparator"
+        }
+      ],
+      "measured": {
+        "preview-fidelity:ink-fraction": "0.0968 >= 0.002"
+      }
+    },
+    {
+      "id": "b06-docx-meeting-notes-docx",
+      "label": "benign",
+      "verdict": "incomplete",
+      "failedStages": [],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "not-discriminating:docx: the pixel/SSIM comparison does not separate docx previews from other templates (they are not produced by this renderer); needs the visual comparator"
+        }
+      ],
+      "measured": {
+        "preview-fidelity:ink-fraction": "0.1317 >= 0.002"
+      }
+    },
+    {
+      "id": "b07-xlsx-budget-tracker-xlsx",
+      "label": "benign",
+      "verdict": "incomplete",
+      "failedStages": [],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "not-discriminating:xlsx: the pixel/SSIM comparison does not separate xlsx previews from other templates (they are not produced by this renderer); needs the visual comparator"
+        }
+      ],
+      "measured": {
+        "preview-fidelity:ink-fraction": "0.3498 >= 0.002"
+      }
+    },
+    {
+      "id": "b08-xlsx-sales-pipeline-xlsx",
+      "label": "benign",
+      "verdict": "incomplete",
+      "failedStages": [],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "not-discriminating:xlsx: the pixel/SSIM comparison does not separate xlsx previews from other templates (they are not produced by this renderer); needs the visual comparator"
+        }
+      ],
+      "measured": {
+        "preview-fidelity:ink-fraction": "0.3727 >= 0.002"
+      }
+    },
+    {
+      "id": "b09-pdf-one-pager-pdf",
+      "label": "benign",
+      "verdict": "incomplete",
+      "failedStages": [],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x01-macro-vba",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x02-macro-content-type",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x03-external-http-link",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x04-external-unc",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x05-external-scheme-relative",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x06-external-file-uri",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x07-dde-docx-field",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x08-dde-xlsx-formula",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x09-zip-bomb",
+      "label": "hostile",
+      "verdict": "refused-at-unpack",
+      "failedStages": [
+        "unpack:too-large"
+      ],
+      "skippedRequired": []
+    },
+    {
+      "id": "h-x10-truncated",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x11-no-content-types",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x12-override-missing-part",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x13-svg-preview",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x14-html-as-pptx",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x15-elf-in-embeddings",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x16-case-variant-attributes",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x17-utf16-rels",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x18-nested-workbook-bomb",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x19-pdf-javascript",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-x20-pdf-launch",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h01-doctype-unlisted-part",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h02-malformed-unlisted-part",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h03-stylesheet-pi-first-bytes",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h04-pi-in-slide",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h05-dde-glossary",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h06-field-zero-width",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h07-field-deleted-instr",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h08-field-macrobutton",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h09-field-hyperlink-http",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h10-xlsx-table-formula",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h11-xlsx-validation-dde",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h12-script-element",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h13-svgblip",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h14-svg-as-png",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h15-svg-content-type",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h16-vml-remote-href",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h17-rel-attached-template-internal",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h18-rel-customui",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h19-rel-kind-query",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h20-xlsx-connections",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h21-webextension-part",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h22-html-part",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h23-trailing-dot-exe",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h24-percent-traversal-name",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h25-fullwidth-slash-name",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h26-bidi-name",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h27-percent-twin",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h28-ads-colon",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h29-target-above-root",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h30-target-double-encoded",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h31-deep-nesting",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h32-nested-workbook-doctype",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h33-override-retypes-rels",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h34-duplicate-override",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h35-main-part-retyped",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h36-duplicate-relationship-id",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h37-bad-xml-encoding",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h38-rels-unknown-child",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h39-rels-namespace-typo",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "h-h40-types-namespace-typo",
+      "label": "hostile",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "v01-xlsx-ref-error",
+      "label": "broken",
+      "verdict": "fail",
+      "failedStages": [
+        "issues",
+        "formula-validity"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "not-discriminating:xlsx: the pixel/SSIM comparison does not separate xlsx previews from other templates (they are not produced by this renderer); needs the visual comparator"
+        }
+      ]
+    },
+    {
+      "id": "v02-xlsx-circular",
+      "label": "broken",
+      "verdict": "fail",
+      "failedStages": [
+        "formula-validity"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "not-discriminating:xlsx: the pixel/SSIM comparison does not separate xlsx previews from other templates (they are not produced by this renderer); needs the visual comparator"
+        }
+      ]
+    },
+    {
+      "id": "v03-docx-dangling-xref",
+      "label": "broken",
+      "verdict": "fail",
+      "failedStages": [
+        "docx-structure"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "preview-fidelity",
+          "reason": "not-discriminating:docx: the pixel/SSIM comparison does not separate docx previews from other templates (they are not produced by this renderer); needs the visual comparator"
+        }
+      ]
+    },
+    {
+      "id": "v04-pptx-dangling-notes",
+      "label": "broken",
+      "verdict": "fail",
+      "failedStages": [
+        "manifest"
+      ],
+      "skippedRequired": [
+        {
+          "stage": "ooxml-schema",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "kernel-index",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "issues",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "formula-validity",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "docx-structure",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "render-pages",
+          "reason": "prerequisite-failed:manifest"
+        },
+        {
+          "stage": "preview-fidelity",
+          "reason": "prerequisite-skipped:render-pages"
+        }
+      ]
+    },
+    {
+      "id": "v05-preview-swapped",
+      "label": "broken",
+      "verdict": "fail",
+      "failedStages": [
+        "preview-fidelity"
+      ],
+      "skippedRequired": [],
+      "measured": {
+        "preview-fidelity:luma-mad": "0.4923 <= 0.02",
+        "preview-fidelity:luma-ssim": "0.363 >= 0.9"
+      }
+    },
+    {
+      "id": "v06-pptx-blank-deck",
+      "label": "broken",
+      "verdict": "fail",
+      "failedStages": [
+        "visual-sanity",
+        "preview-fidelity"
+      ],
+      "skippedRequired": [],
+      "measured": {
+        "visual-sanity:ink-fraction": "0.00001 >= 0.002",
+        "preview-fidelity:luma-mad": "0.1563 <= 0.02",
+        "preview-fidelity:luma-ssim": "0.3777 >= 0.9"
+      }
+    }
+  ]
+}

@@ -46,3 +46,12 @@ export async function adminUpload<T = any>(path: string, o: { acting: string; ty
   if (!r.ok) throw new AdminApiError(r.status, data?.error ?? `The admin API answered ${r.status}.`);
   return data as T;
 }
+
+/** A binary read (a verification evidence image). Same token and acting admin as adminApi; the caller decides what headers to send on. */
+export async function adminBytes(path: string, o: { acting: string }): Promise<{ bytes: ArrayBuffer; type: string }> {
+  const token = process.env.AO_ADMIN_API_TOKEN;
+  if (!base() || !token) throw new AdminApiError(503, 'The admin API is not configured (AO_ADMIN_API_URL, AO_ADMIN_API_TOKEN).');
+  const r = await fetch(`${base()}${path}`, { headers: { authorization: `Bearer ${token}`, 'x-ao-acting-admin': o.acting }, cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new AdminApiError(r.status, `The admin API answered ${r.status}.`);
+  return { bytes: await r.arrayBuffer(), type: r.headers.get('content-type') ?? '' };
+}

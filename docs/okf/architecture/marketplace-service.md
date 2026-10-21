@@ -184,8 +184,24 @@ committed in `services/control-plane` (what each page shows, env and what was ve
 [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)). The pages call only the
 routes above; the console shows nav items by the `marketplace.*` permissions that `GET /admin/marketplace/me` returns (the same table the API enforces) and the API enforces them again.
 
+### Verification views, evals and gates (Plan 3 and 4 follow-up)
+
+The desktop detail pane's Security tab shows the verification result of a version (`marketplaceVerification.ts`: a
+word and an icon per stage, evidence behind an expander, "Not yet verified" is neutral, a stale result never earns
+"Verified"). The admin API adds `verification` to catalog rows, `GET versions/:id/evidence?sha=` (only a blob that a
+verification row of that version references) and `GET security/verification`. Regression gates: `npm run eval` now
+includes the advanced-type hostile corpora (`evals/run-advanced-gate.ts`: size floors, no crash counted as detection),
+and `npm run eval:verification` runs the real template pipeline with the real officecli and Rust kernels over 75
+packages (benign, hostile, valid-but-broken). `scripts/dev/marketplace-gates.sh` runs every gate in CI form (PASS, FAIL or
+SKIP per gate; a SKIP not named by `--allow-skip` fails), `marketplace-truth-table.mjs` computes what is operational from
+the tree, and `db/rollback/` holds a rollback script per marketplace migration (applied and re-applied by
+`test/marketplace-migrations.test.ts`). Hook scripts stay off at three layers (the `OPERATIONAL` flag, the validator and
+the Hermes payload parser).
+
 # Citations
 
 - [`docs/superpowers/plans/2026-10-21-extension-marketplace.md`](/../docs/superpowers/plans/2026-10-21-extension-marketplace.md)
 - [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)
+- [`docs/audits/marketplace-admin-pages-current.md`](/../docs/audits/marketplace-admin-pages-current.md)
+- [`docs/audits/marketplace-release-readiness.md`](/../docs/audits/marketplace-release-readiness.md)
 - [`services/accounts-sync/README.md`](/../services/accounts-sync/README.md)

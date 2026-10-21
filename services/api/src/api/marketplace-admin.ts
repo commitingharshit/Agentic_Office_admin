@@ -7,7 +7,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
-import { artifactKey, putArtifact, UnpackError, unpack, MAX_ARTIFACT_BYTES, type ArtifactStore } from '../marketplace/artifacts.ts';
+import { artifactKey, putArtifact, sha256Hex, UnpackError, unpack, MAX_ARTIFACT_BYTES, type ArtifactStore } from '../marketplace/artifacts.ts';
 import { can, permissionsOf, type AdminRole, type MarketplacePermission } from '../marketplace/permissions.ts';
 import { LIVE_INSTALL, latestPublished } from '../marketplace/search.ts';
 import { INSTALL_STATES } from '../marketplace/store.ts';
@@ -588,6 +588,33 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     });
   }
 
+  /** One evidence blob of a version, for a reviewer: only a blob that a verification row of THIS version references (never listed, never guessed). */
+  async function readEvidence(adminId: string, versionId: string, sha: string | null): Promise<{ bytes: Uint8Array; mime: string }> {
+    if (!sha || !/^[0-9a-f]{64}$/.test(sha)) throw fail(404, 'not_found', 'Not found.');
+    const row = await read(adminId, 'view_verification_evidence', null, { versionId, sha }, async (c) =>
+      (await c.query('SELECT stages FROM marketplace_verifications WHERE version_id = $1 AND $2 = ANY(evidence_shas) ORDER BY seq DESC LIMIT 1', [versionId, sha])).rows[0]);
+    const mime = row ? (row.stages as any[]).flatMap((st) => st.evidence ?? []).find((e: any) => e.blob?.sha256 === sha)?.blob?.mime : undefined;
+    if (!mime) throw fail(404, 'not_found', 'Not found.');
+    const bytes = await deps.store.get(sha);
+    if (!bytes || sha256Hex(bytes) !== sha) throw fail(404, 'not_found', 'Not found.');
+    return { bytes, mime };
+  }
+
+  /** Versions whose CURRENT artifact has a failed or incomplete verification (a verdict for another artifact does not count). Stage ids and reasons only: no evidence. */
+  async function verificationIssues(adminId: string) {
+    return read(adminId, 'list_verification_issues', null, {}, async (c) => {
+      const rows = (await c.query(`
+        SELECT v.id AS version_id, v.listing_id, v.version, v.state, l.type, x.verdict, x.pipeline, x.pipeline_version, x.finished_at, x.stages
+          FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id
+          JOIN LATERAL (SELECT * FROM marketplace_verifications z WHERE z.version_id = v.id AND z.sha256 = v.sha256 ORDER BY z.seq DESC LIMIT 1) x ON true
+         WHERE x.verdict IN ('fail','incomplete') AND v.state IN ('submitted','approved','published')
+         ORDER BY x.finished_at DESC, v.id ASC LIMIT 100`)).rows;
+      return { items: rows.map((r) => ({ versionId: r.version_id, listingId: r.listing_id, version: r.version, state: r.state, type: r.type, verdict: r.verdict, pipeline: r.pipeline, pipelineVersion: r.pipeline_version,
+        at: new Date(r.finished_at).toISOString(),
+        problemStages: (r.stages as any[]).filter((s) => s.status === 'fail' || (s.required && s.status === 'skipped')).slice(0, 20).map((s) => ({ id: s.id, status: s.status, ...(s.reason ? { reason: String(s.reason).slice(0, 200) } : {}) })) })) };
+    });
+  }
+
   // ── reads
   async function catalog(adminId: string, sp: URLSearchParams) {
     const type = oneOf(sp.get('type'), LISTING_TYPES, 'type');
@@ -620,11 +647,12 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const rows = (await c.query(`
         SELECT l.id, l.title, l.type, l.publisher_id, l.visibility, l.trust, l.updated_at, ${UTC('l.updated_at')} AS updated_raw,
                lv.id AS latest_version_id, lv.version AS latest_version, lv.state AS version_state, lv.scan_verdict, lv.risk_tier,
+               (SELECT x.verdict FROM marketplace_verifications x WHERE x.version_id = lv.id AND x.sha256 = lv.sha256 ORDER BY x.seq DESC LIMIT 1) AS verification,
                (SELECT count(*) FROM marketplace_installs i WHERE i.listing_id = l.id AND i.state IN ${LIVE_INSTALL})::int AS installs,
                (SELECT count(*) FROM marketplace_installs i WHERE i.listing_id = l.id AND i.state IN ${LIVE_INSTALL} AND i.enabled)::int AS active_installs,
                s.rating_avg, s.rating_count
           FROM marketplace_listings l
-          LEFT JOIN LATERAL (SELECT v.id, v.version, v.state, v.scan_verdict, v.risk_tier FROM marketplace_versions v WHERE v.listing_id = l.id
+          LEFT JOIN LATERAL (SELECT v.id, v.version, v.state, v.scan_verdict, v.risk_tier, v.sha256 FROM marketplace_versions v WHERE v.listing_id = l.id
                               ORDER BY (v.version LIKE '%-%') ASC, v.semver_major DESC, v.semver_minor DESC, v.semver_patch DESC, v.created_at DESC, v.id ASC LIMIT 1) lv ON true
           LEFT JOIN marketplace_listing_stats s ON s.listing_id = l.id
          ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -637,6 +665,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
           latestVersion: r.latest_version ?? null, latestVersionId: r.latest_version_id ?? null, installs: r.installs, activeInstalls: r.active_installs,
           ratingAvg: r.rating_avg === null ? null : Number(r.rating_avg), ratingCount: Number(r.rating_count ?? 0), updatedAt: r.updated_at, scanVerdict: r.scan_verdict ?? null,
           riskTier: r.risk_tier ?? null, manualReview: eff[r.type]?.manualReview === true || needsManualReview(r.type, r.risk_tier ?? null),
+          // the latest recorded verdict for THIS artifact (a result for another sha never counts); null = never verified
+          verification: r.verification ?? null,
         })),
         nextPage: rows.length > limit && last ? encodeCursor(last.updated_raw, last.id) : null,
       };
@@ -1159,6 +1189,15 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       }
       if (a === 'versions' && id && sub === 'verify' && m === 'POST') { need('marketplace.review'); return send(200, await runVerification(adminId, vid(id))), true; }
       if (a === 'versions' && id && sub === 'verification' && m === 'POST') { need('marketplace.review'); return send(200, await recordResult(adminId, vid(id), await jsonBody(req, MAX_RESULT_BYTES))), true; }
+      if (a === 'versions' && id && sub === 'evidence' && m === 'GET') {
+        need('marketplace.read');
+        const ev = await readEvidence(adminId, vid(id), sp.get('sha'));
+        res.writeHead(200, { 'content-type': ev.mime, 'content-length': ev.bytes.byteLength, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; sandbox", 'content-disposition': 'attachment' });
+        res.end(Buffer.from(ev.bytes.buffer, ev.bytes.byteOffset, ev.bytes.byteLength));
+        return true;
+      }
+      if (a === 'security' && id === 'verification' && !sub && m === 'GET') { need('marketplace.read'); return send(200, await verificationIssues(adminId)), true; }
       if (a === 'versions' && id && sub === 'verification' && m === 'GET') { need('marketplace.read'); return send(200, await readVerification(adminId, vid(id))), true; }
       if (a === 'verify-jobs' && id === 'claim' && !sub && m === 'POST') { need('marketplace.verify_worker'); return send(200, await claimNext(adminId, await jsonBody(req))), true; }
       if (a === 'verify-jobs' && id && sub && m === 'GET' && sub === 'artifact') {

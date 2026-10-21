@@ -4,7 +4,7 @@ import { CursorPager, StateBadge } from '../../../../components/admin/marketplac
 import { ConfirmForm } from '../../../../components/admin/client';
 import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, ago } from '../../../../components/admin/bits';
 import { load } from '../../../../lib/admin-api';
-import { listQuery } from '../../../../lib/marketplace';
+import { listQuery, verificationTone, verificationWord } from '../../../../lib/marketplace';
 import { adminContext } from '../../../../lib/session';
 import { resolveReport } from '../actions';
 
@@ -15,10 +15,11 @@ const RSTATES = ['open', 'triaged', 'actioned', 'dismissed'];
 export default async function Security({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const q = await searchParams;
   const { person, permissions } = await adminContext();
-  const [reports, quarantined, revoked] = await Promise.all([
+  const [reports, quarantined, revoked, vissues] = await Promise.all([
     load<any>(`/admin/marketplace/reports${listQuery(q, { state: RSTATES, page: true })}`, person.id),
     load<any>('/admin/marketplace/catalog?state=quarantined&limit=100', person.id),
     load<any>('/admin/marketplace/catalog?state=revoked&limit=100', person.id),
+    load<any>('/admin/marketplace/security/verification', person.id),
   ]);
   const canModerate = permissions.includes('marketplace.moderate');
   const pulled = [...(quarantined.ok ? quarantined.data.items : []), ...(revoked.ok ? revoked.data.items : [])] as any[];
@@ -33,6 +34,15 @@ export default async function Security({ searchParams }: { searchParams: Promise
               {!pulled.length && <tr><td colSpan={5} className="dt-empty">No listing currently has a quarantined or revoked latest version.</td></tr>}</tbody></table></div>
         ) : <ErrorState message={(!quarantined.ok ? quarantined.error : !revoked.ok ? revoked.error : '')} />}
         <p className="hint">This lists listings whose latest version is quarantined or revoked. Older versions pulled while a newer one exists appear in that listing's version history.</p>
+      </Section>
+      <Section title="Failed or incomplete verification" count={vissues.ok ? vissues.data.items.length : undefined}>
+        {vissues.ok ? (
+          <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Version</th><th>State</th><th>Verification</th><th>Checks that stopped it</th><th>Checked</th></tr></thead>
+            <tbody>{(vissues.data.items as any[]).map((r) => <tr key={r.versionId}><td className="mono">{r.listingId} <span className="faint">{r.type}</span></td><td><Link className="mono" href={`/admin/marketplace/versions/${r.versionId}#verification`}>{r.version}</Link></td><td><StateBadge state={r.state} /></td>
+              <td><StatusBadge status={verificationTone(r.verdict)}>{verificationWord(r.verdict)}</StatusBadge></td>
+              <td>{(r.problemStages as any[]).map((s) => `${s.id} (${s.status}${s.reason ? `: ${s.reason}` : ''})`).join('; ') || '—'}</td><td>{ago(r.at)}</td></tr>)}
+              {!vissues.data.items.length && <tr><td colSpan={6} className="dt-empty">No submitted, approved or published version has a failed or incomplete verification.</td></tr>}</tbody></table></div>
+        ) : <ErrorState message={vissues.error} />}
       </Section>
       <Section title="Reports" count={reports.ok ? reports.data.items.length : undefined}>
         <FilterBar base="/admin/marketplace/security" query={q} fields={[{ name: 'state', label: 'State', type: 'select', options: [['', 'Any state'], ...RSTATES.map((s) => [s, s] as [string, string])] }]} />

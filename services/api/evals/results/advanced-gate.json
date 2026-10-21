@@ -1,0 +1,3893 @@
+{
+  "eval": "advanced-gate",
+  "passed": true,
+  "minCases": {
+    "hook": 14,
+    "bridge": 12,
+    "connector": 11,
+    "routine": 15,
+    "memory": 10,
+    "workflow": 13
+  },
+  "perType": [
+    {
+      "type": "bridge",
+      "benign": 1,
+      "malicious": 99,
+      "tp": 99,
+      "fn": 0,
+      "fp": 0,
+      "tn": 1,
+      "crashes": 0,
+      "recall": 1,
+      "precision": 1,
+      "falsePositiveRate": 0
+    },
+    {
+      "type": "connector",
+      "benign": 1,
+      "malicious": 75,
+      "tp": 75,
+      "fn": 0,
+      "fp": 0,
+      "tn": 1,
+      "crashes": 0,
+      "recall": 1,
+      "precision": 1,
+      "falsePositiveRate": 0
+    },
+    {
+      "type": "hook",
+      "benign": 4,
+      "malicious": 28,
+      "tp": 28,
+      "fn": 0,
+      "fp": 0,
+      "tn": 4,
+      "crashes": 0,
+      "recall": 1,
+      "precision": 1,
+      "falsePositiveRate": 0
+    },
+    {
+      "type": "memory",
+      "benign": 6,
+      "malicious": 38,
+      "tp": 38,
+      "fn": 0,
+      "fp": 0,
+      "tn": 6,
+      "crashes": 0,
+      "recall": 1,
+      "precision": 1,
+      "falsePositiveRate": 0
+    },
+    {
+      "type": "routine",
+      "benign": 6,
+      "malicious": 63,
+      "tp": 63,
+      "fn": 0,
+      "fp": 0,
+      "tn": 6,
+      "crashes": 0,
+      "recall": 1,
+      "precision": 1,
+      "falsePositiveRate": 0
+    },
+    {
+      "type": "workflow",
+      "benign": 6,
+      "malicious": 35,
+      "tp": 35,
+      "fn": 0,
+      "fp": 0,
+      "tn": 6,
+      "crashes": 0,
+      "recall": 1,
+      "precision": 1,
+      "falsePositiveRate": 0
+    }
+  ],
+  "knownGapsOpen": [],
+  "notes": [],
+  "failures": [],
+  "scriptHooks": "not run: script mode is off",
+  "cases": [
+    {
+      "type": "hook",
+      "id": "h01-block-named-path",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "hook",
+      "id": "h02-house-style",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "hook",
+      "id": "h03-log-after-export",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "hook",
+      "id": "h04-block-export-of-named-file",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "hook",
+      "id": "x01-unmapped-event",
+      "label": "malicious",
+      "category": "event",
+      "verdict": "reject",
+      "failedChecks": [
+        "events-mapped",
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x02-unknown-event",
+      "label": "malicious",
+      "category": "event",
+      "verdict": "reject",
+      "failedChecks": [
+        "events-mapped",
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x03-event-array",
+      "label": "malicious",
+      "category": "event",
+      "verdict": "reject",
+      "failedChecks": [
+        "events-mapped"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x04-block-star",
+      "label": "malicious",
+      "category": "floor",
+      "verdict": "reject",
+      "failedChecks": [
+        "block-needs-matcher",
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x05-block-mcp-star",
+      "label": "malicious",
+      "category": "floor",
+      "verdict": "reject",
+      "failedChecks": [
+        "block-needs-matcher",
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x06-block-no-matcher",
+      "label": "malicious",
+      "category": "floor",
+      "verdict": "reject",
+      "failedChecks": [
+        "block-needs-matcher"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x07-regex-bomb-glob",
+      "label": "malicious",
+      "category": "regex",
+      "verdict": "reject",
+      "failedChecks": [
+        "block-needs-matcher",
+        "no-regex",
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x08-regex-key",
+      "label": "malicious",
+      "category": "regex",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-regex",
+        "rule-conditions"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x09-rule-cap",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "rules-shape",
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x10-payload-70kb",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x11-inject-exfil",
+      "label": "malicious",
+      "category": "inject",
+      "verdict": "reject",
+      "failedChecks": [
+        "inject-text-scan"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x12-inject-override",
+      "label": "malicious",
+      "category": "inject",
+      "verdict": "reject",
+      "failedChecks": [
+        "inject-text-scan"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x13-inject-too-long",
+      "label": "malicious",
+      "category": "inject",
+      "verdict": "reject",
+      "failedChecks": [
+        "inject-text-scan"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x14-inject-on-wrong-event",
+      "label": "malicious",
+      "category": "inject",
+      "verdict": "reject",
+      "failedChecks": [
+        "rule-conditions"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x15-action-run",
+      "label": "malicious",
+      "category": "action",
+      "verdict": "reject",
+      "failedChecks": [
+        "rule-conditions"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x16-action-shell",
+      "label": "malicious",
+      "category": "action",
+      "verdict": "reject",
+      "failedChecks": [
+        "rule-conditions"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x17-block-after-event",
+      "label": "malicious",
+      "category": "action",
+      "verdict": "reject",
+      "failedChecks": [
+        "rule-conditions"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x18-script-file",
+      "label": "malicious",
+      "category": "files",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-files"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x19-exec-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x20-network-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x21-undeclared-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-minimal"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x22-schedule",
+      "label": "malicious",
+      "category": "schedule",
+      "verdict": "reject",
+      "failedChecks": [
+        "rules-shape",
+        "no-schedule"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x23-unknown-condition",
+      "label": "malicious",
+      "category": "conditions",
+      "verdict": "reject",
+      "failedChecks": [
+        "rule-conditions"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x24-nested-arg",
+      "label": "malicious",
+      "category": "conditions",
+      "verdict": "reject",
+      "failedChecks": [
+        "rule-conditions"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x25-script-kind",
+      "label": "malicious",
+      "category": "mode",
+      "verdict": "reject",
+      "failedChecks": [
+        "rules-shape"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x26-literal-secret",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x27-block-message-url",
+      "label": "malicious",
+      "category": "inject",
+      "verdict": "reject",
+      "failedChecks": [
+        "inject-text-scan"
+      ]
+    },
+    {
+      "type": "hook",
+      "id": "x28-deep-nesting",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "unpack:bad-manifest"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "w01-read-then-verify",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "workflow",
+      "id": "w02-map-over-list-param",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "workflow",
+      "id": "w03-edit-workflow",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "workflow",
+      "id": "w04-parallel-branches",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "workflow",
+      "id": "w05-bounded-loop-and-guard",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "workflow",
+      "id": "w06-agent-node",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "workflow",
+      "id": "x01-forward-depends-on",
+      "label": "malicious",
+      "category": "cycle",
+      "verdict": "reject",
+      "failedChecks": [
+        "acyclic"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x02-self-dependency",
+      "label": "malicious",
+      "category": "cycle",
+      "verdict": "reject",
+      "failedChecks": [
+        "acyclic"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x03-mutual-cycle",
+      "label": "malicious",
+      "category": "cycle",
+      "verdict": "reject",
+      "failedChecks": [
+        "acyclic"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x04-depth-12",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-caps",
+        "tools-declared",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x05-500-steps",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x06-retries-50",
+      "label": "malicious",
+      "category": "retries",
+      "verdict": "reject",
+      "failedChecks": [
+        "retries-bounded"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x07-timeout-day",
+      "label": "malicious",
+      "category": "retries",
+      "verdict": "reject",
+      "failedChecks": [
+        "retries-bounded"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x08-unbounded-recursion",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-caps"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x09-recursion-undeclared",
+      "label": "malicious",
+      "category": "agent",
+      "verdict": "reject",
+      "failedChecks": [
+        "agent-steps-flagged",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x10-human-approval-step",
+      "label": "malicious",
+      "category": "approval",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-human-approval"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x11-approval-flag",
+      "label": "malicious",
+      "category": "approval",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-shape",
+        "no-human-approval"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x12-undeclared-server",
+      "label": "malicious",
+      "category": "tools",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-declared"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x13-mail-send",
+      "label": "malicious",
+      "category": "tools",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-declared",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x14-exec-class-tool",
+      "label": "malicious",
+      "category": "tools",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-declared",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x15-unknown-tool",
+      "label": "malicious",
+      "category": "tools",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-declared",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x16-param-fills-tool",
+      "label": "malicious",
+      "category": "params",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-declared",
+        "params-typed"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x17-param-fills-server",
+      "label": "malicious",
+      "category": "params",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-declared",
+        "params-typed"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x18-undeclared-placeholder",
+      "label": "malicious",
+      "category": "params",
+      "verdict": "reject",
+      "failedChecks": [
+        "params-typed"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x19-agent-profile-override",
+      "label": "malicious",
+      "category": "agent",
+      "verdict": "reject",
+      "failedChecks": [
+        "agent-steps-flagged"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x20-agent-undeclared",
+      "label": "malicious",
+      "category": "agent",
+      "verdict": "reject",
+      "failedChecks": [
+        "agent-steps-flagged",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x21-agent-injection",
+      "label": "malicious",
+      "category": "agent",
+      "verdict": "reject",
+      "failedChecks": [
+        "agent-task-scan"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x22-deep-nesting",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "unpack:bad-manifest"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x23-literal-secret",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x24-script-file",
+      "label": "malicious",
+      "category": "files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x25-unbounded-loop",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-caps"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x26-map-fanout",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-caps"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x27-regex-guard",
+      "label": "malicious",
+      "category": "regex",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-references"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x28-env-reference",
+      "label": "malicious",
+      "category": "refs",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-references"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x29-no-permissions",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x30-extra-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x31-unknown-step-key",
+      "label": "malicious",
+      "category": "shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-shape"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x32-huge-param",
+      "label": "malicious",
+      "category": "params",
+      "verdict": "reject",
+      "failedChecks": [
+        "params-typed"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x33-budget-too-big",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "workflow-shape"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x35-150-steps",
+      "label": "malicious",
+      "category": "caps",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-caps"
+      ]
+    },
+    {
+      "type": "workflow",
+      "id": "x34-synthesize-merge",
+      "label": "malicious",
+      "category": "shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "plan-shape"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "holographic-local",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "memory",
+      "id": "holographic-hermes-relative-path",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "memory",
+      "id": "agentic-local-workspace",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "memory",
+      "id": "mem0-declared-key",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "memory",
+      "id": "honcho-own-host",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "memory",
+      "id": "docs-only-files",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "memory",
+      "id": "provider-not-bundled",
+      "label": "malicious",
+      "category": "provider",
+      "verdict": "reject",
+      "failedChecks": [
+        "provider-bundled",
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "provider-path-traversal",
+      "label": "malicious",
+      "category": "provider",
+      "verdict": "reject",
+      "failedChecks": [
+        "provider-bundled",
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "provider-proto",
+      "label": "malicious",
+      "category": "provider",
+      "verdict": "reject",
+      "failedChecks": [
+        "provider-bundled",
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "db-path-absolute",
+      "label": "malicious",
+      "category": "path",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "db-path-traversal",
+      "label": "malicious",
+      "category": "path",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "db-path-hermes-traversal",
+      "label": "malicious",
+      "category": "path",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "db-path-home",
+      "label": "malicious",
+      "category": "path",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "scope-team",
+      "label": "malicious",
+      "category": "scope",
+      "verdict": "reject",
+      "failedChecks": [
+        "scope-supported"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "scope-wildcard",
+      "label": "malicious",
+      "category": "scope",
+      "verdict": "reject",
+      "failedChecks": [
+        "scope-supported"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "scope-missing",
+      "label": "malicious",
+      "category": "scope",
+      "verdict": "reject",
+      "failedChecks": [
+        "scope-supported"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "seed-file",
+      "label": "malicious",
+      "category": "files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "python-file",
+      "label": "malicious",
+      "category": "files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "shebang-doc",
+      "label": "malicious",
+      "category": "files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "literal-secret",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "secret-with-value",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "secrets-declared-only"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "exfil-metadata-url",
+      "label": "malicious",
+      "category": "exfil",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "exfil-attacker-host",
+      "label": "malicious",
+      "category": "exfil",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "exfil-http",
+      "label": "malicious",
+      "category": "exfil",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "unknown-config-key",
+      "label": "malicious",
+      "category": "config",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "config-proto",
+      "label": "malicious",
+      "category": "config",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded",
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "config-bad-choice",
+      "label": "malicious",
+      "category": "config",
+      "verdict": "reject",
+      "failedChecks": [
+        "config-keys-known"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "secret-env-path",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "secrets-declared-only",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "secret-env-hermes-home",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "secrets-declared-only",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "secret-env-ld-preload",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "secrets-declared-only",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "secret-not-in-schema",
+      "label": "malicious",
+      "category": "secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "secrets-declared-only"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "secret-undeclared-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "remote-without-network-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "overdeclared-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "wildcard-permission",
+      "label": "malicious",
+      "category": "permissions",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "claims-export",
+      "label": "malicious",
+      "category": "claims",
+      "verdict": "reject",
+      "failedChecks": [
+        "unsupported-claims"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "claims-migration",
+      "label": "malicious",
+      "category": "claims",
+      "verdict": "reject",
+      "failedChecks": [
+        "unsupported-claims"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "claims-setup",
+      "label": "malicious",
+      "category": "claims",
+      "verdict": "reject",
+      "failedChecks": [
+        "unsupported-claims"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "claims-pip",
+      "label": "malicious",
+      "category": "claims",
+      "verdict": "reject",
+      "failedChecks": [
+        "unsupported-claims"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "claims-plugin-code",
+      "label": "malicious",
+      "category": "claims",
+      "verdict": "reject",
+      "failedChecks": [
+        "unsupported-claims"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "unknown-top-level-key",
+      "label": "malicious",
+      "category": "shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "wrong-kind",
+      "label": "malicious",
+      "category": "shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "payload-5mb",
+      "label": "malicious",
+      "category": "size",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded",
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "memory",
+      "id": "payload-deep",
+      "label": "malicious",
+      "category": "size",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded",
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "benign-search-issues",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "bridge",
+      "id": "01-stdio-command",
+      "label": "malicious",
+      "category": "no-stdio",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-stdio",
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "02-stdio-key-beside-a-url",
+      "label": "malicious",
+      "category": "no-stdio",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-stdio"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "03-wildcard-tool",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "04-80-tools",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "05-no-tools",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "06-duplicate-tool",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "07-uppercase-tool-name",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "08-sampling-enabled",
+      "label": "malicious",
+      "category": "no-sampling",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-sampling"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "09-roots",
+      "label": "malicious",
+      "category": "no-sampling",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-sampling"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "10-literal-bearer-token-ghp-",
+      "label": "malicious",
+      "category": "no-literal-secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "11-literal-secret-as-the-secret-name",
+      "label": "malicious",
+      "category": "auth-secret-placeholder-only",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-secret-placeholder-only",
+        "permissions-match-payload",
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "12-headers-key-literal-header-values-",
+      "label": "malicious",
+      "category": "payload-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "13-exec-tool-without-a-reason",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "14-11-write-tools",
+      "label": "malicious",
+      "category": "excessive-scope",
+      "verdict": "reject",
+      "failedChecks": [
+        "excessive-scope"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "15-unused-fs-workspace-write-permission",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "16-missing-network-permission",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload",
+        "host-in-network-scope"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "17-network-scope-wildcard",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload",
+        "host-in-network-scope"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "18-write-tool-without-tool-invoke",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "19-timeout-over-the-cap",
+      "label": "malicious",
+      "category": "limits-capped",
+      "verdict": "reject",
+      "failedChecks": [
+        "limits-capped"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "20-max-rpm-over-the-cap",
+      "label": "malicious",
+      "category": "limits-capped",
+      "verdict": "reject",
+      "failedChecks": [
+        "limits-capped"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "21-forbidden-auth-header-host-",
+      "label": "malicious",
+      "category": "auth-secret-placeholder-only",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-secret-placeholder-only"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "22-auth-header-with-crlf",
+      "label": "malicious",
+      "category": "auth-secret-placeholder-only",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-secret-placeholder-only",
+        "no-control-characters"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "23-control-characters-in-a-summary",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit",
+        "no-control-characters"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "24-unknown-transport",
+      "label": "malicious",
+      "category": "transport",
+      "verdict": "reject",
+      "failedChecks": [
+        "transport"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "25-an-executable-shipped-in-the-package",
+      "label": "malicious",
+      "category": "only-allowed-files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "26-a-non-doc-file",
+      "label": "malicious",
+      "category": "only-allowed-files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "27-payload-nested-10000-deep",
+      "label": "malicious",
+      "category": "manifest-valid",
+      "verdict": "reject",
+      "failedChecks": [
+        "manifest-valid",
+        "files-match-hashes"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "28-prototype-pollution-key",
+      "label": "malicious",
+      "category": "payload-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "29-wrong-kind",
+      "label": "malicious",
+      "category": "payload-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "30-url-https-127-0-0-1-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "31-url-https-169-254-169-254-latest-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "32-url-https-evil-example-8443-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "33-url-http-mcp-issues-example-com-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "34-url-https-localhost-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "35-url-https-1-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "36-url-https-ffff-127-0-0-1-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "37-url-https-2130706433-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "38-url-https-0x7f-1-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "39-url-https-0177-0-0-1-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "40-url-https-metadata-google-internal-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "41-url-https-a-local-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "42-url-https-user-pw-mcp-issues-example-com-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload",
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "43-url-https-mcp-issues-example-com-evil-com-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "44-url-https-mcp-issues-example-com-8443-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "45-url-https-internal-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "46-url-https-localhost-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "47-url-https-ex-2eample-com-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "48-url-https-good-example-mcp-next-http-127-0-0-1-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "49-url-https-mcp-issues-example-com-mcp-next-https-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "50-url-https-mcp-issues-example-com-mcp-frag-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "51-url-https-mcp-issues-example-com-admin-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "52-url-https-mcp-issues-example-com-2e-2e-admin-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "53-url-https-mcp-issues-example-com-evil-com-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "54-url-ftp-mcp-issues-example-com-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "55-url-file-etc-passwd-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "56-url-https-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "57-url-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "58-url-https-xn-e1afmkfd-xn-p1ai-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "59-url-https-mcp-issues-example-com-mcp-r-nhost-evi",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "no-control-characters",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "60-url-https-10-0-0-5-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "61-url-https-192-168-1-1-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "62-url-https-fd00-1-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "63-url-wss-mcp-issues-example-com-mcp-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "64-url-https-mcp-issues-example-com-443-evil-com-",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload",
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-01",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-02",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-03",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-04",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-05",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-06",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-07",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-08",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-09",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-10",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-11",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-12",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-13",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload",
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-14",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-15",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-16",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-17",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-18",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-19",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-20",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-21",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-22",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-23",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-24",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-25",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-26",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-27",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-28",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-29",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-30",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "no-control-characters",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-31",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-32",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-33",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-34",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "bridge",
+      "id": "url-35",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https",
+        "permissions-match-payload",
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "benign-api-key",
+      "label": "benign",
+      "category": "benign",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "connector",
+      "id": "01-oauth2-auth-kind",
+      "label": "malicious",
+      "category": "auth-kind-supported",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-kind-supported"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "02-oauth-in-disguise-client-secret-key-",
+      "label": "malicious",
+      "category": "auth-kind-supported",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-kind-supported"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "03-oauth-token-url-key",
+      "label": "malicious",
+      "category": "auth-kind-supported",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-kind-supported"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "04-openid-kind",
+      "label": "malicious",
+      "category": "auth-kind-supported",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-kind-supported"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "05-unknown-auth-kind",
+      "label": "malicious",
+      "category": "auth-kind-supported",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-kind-supported"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "06-literal-api-key-in-a-field-default",
+      "label": "malicious",
+      "category": "no-literal-secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded",
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "07-default-on-a-secret-field",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "08-example-on-a-secret-field",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "09-literal-bearer-token-in-the-health-path",
+      "label": "malicious",
+      "category": "no-literal-secrets",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-literal-secrets"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "10-secret-not-declared-api-key-without-a-secret-fie",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "11-two-secret-fields",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "12-secret-field-on-an-auth-none-connector",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "13-secret-field-in-the-url",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "14-unconstrained-pattern-admits-any-host-",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "15-placeholder-without-any-pattern",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "16-pattern-admitting-dots-in-the-variable-part",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "17-pattern-with-no-forced-suffix-any-host-",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "18-pattern-whose-suffix-is-a-different-zone",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "19-userinfo-smuggling-https-issues-example-com-h-",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "20-placeholder-in-the-path",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "21-placeholder-naming-an-undeclared-field",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "22-unbalanced-braces",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "23-http-template",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "24-private-ip-literal-template",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "25-metadata-ip-template",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "26-query-string-in-the-template",
+      "label": "malicious",
+      "category": "url-public-https",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-public-https"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "27-port-in-the-template",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "28-uppercase-character-class-in-a-url-pattern",
+      "label": "malicious",
+      "category": "url-template-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "29-nested-quantifier-a-",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "30-backreference",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "31-lookahead",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "32-stacked-quantifiers-a-",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "33-too-many-quantified-parts",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "34-unbounded-quantifier-bound-1-99-",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "35-300-character-pattern",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "36-unanchored-pattern",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "37-escape-class-w",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "38-example-not-matching-its-own-pattern",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "39-field-key-proto-",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "40-duplicate-field-key",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "41-20-fields",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "42-allowlist-",
+      "label": "malicious",
+      "category": "allowlist-specific",
+      "verdict": "reject",
+      "failedChecks": [
+        "allowlist-specific",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "43-allowlist-com",
+      "label": "malicious",
+      "category": "allowlist-specific",
+      "verdict": "reject",
+      "failedChecks": [
+        "allowlist-specific",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "44-allowlist-co-uk-public-suffix-",
+      "label": "malicious",
+      "category": "allowlist-specific",
+      "verdict": "reject",
+      "failedChecks": [
+        "allowlist-specific",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "45-allowlist-with-two-wildcards",
+      "label": "malicious",
+      "category": "allowlist-specific",
+      "verdict": "reject",
+      "failedChecks": [
+        "allowlist-specific",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "46-allowlist-bare-tld",
+      "label": "malicious",
+      "category": "allowlist-specific",
+      "verdict": "reject",
+      "failedChecks": [
+        "allowlist-specific",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "47-allowlist-ip-literal",
+      "label": "malicious",
+      "category": "allowlist-specific",
+      "verdict": "reject",
+      "failedChecks": [
+        "allowlist-specific",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "48-empty-allowlist",
+      "label": "malicious",
+      "category": "allowlist-specific",
+      "verdict": "reject",
+      "failedChecks": [
+        "allowlist-specific",
+        "url-template-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "49-wildcard-permission-scope-",
+      "label": "malicious",
+      "category": "network-scope-matches-allowlist",
+      "verdict": "reject",
+      "failedChecks": [
+        "network-scope-matches-allowlist"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "50-network-scope-differs-from-the-allowlist",
+      "label": "malicious",
+      "category": "network-scope-matches-allowlist",
+      "verdict": "reject",
+      "failedChecks": [
+        "network-scope-matches-allowlist"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "51-undeclared-secrets-use",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "52-declared-but-unused-fs-workspace-write",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "53-write-tool-without-tool-invoke",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "54-bridge-command-stdio-",
+      "label": "malicious",
+      "category": "no-stdio",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-stdio"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "55-sampling-enabled",
+      "label": "malicious",
+      "category": "no-stdio",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-stdio"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "56-exec-tool",
+      "label": "malicious",
+      "category": "tools-no-exec",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-no-exec"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "57-wildcard-tool",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "58-80-tools",
+      "label": "malicious",
+      "category": "tools-explicit",
+      "verdict": "reject",
+      "failedChecks": [
+        "tools-explicit"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "59-forbidden-auth-header-host",
+      "label": "malicious",
+      "category": "auth-secret-placeholder-only",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-secret-placeholder-only"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "60-auth-header-with-crlf",
+      "label": "malicious",
+      "category": "auth-header",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-header"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "61-bearer-with-a-custom-header",
+      "label": "malicious",
+      "category": "auth-header",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-header"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "62-none-auth-with-a-credential-header",
+      "label": "malicious",
+      "category": "auth-header",
+      "verdict": "reject",
+      "failedChecks": [
+        "auth-header"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "63-credentials-but-no-health-endpoint",
+      "label": "malicious",
+      "category": "health-endpoint",
+      "verdict": "reject",
+      "failedChecks": [
+        "health-endpoint"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "64-health-path-with-dot-segments",
+      "label": "malicious",
+      "category": "health-endpoint",
+      "verdict": "reject",
+      "failedChecks": [
+        "health-endpoint"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "65-health-path-with-a-query",
+      "label": "malicious",
+      "category": "health-endpoint",
+      "verdict": "reject",
+      "failedChecks": [
+        "health-endpoint"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "66-health-path-to-another-origin",
+      "label": "malicious",
+      "category": "health-endpoint",
+      "verdict": "reject",
+      "failedChecks": [
+        "health-endpoint"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "67-health-expects-a-redirect-status",
+      "label": "malicious",
+      "category": "health-endpoint",
+      "verdict": "reject",
+      "failedChecks": [
+        "health-endpoint"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "68-response-cap-above-1-mb",
+      "label": "malicious",
+      "category": "limits-capped",
+      "verdict": "reject",
+      "failedChecks": [
+        "limits-capped"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "69-request-rate-above-the-cap",
+      "label": "malicious",
+      "category": "limits-capped",
+      "verdict": "reject",
+      "failedChecks": [
+        "limits-capped"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "70-timeout-above-the-cap",
+      "label": "malicious",
+      "category": "limits-capped",
+      "verdict": "reject",
+      "failedChecks": [
+        "limits-capped"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "71-oversized-payload",
+      "label": "malicious",
+      "category": "payload-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "72-deeply-nested-payload",
+      "label": "malicious",
+      "category": "payload-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "73-unknown-top-level-key",
+      "label": "malicious",
+      "category": "payload-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-shape"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "74-control-characters-in-a-label",
+      "label": "malicious",
+      "category": "fields-safe",
+      "verdict": "reject",
+      "failedChecks": [
+        "fields-safe"
+      ]
+    },
+    {
+      "type": "connector",
+      "id": "75-script-file-shipped-with-the-package",
+      "label": "malicious",
+      "category": "only-allowed-files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "01-weekday-08-00-summary-routine",
+      "label": "benign",
+      "category": "accept",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "routine",
+      "id": "02-hourly-check-every-60-minutes-",
+      "label": "benign",
+      "category": "accept",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "routine",
+      "id": "03-enum-slot-with-a-30-60-minute-interval",
+      "label": "benign",
+      "category": "accept",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "routine",
+      "id": "04-web-file-read-toolsets-with-matching-permissions",
+      "label": "benign",
+      "category": "accept",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "routine",
+      "id": "05-declared-skill-dependency",
+      "label": "benign",
+      "category": "accept",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "routine",
+      "id": "06-a-readme-is-allowed",
+      "label": "benign",
+      "category": "accept",
+      "verdict": "accept",
+      "failedChecks": []
+    },
+    {
+      "type": "routine",
+      "id": "07-script-set",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "08-no-agent-true",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "09-workdir",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "10-context-from",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "11-model-override",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "12-provider-override",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "13-base-url-pointing-at-an-attacker-host",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "14-origin-set",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "15-forbidden-key-hidden-in-a-slot",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "16-forbidden-key-camelcase-spelling",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "17-forbidden-key-kebab-spelling-at-payload-level",
+      "label": "malicious",
+      "category": "no-forbidden-fields",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-forbidden-fields"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "18-unknown-extra-key",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "19-wrong-kind",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "20-deliver-default-telegram-12345",
+      "label": "malicious",
+      "category": "deliver-local-only",
+      "verdict": "reject",
+      "failedChecks": [
+        "deliver-local-only"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "21-deliver-default-email",
+      "label": "malicious",
+      "category": "deliver-local-only",
+      "verdict": "reject",
+      "failedChecks": [
+        "deliver-local-only"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "22-a-slot-named-deliver-user-value-would-override-t",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "23-a-text-slot-named-schedule-verbatim-passthrough-",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "24-terminal-toolset",
+      "label": "malicious",
+      "category": "toolsets-allowlisted",
+      "verdict": "reject",
+      "failedChecks": [
+        "toolsets-allowlisted"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "25-file-toolset-bundles-write-and-patch-tools-routi",
+      "label": "malicious",
+      "category": "toolsets-allowlisted",
+      "verdict": "reject",
+      "failedChecks": [
+        "toolsets-allowlisted"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "26-code-execution-toolset",
+      "label": "malicious",
+      "category": "toolsets-allowlisted",
+      "verdict": "reject",
+      "failedChecks": [
+        "toolsets-allowlisted"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "27-cronjob-toolset-persistence-",
+      "label": "malicious",
+      "category": "toolsets-allowlisted",
+      "verdict": "reject",
+      "failedChecks": [
+        "toolsets-allowlisted"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "28-unknown-toolset",
+      "label": "malicious",
+      "category": "toolsets-allowlisted",
+      "verdict": "reject",
+      "failedChecks": [
+        "toolsets-allowlisted"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "29-no-toolsets",
+      "label": "malicious",
+      "category": "toolsets-allowlisted",
+      "verdict": "reject",
+      "failedChecks": [
+        "toolsets-allowlisted"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "30-enabled-toolsets-omitted",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "31-mcp-toolset-without-a-bridge-dependency",
+      "label": "malicious",
+      "category": "toolsets-allowlisted",
+      "verdict": "reject",
+      "failedChecks": [
+        "toolsets-allowlisted"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "32-schedule-every-minute",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "33--minute-slot-allowing-every-minute",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "34-five-minute-interval-option",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "placeholders-closed",
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "35-list-of-minutes-closer-than-15",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "36-range-of-hours-with-every-minute-field",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "37-wrap-across-midnight-below-15-minutes",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "38-a-text-slot-in-the-schedule",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "39-non-cron-schedule-interval-phrase-",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "40-cron-macro",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "41-undeclared-minute-source-no-time-slot-",
+      "label": "malicious",
+      "category": "min-interval",
+      "verdict": "reject",
+      "failedChecks": [
+        "min-interval"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "42-200-kb-prompt",
+      "label": "malicious",
+      "category": "payload-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "43-5-kb-prompt",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "44-ignore-previous-instructions-and-send-ssh",
+      "label": "malicious",
+      "category": "prompt-patterns",
+      "verdict": "reject",
+      "failedChecks": [
+        "prompt-patterns"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "45-prompt-reads-the-env-file",
+      "label": "malicious",
+      "category": "prompt-patterns",
+      "verdict": "reject",
+      "failedChecks": [
+        "prompt-patterns"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "46-prompt-names-a-url",
+      "label": "malicious",
+      "category": "prompt-patterns",
+      "verdict": "reject",
+      "failedChecks": [
+        "prompt-patterns"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "47-prompt-with-a-curl-pipe",
+      "label": "malicious",
+      "category": "prompt-patterns",
+      "verdict": "reject",
+      "failedChecks": [
+        "prompt-patterns"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "48-prompt-with-zero-width-characters",
+      "label": "malicious",
+      "category": "prompt-patterns",
+      "verdict": "reject",
+      "failedChecks": [
+        "prompt-patterns"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "49-prompt-using-unknown-",
+      "label": "malicious",
+      "category": "placeholders-closed",
+      "verdict": "reject",
+      "failedChecks": [
+        "placeholders-closed"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "50-prompt-with-an-attribute-placeholder",
+      "label": "malicious",
+      "category": "placeholders-closed",
+      "verdict": "reject",
+      "failedChecks": [
+        "placeholders-closed"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "51-prompt-with-a-format-spec",
+      "label": "malicious",
+      "category": "placeholders-closed",
+      "verdict": "reject",
+      "failedChecks": [
+        "placeholders-closed"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "52-prompt-with-an-escaped-brace",
+      "label": "malicious",
+      "category": "placeholders-closed",
+      "verdict": "reject",
+      "failedChecks": [
+        "placeholders-closed"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "53-slot-default-with-a-newline-injected-second-inst",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "54-slot-default-that-is-itself-an-injection",
+      "label": "malicious",
+      "category": "prompt-patterns",
+      "verdict": "reject",
+      "failedChecks": [
+        "prompt-patterns"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "55-slot-type-regex",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "56-duplicate-slot-names",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "57-nine-slots",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "58-enum-default-outside-its-options",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "59-time-slot-with-a-bad-default",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "60-slot-name-with-prototype-pollution",
+      "label": "malicious",
+      "category": "routine-shape",
+      "verdict": "reject",
+      "failedChecks": [
+        "routine-shape",
+        "placeholders-closed",
+        "toolsets-allowlisted",
+        "min-interval",
+        "skills-declared",
+        "prompt-patterns",
+        "prompt-scan",
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "61-event-on-session-start",
+      "label": "malicious",
+      "category": "no-events",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-events"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "62-trigger-key-at-payload-level",
+      "label": "malicious",
+      "category": "no-events",
+      "verdict": "reject",
+      "failedChecks": [
+        "no-events"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "63-undeclared-skill",
+      "label": "malicious",
+      "category": "skills-declared",
+      "verdict": "reject",
+      "failedChecks": [
+        "skills-declared"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "64-a-shell-script-file",
+      "label": "malicious",
+      "category": "only-allowed-files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "65-executable-content-behind-a-doc-name",
+      "label": "malicious",
+      "category": "only-allowed-files",
+      "verdict": "reject",
+      "failedChecks": [
+        "only-allowed-files"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "66-undeclared-implied-permission",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "67-wildcard-permission-scope",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "68-declared-but-unused-permission",
+      "label": "malicious",
+      "category": "permissions-match-payload",
+      "verdict": "reject",
+      "failedChecks": [
+        "permissions-match-payload"
+      ]
+    },
+    {
+      "type": "routine",
+      "id": "69-payload-nested-40-deep",
+      "label": "malicious",
+      "category": "payload-bounded",
+      "verdict": "reject",
+      "failedChecks": [
+        "payload-bounded"
+      ]
+    }
+  ]
+}

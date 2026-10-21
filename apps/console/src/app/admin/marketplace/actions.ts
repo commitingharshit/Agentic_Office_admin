@@ -4,7 +4,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { adminApi, AdminApiError } from '../../../lib/admin-api';
-import { ACTIONS, PUBLISHABLE_TYPES, VISIBILITIES, packValidation } from '../../../lib/marketplace';
+import { ACTIONS, PUBLISHABLE_TYPES, VISIBILITIES, incompleteAck, packValidation } from '../../../lib/marketplace';
 import { parsePolicyForm } from '../../../lib/marketplace-agents';
 import { requireAdmin } from '../../../lib/session';
 
@@ -85,4 +85,24 @@ export async function saveOrgPolicy(f: FormData) {
   const parsed = parsePolicyForm({ mode: field(f, 'mode'), minTrust: field(f, 'minTrust'), requireCleanScan: field(f, 'requireCleanScan') || undefined, rules: String(f.get('rules') ?? '') });
   if (!parsed.ok) return done(back, 'err', parsed.error);
   await act(back, 'Organization policy saved.', (acting) => adminApi('/admin/marketplace/policies/org', { acting, method: 'PUT', body: parsed.doc }));
+}
+
+/** Run the verification pipeline for one version (marketplace.review). The result is read back on the page; a queued run says so. */
+export async function runVerification(f: FormData) {
+  const id = field(f, 'id'), back = safeBack(field(f, 'back'), `/admin/marketplace/versions/${encodeURIComponent(id)}`);
+  await act(back, 'Verification started. Reload in a moment to see the result.', (acting) => adminApi(`/admin/marketplace/versions/${encodeURIComponent(id)}/verify`, { acting, method: 'POST', body: {} }));
+}
+
+/** Approve a version whose verification is INCOMPLETE: the typed sentence is sent as acknowledgeIncomplete and stored in admin_audit. A manual-review type (agent, bundle) also needs its summary acknowledgement. */
+export async function approveIncomplete(f: FormData) {
+  const id = field(f, 'id'), back = safeBack(field(f, 'back'), `/admin/marketplace/versions/${encodeURIComponent(id)}`);
+  const sentence = incompleteAck(field(f, 'ack_incomplete'));
+  if (!sentence.ok) return done(back, 'err', sentence.error);
+  const body: Record<string, unknown> = { acknowledgeIncomplete: sentence.text };
+  if (field(f, 'ack')) {
+    if (field(f, 'reviewed') !== 'on' && field(f, 'reviewed') !== 'true') return done(back, 'err', 'Tick "I reviewed the permission summary" first.');
+    if (!/^[0-9a-f]{64}$/i.test(field(f, 'ack'))) return done(back, 'err', 'The summary hash is missing or malformed; reload the page.');
+    body.ack_summary_sha256 = field(f, 'ack').toLowerCase();
+  }
+  await act(back, 'Version approved with an acknowledged incomplete verification.', (acting) => adminApi(`/admin/marketplace/versions/${encodeURIComponent(id)}/approve`, { acting, method: 'POST', body }));
 }

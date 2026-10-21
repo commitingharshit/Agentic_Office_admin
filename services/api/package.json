@@ -6,11 +6,13 @@
     "migrate": "node db/migrate.ts",
     "test": "node --test test/*.test.ts",
     "test:postgres": "bash test/run-with-postgres.sh",
-    "eval": "node evals/run-scan-gate.ts && node evals/run-template-validator.ts && node evals/run-blueprint-validator.ts && node evals/run-bundle-validator.ts",
+    "eval": "node evals/run-scan-gate.ts && node evals/run-template-validator.ts && node evals/run-blueprint-validator.ts && node evals/run-bundle-validator.ts && node evals/run-advanced-gate.ts",
     "eval:scan-gate": "node evals/run-scan-gate.ts",
     "eval:templates": "node evals/run-template-validator.ts",
     "eval:blueprints": "node evals/run-blueprint-validator.ts",
-    "eval:bundles": "node evals/run-bundle-validator.ts",
+    "eval:bundles": "node evals/run-bundle-validator.ts && node evals/run-advanced-gate.ts",
+    "eval:verification": "node evals/run-verification.ts --allow-skip not-discriminating,prerequisite-skipped:render-pages",
+    "eval:advanced": "node evals/run-advanced-gate.ts",
     "eval:differential": "node evals/run-template-differential.ts"
   },
   "dependencies": {

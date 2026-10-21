@@ -3,7 +3,7 @@ import { DataTable, FilterBar, type Column } from '../../../../components/admin/
 import { CursorPager, StateBadge, VerdictBadge } from '../../../../components/admin/marketplace';
 import { ErrorState, Flash, PageHeader, StatusBadge, ago, num } from '../../../../components/admin/bits';
 import { load } from '../../../../lib/admin-api';
-import { CATALOG_FILTERS, LISTING_TYPES, VERSION_STATES, VISIBILITIES, listQuery, ratingText } from '../../../../lib/marketplace';
+import { CATALOG_FILTERS, LISTING_TYPES, VERSION_STATES, VISIBILITIES, listQuery, ratingText, verificationTone, verificationWord } from '../../../../lib/marketplace';
 import { adminContext } from '../../../../lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +39,7 @@ export default async function Catalog({ searchParams }: { searchParams: Promise<
               { key: 'rating', label: 'Rating', render: (r) => ratingText(r.ratingAvg, r.ratingCount) },
               { key: 'updated', label: 'Updated', render: (r) => ago(r.updatedAt) },
               { key: 'scan', label: 'Security', render: (r) => <VerdictBadge verdict={r.scanVerdict} /> },
+              { key: 'verification', label: 'Verification', render: (r) => <StatusBadge status={verificationTone(r.verification)}>{verificationWord(r.verification)}</StatusBadge> },
             ] as Column<any>[]} />
           <CursorPager base="/admin/marketplace/catalog" query={q} next={res.data.nextPage} />
         </>) : <ErrorState message={res.error} />}

@@ -8,4 +8,4 @@ Deterministic scripted runner (a function stands in for the model; the skill scr
 
 ## Live run (real Hermes + model)
 
-Not requested (`--live`).
+SKIPPED: no-credentials (set VERIFY_TASK_EVALS=real and VERIFY_TASK_EVALS_PASS_ENV=<names of the provider key variables>).
