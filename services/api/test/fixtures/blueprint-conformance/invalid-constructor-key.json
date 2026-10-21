@@ -1,0 +1,19 @@
+{
+  "schema": "agentic.agent-blueprint/1",
+  "identity": {
+    "constructor": {
+      "prototype": {
+        "x": 1
+      }
+    }
+  },
+  "objective": {
+    "goal": "Produce a sourced summary.",
+    "successCriteria": [
+      "every claim cites a source"
+    ]
+  },
+  "executionEnvironments": [
+    "desktop"
+  ]
+}

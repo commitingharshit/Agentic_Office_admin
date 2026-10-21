@@ -1,0 +1,345 @@
+{
+  "schema": "agentic.agent-blueprint/1",
+  "identity": {
+    "name": "Analyst",
+    "role": "Research analyst",
+    "description": "Summarises filings.",
+    "instructionsFile": "SOUL.md"
+  },
+  "objective": {
+    "goal": "Produce a sourced summary.",
+    "successCriteria": [
+      "every claim cites a source"
+    ]
+  },
+  "executionEnvironments": [
+    "desktop"
+  ],
+  "skillReferences": [
+    {
+      "id": "acme/s0",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s1",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s2",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s3",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s4",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s5",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s6",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s7",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s8",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s9",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s10",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s11",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s12",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s13",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s14",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s15",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s16",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s17",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s18",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s19",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s20",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s21",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s22",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s23",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s24",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s25",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s26",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s27",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s28",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s29",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s30",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s31",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s32",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s33",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s34",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s35",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s36",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s37",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s38",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s39",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s40",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s41",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s42",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s43",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s44",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s45",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s46",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s47",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s48",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s49",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s50",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s51",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s52",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s53",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s54",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s55",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s56",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s57",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s58",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s59",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s60",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s61",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s62",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s63",
+      "range": "^1.0.0",
+      "required": false
+    },
+    {
+      "id": "acme/s64",
+      "range": "^1.0.0",
+      "required": false
+    }
+  ]
+}
