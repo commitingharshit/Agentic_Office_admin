@@ -2,6 +2,14 @@ import { createHash } from 'node:crypto';
 import { parseManifest, pathProblem } from '../manifest.ts';
 import { createTemplateValidator } from './template.ts';
 import { createSkillValidator } from './skill.ts';
+import { createHookValidator } from './hook.ts';
+import { createRoutineValidator } from './routine.ts';
+import { createMemoryValidator } from './memory.ts';
+import { createBridgeValidator } from './bridge.ts';
+import { createConnectorValidator } from './connector.ts';
+import { createWorkflowValidator } from './workflow.ts';
+import { parseRiskTier } from './advanced-common.ts';
+import { TYPE_POLICY, maxTier } from '../support.ts';
 import type { ListingType, UnpackedPackage, ValidationCheck, ValidationReport } from '../types.ts';
 
 export type Validator = (pkg: UnpackedPackage) => Promise<ValidationCheck[]> | ValidationCheck[];
@@ -54,10 +62,20 @@ export async function validateArtifact(type: ListingType, pkg: UnpackedPackage):
     catch (e) { checks.push({ name: 'validator-error', ok: false, detail: e instanceof Error ? e.message : String(e) }); }
   }
   const ok = checks.every(c => c.ok);
-  return { ok, verified: ok && !checks.some(c => c.skipped && c.required), checks };
+  // the tier is the payload's own claim, never below the type's policy floor; an unreadable claim on an elevated type is the highest tier
+  const floor = TYPE_POLICY[type]?.riskTier ?? 'executable';
+  const riskTier = maxTier(floor, parseRiskTier(checks) ?? floor);
+  return { ok, verified: ok && !checks.some(c => c.skipped && c.required), checks, riskTier };
 }
 
 // template.ts must not import this module (no cycle); the registry wires it here. officecli is injected, none by default.
 registerValidator('template', createTemplateValidator());
 // skill: the security scan is injected (createSkillsGuardScanner) and REQUIRED; none by default, so reports stay unverified.
 registerValidator('skill', createSkillValidator());
+// Advanced types (Plan 3): placeholders that answer type-supported:false until each type's own task replaces its file.
+registerValidator('hook', createHookValidator());
+registerValidator('routine', createRoutineValidator());
+registerValidator('memory', createMemoryValidator());
+registerValidator('bridge', createBridgeValidator());
+registerValidator('connector', createConnectorValidator());
+registerValidator('workflow', createWorkflowValidator());

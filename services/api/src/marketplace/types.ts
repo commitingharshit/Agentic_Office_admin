@@ -1,6 +1,7 @@
 export const LISTING_TYPES = ['template','skill','agent','memory','connector','bridge','surface','workflow','hook','routine','bundle'] as const;
 export type ListingType = typeof LISTING_TYPES[number];
 export type Visibility = 'public' | 'org' | 'team' | 'private';
+export type RiskTier = 'data' | 'declarative' | 'executable';
 export type Trust = 'official' | 'verified' | 'community' | 'private';          // shown on cards
 export type VersionState = 'draft'|'validating'|'testing'|'submitted'|'in_review'|'approved'|'published'|'rejected'|'deprecated'|'quarantined'|'revoked';
 export type InstallState = 'requested'|'permission_review'|'installed'|'configured'|'enabled'|'disabled'|'update_available'|'failed'|'uninstalled';
@@ -25,4 +26,4 @@ export interface UnpackedPackage { files: Map<string, Uint8Array>; manifest: Man
 /** `skipped` checks did not run (ok is true so they never fail a report) and must never be read as verification. `required` marks a check whose skip means the report is not `verified`. */
 export interface ValidationCheck { name: string; ok: boolean; detail?: string; skipped?: boolean; required?: boolean }
 /** `verified`: every check that ran passed AND no required check was skipped. */
-export interface ValidationReport { ok: boolean; verified?: boolean; checks: ValidationCheck[] }
+export interface ValidationReport { ok: boolean; verified?: boolean; checks: ValidationCheck[]; /** computed from the payload by the type validator (floor: TYPE_POLICY); stored on the version row */ riskTier?: RiskTier }

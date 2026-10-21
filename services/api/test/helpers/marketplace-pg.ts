@@ -1,6 +1,6 @@
 // Shared harness: a throwaway embedded Postgres with stub users/devices/admin_audit tables, migration
 // 0016 applied, and the roles ao_owner / ao_app / ao_admin (ao_app and ao_admin are what RLS is judged as).
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const migration = readFileSync(join(here, '..', '..', 'db', 'migrations', '0016_marketplace.sql'), 'utf8');
+// every marketplace migration, in order (0016_marketplace.sql, then the later *_marketplace*.sql ones)
+const migDir = join(here, '..', '..', 'db', 'migrations');
+const migration = readdirSync(migDir).filter((f) => /^\d{4}_marketplace.*\.sql$/.test(f)).sort().map((f) => readFileSync(join(migDir, f), 'utf8')).join('\n;\n');
 
 let EmbeddedPostgres: any;
 export let skip: string | false = false;

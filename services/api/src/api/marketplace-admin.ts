@@ -11,6 +11,7 @@ import { artifactKey, putArtifact, UnpackError, unpack, MAX_ARTIFACT_BYTES, type
 import { can, type AdminRole, type MarketplacePermission } from '../marketplace/permissions.ts';
 import { LIVE_INSTALL, latestPublished } from '../marketplace/search.ts';
 import { INSTALL_STATES } from '../marketplace/store.ts';
+import { TYPE_POLICY, maxTier, trustAtLeast } from '../marketplace/support.ts';
 import { LISTING_TYPES, type ListingType, type ValidationReport, type UnpackedPackage, type VersionState, type Visibility } from '../marketplace/types.ts';
 import { validateArtifact } from '../marketplace/validate/index.ts';
 
@@ -184,6 +185,13 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
   }
 
   // ── submissions
+  /** What a reviewer acknowledges: a stable hash over exactly what the version asks for. Computed server side from the stored manifest and artifact hash. */
+  function summaryHash(manifest: any, artifactSha: string, tier: string | null): string {
+    const canon = (v: any): any => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v;
+    const perms = Array.isArray(manifest?.permissions) ? [...manifest.permissions].map(canon).sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : 1) : [];
+    return createHash('sha256').update(JSON.stringify(canon({ schema: 'agentic.marketplace.review-summary/1', id: manifest?.id, type: manifest?.type, version: manifest?.version,
+      artifact: artifactSha, riskTier: tier, permissions: perms, dependencies: canon(manifest?.dependencies ?? []), payload: canon(manifest?.payload ?? {}) }))).digest('hex');
+  }
   async function submit(adminId: string, role: AdminRole, req: IncomingMessage, sp: URLSearchParams) {
     const ct = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
     if (ct !== 'application/zip') throw fail(415, 'unsupported_media_type', 'Send the package as application/zip.');
@@ -211,6 +219,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     const verified = report.verified === true && report.ok;
     const state: VersionState = report.ok ? 'submitted' : 'rejected';
     const verdict = !report.ok ? 'blocked' : verified ? 'clean' : 'pending';
+    const policy = TYPE_POLICY[m.type];
+    const riskTier = maxTier(policy?.riskTier ?? 'executable', report.riskTier ?? 'data');
     const stored = await putArtifact(deps.store, bytes);   // content addressed; the bytes never reach a log or an audit row
     const versionId = newId('ver');
     const [major, minor, patch] = semverParts(m.version);
@@ -237,6 +247,10 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
             pub = { owner_user_id: (await c.query('SELECT owner_user_id FROM marketplace_publishers WHERE id = $1', [publisherId])).rows[0].owner_user_id };
           }
           owner = pub.owner_user_id;
+          // a publisher below the type's minimum trust cannot open a listing of that type (checked for a package that validated)
+          if (report.ok && !trustAtLeast(await publisherTrust(c, publisherId), policy?.minPublisherTrust ?? 'official')) {
+            throw fail(403, 'publisher_trust_insufficient', `${m.type} listings need a ${policy?.minPublisherTrust ?? 'official'} publisher; ${publisherId} is not.`);
+          }
           if (teamId && !(await c.query('SELECT 1 FROM marketplace_teams WHERE id = $1', [teamId])).rowCount) throw fail(404, 'not_found', 'Unknown team.');
           await c.query(
             `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, team_id, trust, title, summary) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -246,9 +260,9 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
         }
         await c.query('INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1,$2,$3) ON CONFLICT (sha256) DO NOTHING', [stored.sha256, stored.size, artifactKey(stored.sha256)]);
         await c.query(
-          `INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size, compat, scan_verdict)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [versionId, m.id, m.version, major, minor, patch, state, JSON.stringify(m), stored.sha256, stored.size, JSON.stringify(m.compat), verdict]);
+          `INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size, compat, scan_verdict, risk_tier)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [versionId, m.id, m.version, major, minor, patch, state, JSON.stringify(m), stored.sha256, stored.size, JSON.stringify(m.compat), verdict, riskTier]);
         for (const d of m.dependencies) await c.query('INSERT INTO marketplace_dependencies(version_id, depends_on_listing, range) VALUES ($1,$2,$3)', [versionId, d.id, d.range]);
         const checks = report.checks.map((k) => ({ name: k.name, ok: k.ok, skipped: k.skipped === true, required: k.required === true, ...(k.detail ? { detail: clip(k.detail) } : {}) }));
         for (const k of checks) {
@@ -271,7 +285,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       if (e?.code === '23505' && e?.constraint === 'marketplace_versions_listing_id_version_key') throw fail(409, 'version_exists', `${m.id} ${m.version} already exists.`);
       throw e;
     }
-    return { status: 201, body: { listingId: m.id, versionId, state, validation: { ok: report.ok, verified, checks: report.checks } } };
+    return { status: 201, body: { listingId: m.id, versionId, state, riskTier, manualReview: policy?.manualReview ?? true, ...(report.ok && (policy?.manualReview ?? true) ? { summarySha256: summaryHash(m, stored.sha256, riskTier) } : {}), validation: { ok: report.ok, verified, checks: report.checks } } };
   }
 
   // ── lifecycle
@@ -287,10 +301,25 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
   async function act(adminId: string, role: AdminRole, versionId: string, action: Action, body: Record<string, unknown>) {
     const reason = reasonOf(body.reason, NEEDS_REASON.has(action));
     return tx(async (c) => {
-      const v = (await c.query('SELECT id, listing_id, version, state, manifest FROM marketplace_versions WHERE id = $1 FOR UPDATE', [versionId])).rows[0];
+      const v = (await c.query('SELECT id, listing_id, version, state, manifest, sha256, risk_tier FROM marketplace_versions WHERE id = $1 FOR UPDATE', [versionId])).rows[0];
       if (!v) throw fail(404, 'not_found', 'No such version.');
       const to = transition(v.state, action);
-      if ((action === 'approve' || action === 'publish') && role !== 'superadmin') {
+      // A type that needs manual review (unknown types count as needing it): NO role is exempt from separation of duties, and the
+      // reviewer must acknowledge the exact permission summary the server computes from the stored version.
+      const manual = TYPE_POLICY[v.manifest?.type as ListingType]?.manualReview ?? true;
+      if (manual && (action === 'approve' || action === 'publish')) {
+        const sub = (await c.query(`SELECT actor FROM marketplace_release_events WHERE version_id = $1 AND event = 'submitted' ORDER BY id LIMIT 1`, [versionId])).rows[0];
+        const owner = (await c.query(`SELECT l.owner_user_id FROM marketplace_listings l WHERE l.id = $1`, [v.listing_id])).rows[0]?.owner_user_id;
+        if (!sub || sub.actor === adminId || owner === adminId) throw fail(403, 'separation_of_duties', 'A version that needs manual review cannot be approved or published by its own submitter or publisher, whatever their role.');
+      }
+      let ack: string | undefined;
+      if (manual && action === 'approve') {
+        const want = summaryHash(v.manifest, v.sha256, v.risk_tier ?? null);
+        const got = typeof body.ack_summary_sha256 === 'string' ? body.ack_summary_sha256.toLowerCase() : '';
+        if (got !== want) throw fail(409, 'summary_ack_required', 'Approve with ack_summary_sha256 set to the permission summary hash of this exact version.', { expectedSummarySha256: want });
+        ack = want;
+      }
+      if (!manual && (action === 'approve' || action === 'publish') && role !== 'superadmin') {
         // separation of duties: whoever submitted a version cannot approve or publish it (a superadmin can)
         const sub = (await c.query(`SELECT actor FROM marketplace_release_events WHERE version_id = $1 AND event = 'submitted' ORDER BY id LIMIT 1`, [versionId])).rows[0];
         if (sub?.actor === adminId) throw fail(409, 'self_review', 'You submitted this version; another admin must approve and publish it.');
@@ -324,7 +353,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
                        WHERE version_id = $1 AND state IN ('submitted','in_review','approved')`, [versionId, subState, reason]);
       }
       await c.query('INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,$3,$4,$5)',
-        [v.listing_id, versionId, EVENT[action], adminId, JSON.stringify({ reason, from: v.state, to })]);
+        [v.listing_id, versionId, EVENT[action], adminId, JSON.stringify({ reason, from: v.state, to, ...(ack ? { ackSummarySha256: ack } : {}) })]);
       await audit(c, adminId, action, null, { listingId: v.listing_id, versionId, version: v.version, from: v.state, to, reason, ...(madePublic ? { madePublic: true } : {}) });
       return { versionId, listingId: v.listing_id, state: to };
     });
@@ -426,12 +455,13 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     const state = oneOf(sp.get('state'), ['submitted', 'in_review'] as const, 'state');
     return read(adminId, 'list_submissions', null, { state }, async (c) => {
       const rows = (await c.query(`
-        SELECT v.id, v.listing_id, v.version, v.state, v.scan_verdict, v.created_at, l.title, l.type, l.publisher_id,
+        SELECT v.id, v.listing_id, v.version, v.state, v.scan_verdict, v.created_at, v.manifest, v.sha256, v.risk_tier, l.title, l.type, l.publisher_id,
                (SELECT s.findings FROM marketplace_security_scans s WHERE s.version_id = v.id AND s.scanner = $2 ORDER BY s.at DESC, s.id DESC LIMIT 1) AS overall
           FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id
          WHERE v.state = ANY($1::text[]) ORDER BY v.created_at ASC, v.id ASC LIMIT ${PAGE_MAX}`, [state ? [state] : ['submitted', 'in_review'], OVERALL])).rows;
       return { items: rows.map((r) => ({ versionId: r.id, listingId: r.listing_id, name: r.title, type: r.type, publisher: r.publisher_id, version: r.version, state: r.state,
-        scanVerdict: r.scan_verdict, verified: r.overall?.verified === true, submittedAt: r.created_at })) };
+        scanVerdict: r.scan_verdict, verified: r.overall?.verified === true, submittedAt: r.created_at, riskTier: r.risk_tier ?? null,
+        ...((TYPE_POLICY[r.type as ListingType]?.manualReview ?? true) ? { manualReview: true, summarySha256: summaryHash(r.manifest, r.sha256, r.risk_tier ?? null) } : {}) })) };
     });
   }
 

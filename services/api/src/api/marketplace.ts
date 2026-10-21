@@ -11,6 +11,8 @@ import { createGate, type Gate } from '../marketplace/limits.ts';
 import { createLimiter, type Limiter } from '../marketplace/ratelimit.ts';
 import { BadQuery, parseListParams } from '../marketplace/search.ts';
 import * as store from '../marketplace/store.ts';
+import { typeSupport } from '../marketplace/support.ts';
+import { checkNoLiteralSecrets } from '../marketplace/validate/advanced-common.ts';
 import { HttpError, json } from './sync.ts';
 
 export interface MarketplaceDeps {
@@ -48,6 +50,8 @@ const MAX_PREVIEW = 2 * 1024 * 1024, MAX_DOC = 256 * 1024;
 const LISTING_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 const OPAQUE_ID = /^[A-Za-z0-9_.:-]{1,120}$/;
 const MAX_BODY = 64 * 1024;
+/** installs/sync fields that are opaque ids or enums (not scanned for secrets); every other field is scanned, and dropped when unknown. */
+const SYNC_ID_FIELDS: ReadonlySet<string> = new Set(['listingId', 'versionId', 'state', 'enabled', 'scanVerdict']);
 const MAX_UPLOAD = 64 * 1024 * 1024;
 const TEAM_ID = /^team_[a-f0-9]{18}$/;
 const ZIP_TYPES = ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'];
@@ -178,6 +182,11 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (!d.versionIds.every((v) => typeof v === 'string' && OPAQUE_ID.test(v))) throw bad('versionIds contains an invalid id.');
         const st = await q((c) => store.versionStatuses(c, d.versionIds as string[]));
         return send(200, { statuses: st.map((x) => ({ versionId: x.versionId, state: x.state, ...(x.reason && (x.state === 'revoked' || x.state === 'quarantined') ? { reason: x.reason } : {}) })) }), true;
+      }
+
+      // ── what is operational: the single source the nav, installer and publish gate read. Nothing user-specific; safe to cache briefly.
+      if (rest === 'capabilities' && m === 'GET') {
+        return send(200, { schema: 'agentic.marketplace.capabilities/1', types: typeSupport() }, { 'cache-control': 'public, max-age=60' }), true;
       }
 
       // ── catalog
@@ -392,6 +401,13 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (!deviceId || !OPAQUE_ID.test(deviceId)) throw bad('deviceId is required.');
         if (!Array.isArray(d.items)) throw bad('items must be an array.');
         if (d.items.length > 200) throw bad('items has too many entries (200 at most).');
+        // This endpoint carries install STATE only. Configuration, values and secrets never travel through it: unknown fields are dropped
+        // below, and anything that looks like a credential in a field we do keep (or anywhere else in the body) refuses the whole request
+        // so nothing is stored. (Ids are opaque and are not scanned.)
+        const leak = checkNoLiteralSecrets({ top: Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'items' && k !== 'deviceId')),
+          items: d.items.map((raw) => raw && typeof raw === 'object' && !Array.isArray(raw)
+            ? Object.fromEntries(Object.entries(raw as object).filter(([k]) => !SYNC_ID_FIELDS.has(k))) : raw) }, new Set());
+        if (!leak.ok) throw bad('installs/sync must not carry credentials or secrets; nothing was stored.');
         const seen = new Set<string>();
         const entries = d.items.map((raw, n): store.InstallEntry => {
           const it = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;

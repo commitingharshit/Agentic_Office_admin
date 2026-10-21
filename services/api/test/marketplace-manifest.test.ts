@@ -80,12 +80,12 @@ function pkg(type: any, files: Record<string, string>, declared?: Record<string,
 }
 const failed = (r: any) => r.checks.filter((c: any) => !c.ok).map((c: any) => c.name);
 
-test('hook has no validator -> type-supported fails', async () => {
-  const r = await validateArtifact('hook', pkg('hook', { a: 'x' }));
+test('a type with no validator registered (surface) -> type-supported fails', async () => {
+  const r = await validateArtifact('surface', pkg('surface', { a: 'x' }));
   assert.equal(r.ok, false);
   const c = r.checks.find(c => c.name === 'type-supported')!;
   assert.equal(c.ok, false);
-  assert.equal(c.detail, 'no validator for type hook');
+  assert.equal(c.detail, 'no validator for type surface');
 });
 test('registered validator runs after common checks', async () => {
   registerValidator('routine', async () => [{ name: 'custom', ok: true }]);
