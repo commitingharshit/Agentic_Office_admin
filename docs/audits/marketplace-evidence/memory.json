@@ -2,9 +2,9 @@
   "type": "memory",
   "mode": null,
   "script": "scripts/e2e/plan/marketplace-memory-flow.mjs",
-  "commit": "93c7973f470688b8a2b14ea113dd851478862943",
+  "commit": "caa23034867a9fdb2cc24bb8c11b1d690e7fee05",
   "tree": "dirty",
-  "passedAt": "2026-10-21T09:03:27.836Z",
+  "passedAt": "2026-10-21T09:23:50.675Z",
   "result": "pass",
   "tests": {
     "passing": 5,
