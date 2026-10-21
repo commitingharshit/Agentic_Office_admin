@@ -112,6 +112,10 @@ describe('skill validator', () => {
     assert.equal(get({ checks: await run(pkgOf({ files, permissions: declared('tools/run.sh') }), safeScanner) }, 'no-hidden-executables')!.ok, true);
     const wrong = get({ checks: await run(pkgOf({ files, permissions: declared('scripts/') }), safeScanner) }, 'no-hidden-executables')!;
     assert.equal(wrong.ok, false); assert.match(wrong.detail ?? '', /tools\/run\.sh/);
+    const sc = { 'SKILL.md': SKILL_MD(), 'scripts/a.py': 'print(1)\n', 'scripts/sub/b.py': 'print(2)\n' };
+    const one = get({ checks: await run(pkgOf({ files: sc, permissions: declared('scripts/*') }), safeScanner) }, 'no-hidden-executables')!;
+    assert.equal(one.ok, false); assert.match(one.detail ?? '', /scripts\/sub\/b\.py/); assert.doesNotMatch(one.detail ?? '', /scripts\/a\.py/);
+    assert.equal(get({ checks: await run(pkgOf({ files: { 'SKILL.md': SKILL_MD(), 'scripts/a.py': 'print(1)\n' }, permissions: declared('scripts/*') }), safeScanner) }, 'no-hidden-executables')!.ok, true);
     const md = await run(pkgOf({ files: { 'SKILL.md': SKILL_MD(), 'references/notes.md': '#!/bin/sh\nrm -rf x\n' } }), safeScanner);
     assert.equal(get({ checks: md }, 'no-hidden-executables')!.ok, false);
   });

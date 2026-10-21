@@ -201,14 +201,14 @@ describe('marketplace acceptance flows (real Postgres, real handlers)', { skip }
     const memoVer = (await api('/listings/acme/memo-style')).json.manifest.versionId;
     const sync = await api('/installs/sync', { as: 'u1', body: { deviceId: 'd1', items: [
       { listingId: 'acme/board-deck', versionId: tplVer, state: 'enabled', enabled: true, scanVerdict: 'clean' },
-      { listingId: 'acme/memo-style', versionId: memoVer, state: 'failed', enabled: false, lastError: 'permission review was declined' },
+      { listingId: 'acme/memo-style', versionId: memoVer, state: 'failed', enabled: false, lastError: 'permission_denied: permission review was declined' },
     ] } });
     assert.equal(sync.status, 200); assert.deepEqual(sync.json.results.map((r: any) => r.ok), [true, true]);
     const v = (await adminApi('/users/u1/installs')).json;
     const by = Object.fromEntries(v.items.map((i: any) => [i.listingId, i]));
     const pick = (i: any) => ({ version: i.version, state: i.state, enabled: i.enabled, lastError: i.lastError });
     assert.deepEqual(pick(by['acme/board-deck']), { version: '1.0.0', state: 'enabled', enabled: true, lastError: null });
-    assert.deepEqual(pick(by['acme/memo-style']), { version: '1.0.0', state: 'failed', enabled: false, lastError: 'permission review was declined' });
+    assert.deepEqual(pick(by['acme/memo-style']), { version: '1.0.0', state: 'failed', enabled: false, lastError: 'permission_denied: permission review was declined' });
     const failed = (await adminApi('/installations?state=failed')).json.items;
     assert.ok(failed.some((i: any) => i.userId === 'u1' && i.listingId === 'acme/memo-style' && i.lastError));
     assert.ok((await adminApi('/analytics')).json.failedInstalls >= 1);
@@ -283,7 +283,7 @@ describe('marketplace acceptance flows (real Postgres, real handlers)', { skip }
     const rowBefore = await row();
     const v2 = await adminPublish(skillZip('docx-outline', 'acme/docx-outline', '1.1.0', { permissions: OUTLINE_PERMS, edit: (f) => append(f, 'references/styles.md', '\n- v1.1 note\n') }));
     const sync2 = await api('/installs/sync', { as: 'u2', body: { deviceId: 'd2', items: [] } });
-    assert.deepEqual(sync2.json.updates, [{ listingId: 'acme/docx-outline', installedVersion: '1.0.0', latest: '1.1.0', state: 'update_available', reason: 'newer_version' }]);
+    assert.deepEqual(sync2.json.updates, [{ listingId: 'acme/docx-outline', versionId: v1.versionId, installedVersion: '1.0.0', latest: '1.1.0', state: 'update_available', reason: 'newer_version' }]);
     assert.equal(await row(), rowBefore, 'the server never rewrites an install by itself');
     assert.equal((await one(`SELECT version_id FROM marketplace_installs WHERE user_id = 'u2' AND listing_id = 'acme/docx-outline'`)).version_id, v1.versionId);
     assert.equal((await api(`/versions/${v1.versionId}/artifact`, { as: 'u2' })).status, 200, 'the installed version stays downloadable');

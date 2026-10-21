@@ -375,7 +375,8 @@ export function createSkillValidator(opts: SkillValidatorOptions = {}) {
     const execScopes = pkg.manifest.permissions.filter((x) => x.capability === 'exec.script').flatMap((x) => String(x.scope).split(/[\s,]+/).filter(Boolean));
     const rel = (f: string) => (dir && f.startsWith(dir + '/') ? f.slice(dir.length + 1) : f);
     const covered = (f: string) => execScopes.some((sc) => sc === '**' || sc === '*' || sc === f || sc === rel(f)
-      || (sc.endsWith('/') && (f.startsWith(sc) || rel(f).startsWith(sc))) || (sc.endsWith('/**') && (f.startsWith(sc.slice(0, -2)) || rel(f).startsWith(sc.slice(0, -2)))));
+      || (sc.endsWith('/') && (f.startsWith(sc) || rel(f).startsWith(sc))) || (sc.endsWith('/*') && [f, rel(f)].some((x) => x.startsWith(sc.slice(0, -1)) && !x.slice(sc.length - 1).includes('/')))
+      || (sc.endsWith('/**') && (f.startsWith(sc.slice(0, -2)) || rel(f).startsWith(sc.slice(0, -2)))));
     const detail: string[] = [];
     if (scripts.length) detail.push(`scripts: ${list(scripts)}`);
     if (execFiles.length && !execScopes.length) {

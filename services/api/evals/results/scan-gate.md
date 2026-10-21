@@ -4,17 +4,13 @@ Result: **passed**. Gates: recall on the malicious set = 100% (known gaps listed
 
 ```
                       predicted reject   predicted accept
-  malicious (n=12 )         11 (TP)             1 (FN)
+  malicious (n=12 )         12 (TP)             0 (FN)
   benign    (n=12 )          0 (FP)            12 (TN)
 ```
 
-- recall 91.7% (11/12); 100.0% excluding 1 documented known gap(s)
-- precision 100.0% (11/11)
+- recall 100.0% (12/12)
+- precision 100.0% (12/12)
 - false-positive rate 0.0% (0/12)
-
-## Known gaps (malicious, accepted today)
-
-- **m09-remote-image**: The Skills Guard and the file policy accept a SKILL.md containing a remote tracking image (![x](https://evil.example/pixel.png?...)). Not fixed here: skills_guard.py is vendored and R27 keeps it unmodified in this release. Mitigation lives in the renderer: the Marketplace UI never loads remote images from a stranger's SKILL.md (Task 9, live-verified 0 requests to the evil host). Proposed fix: flag markdown/HTML image URLs with a query string or non-allowlisted host in skill.ts.
 
 ## Cases
 
@@ -40,9 +36,9 @@ Result: **passed**. Gates: recall on the malicious set = 100% (known gaps listed
 | m06-non-utf8-smuggling | malicious | scanner-evasion | reject | file-policy |
 | m07-redos-long-line | malicious | denial-of-service | reject | file-policy |
 | m08-symlink-escape | malicious | archive | reject | unpack:symlink |
-| m09-remote-image | malicious | hostile-markdown | accept (known gap) | - |
+| m09-remote-image | malicious | hostile-markdown | reject | no-remote-images |
 | m10-nested-archive | malicious | archive | reject | file-policy |
-| m11-binary-as-png | malicious | disguised-binary | reject | file-policy |
+| m11-binary-as-png | malicious | disguised-binary | reject | no-hidden-executables, file-policy |
 | m12-unscannable-extension | malicious | scanner-evasion | reject | file-policy |
 
 ## Limits of this eval

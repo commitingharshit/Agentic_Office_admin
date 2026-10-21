@@ -49,5 +49,5 @@ malicious case is accepted, either fix the validator or add an entry with the re
 - The Python adapter path is the same scanner child process; the Hermes install side (verification, refusal of unsafe
   skills, local-edit protection) is covered by `tests/tools/test_agentic_marketplace_source.py` and Task 10's e2e, not here.
 - The PDF check is a heuristic scan for active-content names, not a PDF parser. The renderer check (OfficeCLI) is not run.
-- Hostile markdown (remote images, raw HTML, bad links) is neutralised by the Marketplace renderer, not by the scanner;
-  that is why `m09-remote-image` is a documented known gap of the scan gate (see `known-gaps.json`).
+- Hostile markdown (raw HTML, bad links) is neutralised by the Marketplace renderer, not by the scanner; remote images
+  are rejected by the `no-remote-images` check. `known-gaps.json` is currently empty.
