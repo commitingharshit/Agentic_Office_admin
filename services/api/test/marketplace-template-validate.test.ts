@@ -383,6 +383,89 @@ describe('round 2: exact-case attributes, chart package binding, macro extension
   });
 });
 
+describe('round 3: shared budget, scheme-agnostic targets, hardening', () => {
+  const T = (t: string) => `http://schemas.openxmlformats.org/officeDocument/2006/relationships/${t}`;
+  const R = (inner: string) => `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${inner}</Relationships>`;
+  const active = async (p: UnpackedPackage) => get(await run(p), 'no-active-content')!;
+  const relPkg = (kindName: string, target: string, mode = '') => pkgOf('docx', mutate(DOCX, z => { z['word/_rels/x.rels'] = strToU8(R(`<Relationship Id="a" Type="${T(kindName)}" Target="${target}"${mode}/>`)); }));
+
+  test('1: nested-workbook bomb (40 x 60 MB) fails fast without inflating past the budget', async () => {
+    const big = zipSync({ 'xl/big.bin': new Uint8Array(60 * 1024 * 1024) }, { level: 1 });
+    const p = pkgOf('pptx', mutate(PPTX, z => {
+      const rk = Object.keys(z).find(n => /charts\/_rels\/.*\.rels$/.test(n))!;
+      let rels = ''; 
+      for (let i = 0; i < 40; i++) { z[`ppt/embeddings/w${i}.xlsx`] = big; rels += `<Relationship Id="r${i}" Type="${T('package')}" Target="../embeddings/w${i}.xlsx"/>`; }
+      z[rk] = strToU8(R(rels));
+    }));
+    const t0 = Date.now();
+    const r = await run(p);
+    assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+    assert.equal(r.ok, false);
+    assert.match(get(r, 'no-active-content')!.detail!, /budget|more than/, JSON.stringify(r.checks.filter(c => !c.ok)).slice(0, 400));
+  });
+  test('1: more than 4 chart workbooks is rejected', async () => {
+    const wb = zipSync({ 'xl/a.xml': strToU8('<a/>') });
+    const p = pkgOf('pptx', mutate(PPTX, z => {
+      const rk = Object.keys(z).find(n => /charts\/_rels\/.*\.rels$/.test(n))!;
+      let rels = '';
+      for (let i = 0; i < 6; i++) { z[`ppt/embeddings/w${i}.xlsx`] = wb; rels += `<Relationship Id="r${i}" Type="${T('package')}" Target="../embeddings/w${i}.xlsx"/>`; }
+      z[rk] = strToU8(R(rels));
+    }));
+    const c = await active(p);
+    assert.equal(c.ok, false); assert.match(c.detail!, /more than 4/);
+  });
+
+  test('2: any URI scheme in an internal target is rejected', async () => {
+    for (const t of ['ms-msdt:/id', 'mhtml:http://x/a.html!x', 'javascript:alert(1)', 'ms-excel:ofe|u|http://x/a.xlsx', '..\\\\..\\\\calc.exe', 'fi&#9;le:///x', 'fi&#10;le:///x', 'ht tp://x'])
+      assert.equal((await active(relPkg('hyperlink', t))).ok, false, t);
+  });
+  test('2: internal target resolving to no part is rejected; fragment hyperlink and real parts are fine', async () => {
+    assert.equal((await active(relPkg('image', 'media/ghost.png'))).ok, false);
+    assert.equal((await active(relPkg('hyperlink', '#bookmark1'))).ok, true);
+    assert.equal((await active(relPkg('image', '#bookmark1'))).ok, false);
+    assert.equal((await active(relPkg('styles', 'styles.xml'))).ok, true);
+  });
+  test('hardening: denied relationship kinds', async () => {
+    for (const k of ['webextension', 'connections', 'queryTable', 'externalLink', 'aFChunk'])
+      assert.equal((await active(relPkg(k, 'styles.xml'))).ok, false, k);
+  });
+  test('hardening: svg and script/executable part names at any path', async () => {
+    for (const n of ['word/media/a.svg', 'word/x/run.ps1', 'a/b/c.hta', 'x.js', 'x.lnk', 'x.JAR'])
+      assert.equal((await active(pkgOf('docx', mutate(DOCX, z => { z[n] = strToU8('x'); })))).ok, false, n);
+  });
+  test('hardening: unsafe entry names inside the template zip', async () => {
+    for (const n of ['word\\evil.txt', '../x.txt', 'word/./y.txt'])
+      assert.equal((await run(pkgOf('docx', mutate(DOCX, z => { z[n] = strToU8('x'); })))).ok, false, n);
+  });
+  test('hardening: NFC collision of part names is rejected', async () => {
+    const p = pkgOf('docx', mutate(DOCX, z => { z['word/caf\u00e9.txt'] = strToU8('a'); z['word/cafe\u0301.txt'] = strToU8('b'); }));
+    assert.equal(get(await run(p), 'ooxml-zip')!.ok, false);
+  });
+  test('hardening: DDE / INCLUDETEXT fields in word parts (split runs, fldSimple)', async () => {
+    const doc = (body: string) => pkgOf('docx', mutate(DOCX, z => {
+      z['word/document.xml'] = strToU8(`<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`);
+    }));
+    for (const b of [
+      '<w:r><w:instrText>DDEAUTO c:\\\\windows\\\\system32\\\\cmd.exe</w:instrText></w:r>',
+      '<w:r><w:instrText>DD</w:instrText></w:r><w:r><w:instrText>E "cmd"</w:instrText></w:r>',
+      '<w:fldSimple w:instr="INCLUDETEXT &quot;file:///x&quot;"/>',
+      '<w:r><w:instrText> LINK Excel.Sheet.12 x</w:instrText></w:r>',
+    ]) assert.equal((await active(doc(b))).ok, false, b);
+    assert.equal((await active(doc('<w:r><w:instrText> PAGE \\* MERGEFORMAT </w:instrText></w:r><w:r><w:instrText>HYPERLINK "https://x"</w:instrText></w:r>'))).ok, true);
+  });
+  test('hardening: DDE formulas in xlsx sheets', async () => {
+    const sheet = (f: string) => pkgOf('xlsx', mutate(XLSX, z => {
+      z['xl/worksheets/evil.xml'] = strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row><c><f>${f}</f></c></row></sheetData></worksheet>`);
+    }));
+    for (const f of ["cmd|' /C calc'!A0", "DDE(&quot;x&quot;)", "1+cmd|'/c x'!A1"]) assert.equal((await active(sheet(f))).ok, false, f);
+    assert.equal((await active(sheet('SUM(A1:A3)'))).ok, true);
+  });
+  test('hardening: xml-stylesheet PI with href', async () => {
+    const p = pkgOf('docx', mutate(DOCX, z => { z['word/_rels/x.rels'] = strToU8('<?xml version="1.0"?><?xml-stylesheet type="text/xsl" href="http://x/s.xsl"?>' + R('')); }));
+    assert.equal((await active(p)).ok, false);
+  });
+});
+
 describe('officecli: slot is released when mkdtemp fails', () => {
   test('bad TMPDIR does not leak the concurrency slot', async () => {
     const old = process.env.TMPDIR;

@@ -11,7 +11,6 @@ const FORMATS = ['docx', 'pptx', 'xlsx', 'pdf'] as const;
 type Format = typeof FORMATS[number];
 const MAIN_PART: Record<string, string> = { docx: 'word/document.xml', pptx: 'ppt/presentation.xml', xlsx: 'xl/workbook.xml' };
 const MAX_PREVIEW = 2 * 1024 * 1024;
-const MAX_TEMPLATE_UNCOMPRESSED = 64 * 1024 * 1024;
 const MAX_LIST = 12; // how many offenders a detail string lists
 
 const ok = (name: string, extra: Partial<ValidationCheck> = {}): ValidationCheck => ({ name, ok: true, ...extra });
@@ -38,7 +37,8 @@ function decodeXml(b: Uint8Array): string {
  * references. It does NO entity or DTD processing at all: any DOCTYPE is rejected (OOXML parts never carry one), so
  * no entity can ever be expanded. Throws XmlError with a short reason.
  */
-export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<string, string>) => void): void {
+export interface XmlHooks { text?: (element: string, text: string) => void; pi?: (target: string, data: string) => void }
+export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<string, string>) => void, hooks: XmlHooks = {}): void {
   let s: string;
   try { s = decodeXml(bytes); } catch (e) { throw e instanceof XmlError ? e : new XmlError('not valid UTF-8/UTF-16 text'); }
   const n = s.length;
@@ -69,6 +69,7 @@ export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<st
       const e = s.indexOf('<', i), t = s.slice(i, e < 0 ? n : e);
       if (stack.length === 0 && t.trim() !== '') throw new XmlError(roots ? 'content after the root element' : 'text before the root element');
       checkText(t);
+      if (stack.length && hooks.text) hooks.text(stack[stack.length - 1], t.replace(/&(amp|lt|gt|quot|apos);/g, (_, r: string) => ENT[r]));
       i = e < 0 ? n : e;
       continue;
     }
@@ -81,10 +82,12 @@ export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<st
       if (stack.length === 0) throw new XmlError('CDATA outside the root element');
       const e = s.indexOf(']]>', i);
       if (e < 0) throw new XmlError('unterminated CDATA');
+      if (hooks.text) hooks.text(stack[stack.length - 1], s.slice(i + 9, e));
       i = e + 3;
     } else if (s.startsWith('<?', i)) {
       const e = s.indexOf('?>', i);
       if (e < 0) throw new XmlError('unterminated processing instruction');
+      if (hooks.pi) { const body = s.slice(i + 2, e), m = /^(\S+)\s*([\s\S]*)$/.exec(body); if (m) hooks.pi(m[1], m[2]); }
       i = e + 2;
     } else if (s.startsWith('<!', i)) {
       throw new XmlError(/<!DOCTYPE/i.test(s.slice(i, i + 9)) ? 'DOCTYPE/DTD is not allowed (no entity processing)' : 'unsupported markup declaration');
@@ -139,11 +142,14 @@ export function parseXml(bytes: Uint8Array, onTag?: (name: string, attrs: Map<st
 
 export const assertWellFormedXml = (bytes: Uint8Array): void => parseXml(bytes);
 
-/** Parses a part through the one tokenizer (UTF-8/UTF-16 aware), collecting start/empty tags. Returns a problem string on failure. */
-function readTags(bytes: Uint8Array): { tags: { name: string; attrs: Map<string, string> }[] } | { problem: string } {
-  const tags: { name: string; attrs: Map<string, string> }[] = [];
-  try { parseXml(bytes, (name, attrs) => tags.push({ name: name.replace(/^.*:/, ''), attrs })); return { tags }; }
-  catch (e) { return { problem: e instanceof XmlError ? e.message : String(e) }; }
+/** Parses a part through the one tokenizer (UTF-8/UTF-16 aware), collecting start/empty tags, optionally element text and PIs. */
+interface Scanned { tags: { name: string; attrs: Map<string, string> }[]; texts: { el: string; text: string }[]; pis: { target: string; data: string }[] }
+function readTags(bytes: Uint8Array, collect = false): Scanned | { problem: string } {
+  const out: Scanned = { tags: [], texts: [], pis: [] };
+  try {
+    parseXml(bytes, (name, attrs) => out.tags.push({ name: name.replace(/^.*:/, ''), attrs }), collect ? { text: (el, text) => out.texts.push({ el: el.replace(/^.*:/, ''), text }), pi: (target, data) => out.pis.push({ target, data }) } : { pi: (target, data) => out.pis.push({ target, data }) });
+    return out;
+  } catch (e) { return { problem: e instanceof XmlError ? e.message : String(e) }; }
 }
 const xmlProblem = (bytes: Uint8Array): string | undefined => {
   const r = readTags(bytes);
@@ -201,51 +207,109 @@ function chartPackageTargets(parts: Map<string, Uint8Array>): Set<string> {
   return out;
 }
 
+/** One budget shared by the outer file and every nested workbook (inflated bytes, nested count, wall clock). */
+interface Budget { remaining: number; deadline: number; nested: number }
+const MAX_TOTAL_INFLATED = 128 * 1024 * 1024;
+const MAX_NESTED = 4;
+const VALIDATION_MS = 10_000;
+const sumSizes = (m: Map<string, Uint8Array>) => { let t = 0; for (const b of m.values()) t += b.length; return t; };
+
+// Extra relationship kinds that fetch remote data or run code. (`externalLink` etc. have no place in a template.)
+const DENY_REL_KINDS = new Set(['webextension', 'connections', 'querytable', 'externallink', 'externallinkpath', 'afchunk']);
+// SVG is rejected: it is an active format (script, external references) and templates ship raster media only.
+const SCRIPT_EXT = /\.(hta|sh|bat|cmd|ps1|vbs|js|jar|lnk|svg)$/i;
+const FIELD_BAD = /\b(DDEAUTO|DDE|INCLUDETEXT|INCLUDEPICTURE|IMPORT|LINK)\b/i;
+const FORMULA_BAD = /^\s*(cmd\||DDE\b)|\|'/i;
+const WORD_FIELD_PARTS = /^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i;
+const SHEET_PARTS = /^xl\/worksheets\/[^/]+\.xml$/i;
+
+const piProblems = (name: string, r: Scanned): string[] =>
+  r.pis.filter((p) => p.target.toLowerCase() === 'xml-stylesheet' && /href\s*=/i.test(p.data)).map(() => `${name}: xml-stylesheet processing instruction with an href`);
+
 /** Everything that makes a package carry executable / remote content. Parsed with the real tokenizer only; undecodable => fail closed. */
-function scanActive(parts: Map<string, Uint8Array>, depth: number): string[] {
+function scanActive(parts: Map<string, Uint8Array>, depth: number, budget: Budget): string[] {
   const act: string[] = [];
   const chartPackages = depth === 0 ? chartPackageTargets(parts) : new Set<string>();
+  const lowerParts = new Set<string>();
+  for (const k of parts.keys()) lowerParts.add(k.normalize('NFC').toLowerCase());
   const ct = parts.get('[Content_Types].xml');
   if (ct) {
     const r = readTags(ct);
     if ('problem' in r) act.push(`[Content_Types].xml cannot be inspected: ${r.problem}`);
-    else for (const t of r.tags) {
-      if (t.name !== 'Override' && t.name !== 'Default') continue;
-      const c = attrCI(t.attrs, 'ContentType') ?? '';
-      if (ACTIVE_CT.test(c)) act.push(`macro/ActiveX content type ${q(c)}`);
+    else {
+      act.push(...piProblems('[Content_Types].xml', r));
+      for (const t of r.tags) {
+        if (t.name !== 'Override' && t.name !== 'Default') continue;
+        const c = attrCI(t.attrs, 'ContentType') ?? '';
+        if (ACTIVE_CT.test(c)) act.push(`macro/ActiveX content type ${q(c)}`);
+      }
     }
   }
-  for (const name of parts.keys()) {
+  for (const [name, bytes] of parts) {
+    if (Date.now() > budget.deadline) { act.push('validation time budget exceeded'); return act; }
     const n = name.toLowerCase();
+    if (name.includes('\\') || name.startsWith('/') || name.split('/').includes('..') || name.split('/').includes('.')) act.push(`unsafe part name ${q(name)}`);
     if (/(^|\/)vbaproject(signature)?\.bin$/.test(n) || /(^|\/)vbadata\.xml$/.test(n)) act.push(`macro part ${name}`);
     else if (/(^|\/)(macrosheets|dialogsheets)\//.test(n)) act.push(`Excel 4.0 macro/dialog sheet ${name}`);
     else if (chartPackages.has(name)) {
       // A chart's data workbook (reached only via a chart part's `package` relationship) is legitimate; it is scanned
-      // recursively (one level) and must itself be free of active content.
+      // recursively (one level) under the SAME shared budget and must itself be free of active content.
+      if (budget.nested >= MAX_NESTED) { act.push(`more than ${MAX_NESTED} embedded workbooks (${name})`); continue; }
+      budget.nested++;
       let inner: Map<string, Uint8Array> | undefined;
-      try { inner = readZipFiles(parts.get(name)!, { maxTotal: MAX_TEMPLATE_UNCOMPRESSED }); } catch { act.push(`embedded package ${name} is not a readable zip`); }
-      if (inner) for (const a of scanActive(inner, 1)) act.push(`${name}: ${a}`);
+      try {
+        inner = readZipFiles(bytes, { maxTotal: budget.remaining, deadline: budget.deadline });
+        budget.remaining -= sumSizes(inner);
+      } catch (e) { act.push(`embedded package ${name} cannot be read within budget: ${e instanceof Error ? e.message : String(e)}`); }
+      if (inner) for (const a of scanActive(inner, 1, budget)) act.push(`${name}: ${a}`);
     }
     else if (/(^|\/)embeddings\/[^/]*\.(bin|ole|docm|xlsm|pptm|docx|xlsx|pptx|dotm|xltm|potm)$/.test(n) || /(^|\/)oleobject[^/]*\.bin$/.test(n)) act.push(`embedded OLE/package ${name}`);
     else if (MACRO_EXT.test(n)) act.push(`macro-enabled document part ${name}`);
-    else if (!/\.(xml|rels)$/.test(n) && EXEC_MAGIC(parts.get(name)!)) act.push(`executable binary (MZ/ELF/Mach-O) ${name}`);
+    else if (SCRIPT_EXT.test(n)) act.push(`script/executable/SVG part ${name}`);
+    else if (!/\.(xml|rels)$/.test(n) && EXEC_MAGIC(bytes)) act.push(`executable binary (MZ/ELF/Mach-O) ${name}`);
     else if (/(^|\/)activex\//.test(n)) act.push(`ActiveX part ${name}`);
+
+    const wordField = WORD_FIELD_PARTS.test(name), sheet = SHEET_PARTS.test(name);
+    if (wordField || sheet) {
+      const r = readTags(bytes, true);
+      if ('problem' in r) { act.push(`${name} cannot be inspected: ${r.problem}`); continue; }
+      act.push(...piProblems(name, r));
+      if (wordField) {
+        const instr = r.texts.filter((t) => t.el === 'instrText').map((t) => t.text).join('');
+        const simple = r.tags.filter((t) => t.name === 'fldSimple').map((t) => [...t.attrs].find(([k]) => /(^|:)instr$/.test(k))?.[1] ?? '');
+        for (const f of [instr, ...simple]) { const m = FIELD_BAD.exec(f); if (m) act.push(`${name}: field ${m[1].toUpperCase()} (DDE/include/link fields are not allowed)`); }
+      } else {
+        for (const t of r.texts) if (t.el === 'f' && FORMULA_BAD.test(t.text)) { act.push(`${name}: DDE/command formula ${q(t.text)}`); break; }
+      }
+    }
   }
   for (const [name, b] of parts) {
     if (!name.toLowerCase().endsWith('.rels')) continue;
     const r = readTags(b);
     if ('problem' in r) { act.push(`${name} cannot be inspected: ${r.problem}`); continue; }
+    act.push(...piProblems(name, r));
     for (const t of r.tags) {
       if (t.name !== 'Relationship') continue;
-      const target = (attrCI(t.attrs, 'Target') ?? '').trim();
+      const raw = attrCI(t.attrs, 'Target') ?? '';
+      const cleaned = raw.replace(/[\p{Cc}\s]/gu, ''); // what a lenient consumer would see after dropping tabs/newlines/spaces
       const type = attrCI(t.attrs, 'Type') ?? '';
       const external = (attrCI(t.attrs, 'TargetMode') ?? '').toLowerCase() === 'external';
-      const where = `${name} (${q(type.replace(/^.*\//, ''))} -> ${q(target)})`;
+      const where = `${name} (${q(type.replace(/^.*\//, ''))} -> ${q(raw)})`;
       const kind = relKind(type);
-      const chartPkg = !external && kind === 'package' && /(^|\/)charts\/_rels\//i.test(name) && chartPackages.has(resolvePart(name, target));
-      if (ACTIVE_KINDS.has(kind) && !chartPkg) act.push(`active-content relationship in ${where}`);
-      else if (external && !(kind === 'hyperlink' && /^https:\/\//i.test(target))) act.push(`external relationship in ${where}: only https hyperlinks are allowed`);
-      else if (!external && (/^(https?|file|ftp):/i.test(target) || /^[\\/]{2}/.test(target) || target.startsWith('\\'))) act.push(`absolute/remote target in ${where}`);
+      const chartPkg = !external && kind === 'package' && /(^|\/)charts\/_rels\//i.test(name) && chartPackages.has(resolvePart(name, raw.trim()));
+      if ((ACTIVE_KINDS.has(kind) || DENY_REL_KINDS.has(kind)) && !chartPkg) { act.push(`active-content relationship in ${where}`); continue; }
+      if (raw.includes('\\')) { act.push(`backslash in target of ${where}`); continue; }
+      const scheme = /^[A-Za-z][A-Za-z0-9+.\-]*:/.test(cleaned);
+      if (external) {
+        if (!(kind === 'hyperlink' && /^https:\/\//i.test(cleaned) && raw.trim() === cleaned)) act.push(`external relationship in ${where}: only https hyperlinks are allowed`);
+        continue;
+      }
+      if (scheme || /^\/\//.test(cleaned)) { act.push(`absolute/remote target in ${where}`); continue; }
+      if (cleaned.startsWith('#')) { if (kind !== 'hyperlink') act.push(`fragment-only target in ${where}`); continue; }
+      if (chartPkg) continue;
+      let res: string;
+      try { res = resolvePart(name, decodeURIComponent(raw.trim().replace(/[#?].*$/, ''))); } catch { act.push(`undecodable target in ${where}`); continue; }
+      if (!lowerParts.has(res.normalize('NFC').toLowerCase())) act.push(`internal target resolves to no part in ${where}`);
     }
   }
   return act;
@@ -253,7 +317,8 @@ function scanActive(parts: Map<string, Uint8Array>, depth: number): string[] {
 
 function ooxmlChecks(format: string, bytes: Uint8Array): { zip: ValidationCheck; active: ValidationCheck } {
   let parts: Map<string, Uint8Array>;
-  try { parts = readZipFiles(bytes, { maxTotal: MAX_TEMPLATE_UNCOMPRESSED }); }
+  const budget: Budget = { remaining: MAX_TOTAL_INFLATED, deadline: Date.now() + VALIDATION_MS, nested: 0 };
+  try { parts = readZipFiles(bytes, { maxTotal: budget.remaining, deadline: budget.deadline }); budget.remaining -= sumSizes(parts); }
   catch (e) {
     const msg = e instanceof UnpackError ? e.message : String(e);
     return { zip: fail('ooxml-zip', `not a valid zip archive: ${msg}`), active: skip('no-active-content', 'the file is not a readable zip') };
@@ -261,7 +326,7 @@ function ooxmlChecks(format: string, bytes: Uint8Array): { zip: ValidationCheck;
   const problems: string[] = [];
   const lower = new Map<string, string>(); // lowercased name -> real name
   for (const name of parts.keys()) {
-    const k = name.toLowerCase();
+    const k = name.normalize('NFC').toLowerCase();
     if (lower.has(k)) problems.push(`part names differ only by case: ${q(lower.get(k)!)} and ${q(name)}`);
     else lower.set(k, name);
   }
@@ -286,7 +351,7 @@ function ooxmlChecks(format: string, bytes: Uint8Array): { zip: ValidationCheck;
       if (missing.length) problems.push(`content types name parts that do not exist: ${list(missing)}`);
     }
   }
-  const act = scanActive(parts, 0);
+  const act = scanActive(parts, 0, budget);
   return {
     zip: problems.length ? fail('ooxml-zip', list(problems)) : ok('ooxml-zip'),
     active: act.length ? fail('no-active-content', list(act)) : ok('no-active-content'),

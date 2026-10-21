@@ -177,16 +177,18 @@ function extract(b: Uint8Array, e: CdEntry): Uint8Array {
  * central-directory reader and bounded inflater as unpack(). Directory entries are skipped; names are NOT path-checked
  * (they are only map keys here). Throws UnpackError.
  */
-export function readZipFiles(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: number } = {}): Map<string, Uint8Array> {
+export function readZipFiles(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: number; deadline?: number } = {}): Map<string, Uint8Array> {
   const maxTotal = opts.maxTotal ?? MAX_ARTIFACT_BYTES, maxFiles = opts.maxFiles ?? 5000;
   const entries = readCentralDirectory(bytes);
   if (entries.length > maxFiles) throw new UnpackError('too-many-files', `archive has ${entries.length} entries, over the ${maxFiles} limit`);
   const out = new Map<string, Uint8Array>();
+  // Every declared size is summed BEFORE anything is inflated, so an over-budget archive is refused without work.
   let total = 0;
+  for (const e of entries) { if (!e.name.endsWith('/')) total += e.declared; }
+  if (total > maxTotal) throw new UnpackError('too-large', `archive declares ${total} bytes uncompressed, over the ${maxTotal} limit`);
   for (const e of entries) {
     if (e.name.endsWith('/')) continue;
-    total += e.declared;
-    if (total > maxTotal) throw new UnpackError('too-large', `archive declares more than ${maxTotal} bytes uncompressed`);
+    if (opts.deadline !== undefined && Date.now() > opts.deadline) throw new UnpackError('too-large', 'time budget exceeded while reading the archive');
     if (out.has(e.name)) throw new UnpackError('duplicate', `duplicate entry ${JSON.stringify(e.name)}`);
     out.set(e.name, extract(bytes, e));
   }
