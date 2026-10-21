@@ -34,6 +34,8 @@ export interface AdminDeps {
   keycloak?: import('./keycloak-admin.ts').KeycloakAdmin;
   /** The payment provider side (to ask it what it knows). Absent unless payments are switched on. */
   payments?: import('./payments/service.ts').PaymentsService;
+  /** Campaign email: the public base URL and keys the unsubscribe link and Resend's webhook need (src/growth/email.ts). */
+  email?: import('../growth/email.ts').EmailConfig;
   /** Sends announcement emails; absent when no provider is configured. */
   mailer?: import('./mailer.ts').Mailer;
   /** Row cap for the SQL view. */

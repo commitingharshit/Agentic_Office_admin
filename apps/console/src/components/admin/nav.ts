@@ -21,6 +21,7 @@ export const NAV: NavGroup[] = [
   { label: 'Growth', items: [
     { href: '/admin/growth', label: 'Growth overview', icon: 'analytics', perm: 'growth.read' },
     { href: '/admin/growth/campaigns', label: 'Campaigns', icon: 'comms', perm: 'growth.read' },
+    { href: '/admin/growth/email', label: 'Campaign email', icon: 'comms', perm: 'growth.read' },
     { href: '/admin/growth/releases', label: 'Releases', icon: 'flags', perm: 'growth.read' },
   ] },
   { label: 'Intelligence', items: [

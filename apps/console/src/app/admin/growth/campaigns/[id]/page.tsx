@@ -2,7 +2,7 @@ import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, bytes } fr
 import { PromoPreview } from '../../../../../components/admin/PromoPreview';
 import { load } from '../../../../../lib/admin-api';
 import { adminContext } from '../../../../../lib/session';
-import { previewForPerson, publishCreative, saveCreative, saveTargets, setCampaignStatus, updateCampaign, uploadCreativeMedia } from '../../actions';
+import { previewForPerson, publishCreative, saveCreative, saveTargets, sendCampaignEmail, setCampaignStatus, updateCampaign, uploadCreativeMedia } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Campaign' };
@@ -19,7 +19,7 @@ export default async function Campaign({ params, searchParams }: { params: Promi
   const { id } = await params;
   const q = await searchParams;
   const { person, permissions } = await adminContext();
-  const res = await load<any>('/admin/growth/campaigns', person.id);
+  const [res, templates, sends] = await Promise.all([load<any>('/admin/growth/campaigns', person.id), load<any>('/admin/growth/templates', person.id), load<any>(`/admin/growth/campaigns/${encodeURIComponent(id)}/deliveries`, person.id)]);
   if (!res.ok) return <ErrorState message={res.error} />;
   const c = (res.data.campaigns as any[]).find((x) => x.id === id);
   if (!c) return <ErrorState message="No such campaign." />;
@@ -87,6 +87,20 @@ export default async function Campaign({ params, searchParams }: { params: Promi
             <button className="btn primary">Save audience</button>
           </form>) : <pre className="mono">{JSON.stringify(t, null, 2)}</pre>}
         <p className="muted" style={{ fontSize: 12 }}>Promotions never reach people on an ad-free plan or who switched promotions off, whatever the audience says. Targeting uses plan, platform, locale, app version and sign-up date only: never anything from people&apos;s documents or prompts.</p>
+      </Section>
+
+      <Section title="Email">
+        {canPublish && templates.ok && templates.data.templates.length ? (
+          <form action={sendCampaignEmail} className="form-row">
+            <input type="hidden" name="campaign_id" value={c.id} />
+            <label className="field"><span>Template</span><select name="template_id">{(templates.data.templates as any[]).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+            <button className="btn primary">Email the audience</button>
+          </form>) : <p className="muted" style={{ fontSize: 12 }}>{templates.ok && !templates.data.templates.length ? <>No templates yet: <a href="/admin/growth/email">write one</a>.</> : 'Sending needs the publish permission.'}</p>}
+        {sends.ok && sends.data.sends.length ? (
+          <div className="table-wrap"><table className="dt"><thead><tr><th>Send</th><th>Status</th><th>Deliveries</th></tr></thead><tbody>
+            {(sends.data.sends as any[]).map((x) => <tr key={x.id}><td className="mono">{x.id}</td><td>{x.status}</td><td>{Object.entries(x.by_status ?? {}).map(([k, v]) => `${k} ${v}`).join(' · ') || '-'}</td></tr>)}
+          </tbody></table></div>) : null}
+        <p className="muted" style={{ fontSize: 12 }}>Only people who agreed to product email and have not unsubscribed, within this campaign&apos;s audience; each person at most once per campaign. A complaint or permanent bounce switches their marketing email off.</p>
       </Section>
 
       <Section title="Would this person see it?">

@@ -77,4 +77,6 @@ GRANT SELECT ON releases, release_rollouts, email_templates, campaign_emails, we
 GRANT SELECT, INSERT, UPDATE, DELETE ON releases, email_templates, campaign_emails TO ao_admin;
 GRANT SELECT, INSERT ON release_rollouts, webhook_events TO ao_admin;
 GRANT DELETE ON email_deliveries TO ao_admin;
+-- An unsubscribe (link, one-click POST, complaint or permanent bounce) may be the person's first preference row.
+GRANT INSERT ON user_promo_prefs TO ao_admin;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO ao_app, ao_admin;

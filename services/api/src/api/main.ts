@@ -25,6 +25,8 @@ import { mailerFromEnv } from './mailer.ts';
 import { syncHandler } from './sync.ts';
 import { cors, parseOrigins } from './cors.ts';
 import { sweepGuardrails } from '../growth/admin.ts';
+import { emailConfigFromEnv } from '../growth/email.ts';
+import { growthPublicHandler } from '../growth/public.ts';
 
 const env = process.env;
 const need = (k: string) => { const v = env[k]; if (!v) { console.error(`${k} is not set`); process.exit(2); } return v; };
@@ -55,6 +57,7 @@ const deps = {
   s3,
   clerkSecret: env.CLERK_SECRET_KEY || undefined,
   verifyClerk: clerk ? (t: string) => clerk.verify(t) : undefined,
+  email: emailConfigFromEnv(env),
 };
 if (!deps.tokens.size && !clerk) { console.error('Set AO_ADMIN_TOKENS or CLERK_PUBLISHABLE_KEY: admins need a way to sign in'); process.exit(2); }
 const pricing = parsePricing(env.AO_PRICING);
@@ -85,8 +88,10 @@ const admin = adminHandler(deps);
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);
 const allowCors = cors(parseOrigins(env.AO_CORS_ORIGINS));
+const growthPublic = growthPublicHandler({ admin: deps.admin, email: deps.email });
 const server = createServer(async (req, res) => {
   if (allowCors(req, res)) return;
+  if (await growthPublic(req, res)) return;
   if (sync && (await sync(req, res))) return;
   if (!sync && req.url?.startsWith('/v1/')) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'Sign-in is not configured on this server yet (CLERK_PUBLISHABLE_KEY).' })); return; }
   await admin(req, res);

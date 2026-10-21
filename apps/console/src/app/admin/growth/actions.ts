@@ -105,3 +105,14 @@ export async function announceRelease(f: FormData) {
   const id = field(f, 'id');
   await act('/admin/growth/releases', 'Release note posted to everyone\'s inbox.', (acting) => adminApi(`/admin/growth/releases/${enc(id)}/announce`, { acting, method: 'POST', body: {} }));
 }
+
+export async function saveEmailTemplate(f: FormData) {
+  await act('/admin/growth/email', 'Template saved.', (acting) => adminApi('/admin/growth/templates', {
+    acting, method: 'POST', body: { id: opt(f, 'id'), name: field(f, 'name'), subject: field(f, 'subject'), html: String(f.get('html') ?? ''), text: String(f.get('text') ?? '') },
+  }));
+}
+export async function sendCampaignEmail(f: FormData) {
+  const id = field(f, 'campaign_id'), back = `/admin/growth/campaigns/${enc(id)}`;
+  await act(back, (r) => `Emailed ${r.sent} people${r.failed ? `, ${r.failed} failed` : ''}.${r.remaining ? ' More are waiting: send again to continue.' : ''}`,
+    (acting) => adminApi(`/admin/growth/campaigns/${enc(id)}/email`, { acting, method: 'POST', body: { template_id: field(f, 'template_id') } }));
+}
