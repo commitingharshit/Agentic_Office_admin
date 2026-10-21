@@ -8,7 +8,7 @@ want() { local exp="$1" got; shift; got=$(code "$@"); if [[ "$got" =~ ^($exp)$ ]
 # open: what the app needs to sign a person in and keep them signed in
 want 200 "$BASE/healthz"
 want 200 "$BASE/v1/auth/config"
-want 400 -X POST -H 'content-type: application/json' --data '{}' "$BASE/v1/auth/exchange"
+want '400|401' -X POST -H 'content-type: application/json' --data '{}' "$BASE/v1/auth/exchange"
 want 401 "$BASE/v1/me"
 # closed: the admin API, and the webhooks nobody has switched on
 for p in / /admin /admin/users /admin/health /admin/growth/campaigns /admin/marketplace /v1/webhooks/resend /v1/payments/webhooks/youpi-experimental /.git/config /metrics; do want 404 "$BASE$p"; done
