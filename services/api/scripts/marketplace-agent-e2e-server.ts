@@ -21,6 +21,7 @@ if (process.env.NODE_ENV === 'production') { console.error('marketplace-agent-e2
 const args = process.argv.slice(2);
 const opt = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
 const STATE = opt('--state');
+const WINDOW = args.includes('--window');   // seed what a real-window run of the Team Library needs: a team u1 owns, with assignments
 const python = process.env.AO_E2E_PYTHON ?? process.env.HERMES_PYTHON ?? resolve(findRepoRoot(), 'vendor/hermes-agent/venv/bin/python');
 const AGENT = 'acme/ma-analyst', SKILL = 'acme/dd-checklist', BUNDLE = 'u-u1/ma-pack';
 
@@ -56,7 +57,24 @@ async function main() {
   b.installOrder = [SKILL, AGENT];
   const bundle = await t.call('/v1/marketplace/listings?visibility=private', { user: 'u1', zip: zipOf(pkgOf(b, { id: BUNDLE, permissions: PERMS })) });
   if (bundle.json?.state !== 'published') throw new Error(`the bundle was not published: ${JSON.stringify(bundle.json).slice(0, 800)}`);
-  const state = { url: t.api, token: 'u1', device: 'dev_1', agentId: AGENT, skillId: SKILL, bundleId: BUNDLE, agentV1: v1, agentV2: v2, skillVersionId: skill.id, adminRootToken: 'r'.repeat(30), adminEngToken: 'e'.repeat(30), adminApi: t.adminApi, pid: process.pid };
+  let teamState: Record<string, string> = {};
+  if (WINDOW) {
+    // acme/team-notes: v1.0.0 (what the window installs) and v1.1.0 (what the team re-pins later), so the Team Library says "Update available (pinned by your team)"
+    const v10 = await t.seedSkill('acme/team-notes', { version: '1.0.0' });
+    const v11 = await t.seedSkill('acme/team-notes', { version: '1.1.0' });
+    const TEAM = 'team_' + 'a'.repeat(18);
+    await t.admin.query(`INSERT INTO marketplace_teams(id, name, owner_user_id) VALUES ($1,'Deal team','u1')`, [TEAM]);
+    await t.admin.query(`INSERT INTO marketplace_team_members(team_id, user_id, role) VALUES ($1,'u1','owner'),($1,'u2','member')`, [TEAM]);
+    const assign = async (listingId: string, versionId: string, mode: string) => {
+      const r = await t.call(`/v1/marketplace/teams/${TEAM}/assignments`, { user: 'u1', body: { listingId, versionId, mode } });
+      if (r.status !== 201 && r.status !== 200) throw new Error(`assign ${listingId}: ${r.status} ${JSON.stringify(r.json)}`);
+    };
+    await assign('acme/team-notes', v10.versionId, 'required');   // the test re-pins v1.1.0 after the window installed v1.0.0
+    await assign(AGENT, v1, 'recommended');
+    await assign('acme/dd-checklist', skill.id, 'optional');
+    teamState = { teamId: TEAM, teamNotesV10: v10.versionId, teamNotesV11: v11.versionId };
+  }
+  const state = { ...teamState, url: t.api, token: 'u1', device: 'dev_1', agentId: AGENT, skillId: SKILL, bundleId: BUNDLE, agentV1: v1, agentV2: v2, skillVersionId: skill.id, adminRootToken: 'r'.repeat(30), adminEngToken: 'e'.repeat(30), adminApi: t.adminApi, pid: process.pid };
   if (STATE) { mkdirSync(dirname(resolve(STATE)), { recursive: true }); writeFileSync(STATE, JSON.stringify(state)); }
   console.log(`marketplace agent e2e server: ${t.api} (admin ${t.adminApi})`);
   let stopping = false;
