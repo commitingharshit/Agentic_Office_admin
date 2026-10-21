@@ -23,8 +23,16 @@ if (process.argv.includes('--status')) {
   process.exit(0);
 }
 
+// Files renumbered after some database had already applied them under the old name (same SQL, new prefix): record the new name instead of running them twice.
+const RENAMED: Record<string, string> = { '0029_growth.sql': '0021_growth.sql', '0030_releases_email.sql': '0022_releases_email.sql' };
+
 for (const f of files) {
   if (done.has(f)) continue;
+  if (RENAMED[f] && done.has(RENAMED[f])) {
+    await client.query('INSERT INTO schema_migrations(name) VALUES ($1) ON CONFLICT DO NOTHING', [f]);
+    console.log(`already applied as ${RENAMED[f]}  ${f}`);
+    continue;
+  }
   try {
     await client.query('BEGIN');
     await client.query(readFileSync(join(dir, f), 'utf8'));
