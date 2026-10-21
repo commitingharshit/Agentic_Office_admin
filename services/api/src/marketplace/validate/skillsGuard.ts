@@ -46,7 +46,8 @@ export function createSkillsGuardScanner(opts: SkillsGuardOptions = {}): SkillSc
         const dest = resolve(skillDir, rel);
         if (problem || !dest.startsWith(skillDir + sep)) throw new Error(`unsafe path ${JSON.stringify(rel)}${problem ? ': ' + problem : ''}`);
         await mkdir(dirname(dest), { recursive: true });
-        await writeFile(dest, bytes);
+        // LICENSE/NOTICE/README have no extension, which the scanner would skip: scan them as .txt.
+        await writeFile((rel.split('/').pop() ?? '').includes('.') ? dest : dest + '.txt', bytes);
       }
       const env: Record<string, string> = {
         PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: base, HERMES_HOME: join(base, 'hermes-home'),
@@ -63,7 +64,7 @@ export function createSkillsGuardScanner(opts: SkillsGuardOptions = {}): SkillSc
         child.stdout.on('data', (d: Buffer) => { stdout += d.toString('utf8'); if (stdout.length > MAX_STDOUT && !over) { over = true; kill(); done(new Error('skills scanner output exceeded 1 MiB')); } });
         child.stderr.on('data', (d: Buffer) => { if (stderr.length < 2000) stderr += d.toString('utf8').slice(0, 2000 - stderr.length); });
         child.on('error', (e) => done(new Error(`could not run ${opts.python ?? 'python3'}: ${e.message}`)));
-        child.on('exit', (code) => { if (code === 0) done(null, stdout); else done(new Error(`skills scanner exited ${code}: ${stderr.trim().slice(0, 300)}`)); });
+        child.on('close', (code) => { if (code === 0) done(null, stdout); else done(new Error(`skills scanner exited ${code}: ${stderr.trim().slice(0, 300)}`)); });
       });
       let j: any;
       try { j = JSON.parse(out); } catch { throw new Error('skills scanner printed invalid JSON'); }

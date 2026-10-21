@@ -10,11 +10,28 @@ export type SkillScanner = (files: Map<string, Uint8Array>, name: string) => Pro
 export interface SkillValidatorOptions { scanner?: SkillScanner }
 
 const MAX_LIST = 12;
-const MAX_SKILL_MD = 256 * 1024, MAX_FILES = 500, MAX_FILE = 5 * 1024 * 1024;
+const MAX_SKILL_MD = 256 * 1024, MAX_FILES = 50, MAX_FILE = 5 * 1024 * 1024; // 50 = skills_guard MAX_FILE_COUNT (more is itself a finding)
+const MAX_TEXT = 1024 * 1024, MAX_LINE = 10_000;
 const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const STANDARD_KEYS = new Set(['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools']);
 const EXEC_EXT = /\.(sh|bash|zsh|fish|py|rb|pl|js|mjs|cjs|ts|ps1|bat|cmd|vbs|exe|dll|so|dylib|jar|bin|com|msi|app|command)$/i;
-const SCAN_IGNORE = /(^|\/)\.(skill|clawhub)ignore$/;
+/** Mirror of skills_guard.SCANNABLE_EXTENSIONS (a test compares it with the Python set through skills_scan_cli.py --list-scannable). */
+export const SCANNABLE_EXTENSIONS: ReadonlySet<string> = new Set(['.md', '.txt', '.py', '.sh', '.bash', '.js', '.ts', '.rb', '.yaml', '.yml', '.json', '.toml', '.cfg', '.ini', '.conf', '.html', '.css', '.xml', '.tex', '.r', '.jl', '.pl', '.php']);
+const INERT_MAGIC: Record<string, (b: Uint8Array) => boolean> = {
+  '.png': (b) => starts(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  '.jpg': (b) => starts(b, [0xff, 0xd8, 0xff]), '.jpeg': (b) => starts(b, [0xff, 0xd8, 0xff]),
+  '.gif': (b) => starts(b, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) || starts(b, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]),
+  '.webp': (b) => starts(b, [0x52, 0x49, 0x46, 0x46]) && b.length >= 12 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+  '.pdf': (b) => starts(b, [0x25, 0x50, 0x44, 0x46, 0x2d]), '.ico': (b) => starts(b, [0, 0, 1, 0]),
+  '.woff': (b) => starts(b, [0x77, 0x4f, 0x46, 0x46]), '.woff2': (b) => starts(b, [0x77, 0x4f, 0x46, 0x32]),
+  '.ttf': (b) => starts(b, [0, 1, 0, 0]) || starts(b, [0x74, 0x72, 0x75, 0x65]), '.otf': (b) => starts(b, [0x4f, 0x54, 0x54, 0x4f]),
+};
+function starts(b: Uint8Array, m: number[]): boolean { return b.length >= m.length && m.every((x, i) => b[i] === x); }
+const TEXT_NO_EXT = new Set(['license', 'notice', 'readme']);
+/** Scanner-ignore files: any case, after NFKC (case-insensitive file systems), at any depth. */
+const isIgnoreName = (p: string): boolean => { const b = (p.split('/').pop() ?? '').normalize('NFKC').toLowerCase(); return (b.startsWith('.skill') || b.startsWith('.claw')) && b.includes('ignore'); };
+const HIDDEN_RE = /[\p{Cf}\p{Co}\u{E0000}-\u{E007F}\uFE00-\uFE0F\u00AD\u180E]/u;
+const extOf = (p: string): string => { const b = p.split('/').pop() ?? ''; const i = b.lastIndexOf('.'); return i <= 0 ? '' : b.slice(i).toLowerCase(); };
 
 const ok = (name: string, extra: Partial<ValidationCheck> = {}): ValidationCheck => ({ name, ok: true, ...extra });
 const fail = (name: string, detail: string): ValidationCheck => ({ name, ok: false, detail });
@@ -295,7 +312,7 @@ export function createSkillValidator(opts: SkillValidatorOptions = {}) {
       checks.push(fail('payload-shape', shape.join('; ')));
       for (const n of ['skill-md-present', 'frontmatter', 'references-resolve']) checks.push(skip(n, 'payload-shape failed'));
       checks.push(checkSizes('SKILL.md', pkg.files));
-      checks.push(skip('no-hidden-executables', 'payload-shape failed'), skip('no-scan-ignore-files', 'payload-shape failed'), skip('permissions-declared', 'payload-shape failed'));
+      checks.push(skip('file-policy', 'payload-shape failed'), skip('hidden-unicode', 'payload-shape failed'), skip('no-hidden-executables', 'payload-shape failed'), skip('no-scan-ignore-files', 'payload-shape failed'), skip('permissions-declared', 'payload-shape failed'));
       checks.push(skip('security-scan', 'payload-shape failed', { required: true }));
       return checks;
     }
@@ -340,18 +357,40 @@ export function createSkillValidator(opts: SkillValidatorOptions = {}) {
     if (scripts.length) detail.push(`scripts: ${list(scripts)}`);
     if (hidden.length) detail.push(`warning: executable-looking files outside scripts/: ${list(hidden)}`);
     checks.push(ok('no-hidden-executables', detail.length ? { detail: detail.join('; ') } : {}));
-    const ignoreFiles = [...pkg.files.keys()].filter((f) => SCAN_IGNORE.test(f));
+    const ignoreFiles = [...pkg.files.keys()].filter(isIgnoreName);
     checks.push(ignoreFiles.length ? fail('no-scan-ignore-files', `${list(ignoreFiles)}: a skill must not ship a scanner ignore file (it would hide files from the security scan)`) : ok('no-scan-ignore-files'));
     if (scripts.length && !pkg.manifest.permissions.some((x) => x.capability === 'exec.script'))
       checks.push(fail('permissions-declared', `the package ships scripts (${list(scripts)}) but the manifest does not declare the exec.script permission`));
     else checks.push(ok('permissions-declared'));
+
+    // file policy: only what the scanner actually reads (or inert binaries), strictly UTF-8, bounded lines, no hidden Unicode
+    const policy: string[] = [], hidden2: string[] = [];
+    for (const [f, b] of pkg.files) {
+      const base = f.split('/').pop() ?? '', ext = extOf(f);
+      if (isIgnoreName(f)) continue; // reported by no-scan-ignore-files
+      if (INERT_MAGIC[ext]) {
+        if (b.length > MAX_FILE) policy.push(`${f}: over the ${MAX_FILE} byte cap`);
+        else if (!INERT_MAGIC[ext](b)) policy.push(`${f}: contents do not match the magic bytes of a ${ext} file`);
+        continue;
+      }
+      if (ext === '') { if (!TEXT_NO_EXT.has(base.toLowerCase())) { policy.push(`${f}: files without an extension are not allowed (only LICENSE, NOTICE, README)`); continue; } }
+      else if (!SCANNABLE_EXTENSIONS.has(ext)) { policy.push(`${f}: extension ${ext} is not allowed (the security scanner would not read it)`); continue; }
+      if (b.length > MAX_TEXT) { policy.push(`${f}: over the ${MAX_TEXT} byte cap for text files`); continue; }
+      let text: string;
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(b); } catch { policy.push(`${f}: not valid UTF-8 (the security scanner skips such files)`); continue; }
+      if (text.split('\n').some((l) => l.length > MAX_LINE)) policy.push(`${f}: a line is longer than ${MAX_LINE} characters`);
+      const m = HIDDEN_RE.exec(text);
+      if (m) hidden2.push(`${f}: U+${m[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`);
+    }
+    checks.push(policy.length ? fail('file-policy', list(policy)) : ok('file-policy'));
+    checks.push(hidden2.length ? fail('hidden-unicode', list(hidden2)) : ok('hidden-unicode'));
 
     // security-scan (required)
     if (!opts.scanner) checks.push(skip('security-scan', 'no scanner configured', { required: true }));
     else {
       try {
         const r = await opts.scanner(pkg.files, name);
-        if (r.verdict === 'safe') checks.push(ok('security-scan'));
+        if (r.verdict === 'safe' && r.findings.length === 0) checks.push(ok('security-scan'));
         else checks.push(fail('security-scan', `verdict ${r.verdict}; ${r.findings.length} finding(s): ` + list(r.findings.map((f) => `${f.category}/${f.severity} ${f.file}${f.line ? ':' + f.line : ''}${f.match ? ' ' + q(f.match) : ''}`))));
       } catch (e) {
         checks.push(fail('security-scan', `scanner failed: ${e instanceof Error ? e.message : String(e)}`));
