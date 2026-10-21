@@ -137,6 +137,17 @@ result for the version's current sha to be `pass` (409 `verification_required` /
 `incomplete` plus `acknowledgeIncomplete` text recorded in `admin_audit` (`marketplace.approve_incomplete`). A
 separate DB trigger (`marketplace_verification_gate`) enforces the same, composing with the 0016/0018/0019 guards.
 
+Skill pipeline (`src/marketplace/verify/stages/skill/`, pipeline `skill-static` v1): stages `manifest`, `spec` (the
+existing skill validator minus its scan), `references`, `scan` (Skills Guard; absent scanner is `skipped`, so the
+verdict is `incomplete`), `permissions-consistency` (scripts need `exec.script`, network code or URLs in code need
+`network`, env or secret reads need `secrets.use`), then advisory `tool-grounding` and `trigger-proxy`, which are
+honest skips today. `main.ts` registers it and passes the scanner as `verifyTools` to both handlers. **Enabling the
+gate for skills** (a deployment decision, off by default): as the owner role run
+`UPDATE marketplace_settings SET verification_required_types = verification_required_types || '{skill}';`.
+Then a creator's private/team auto-publish runs the pipeline server-side and stores the result (`run_by`
+`creator:<uid>`) before the state change: `pass` publishes, `fail` is `rejected`, `incomplete` stays `submitted`;
+no registered pipeline or a pipeline crash never publishes. Admin approval of public skills follows the gate above.
+
 Analytics are computed from rows only. Metrics this release does not collect (`invocations`,
 `workflow_completions`, `first_use_activation`) are listed in `notCollected`, and `telemetryCoverage`
 reports devices with install rows against devices known, so partial telemetry is visible as partial.
