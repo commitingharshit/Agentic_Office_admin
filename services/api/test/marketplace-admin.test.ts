@@ -419,7 +419,7 @@ describe('marketplace admin API (real Postgres)', { skip }, () => {
     const alpha = all.json.items.find((i: any) => i.id === 'cat/alpha');
     assert.deepEqual({ ...alpha, updatedAt: undefined }, {
       id: 'cat/alpha', name: 'Alpha catalog', type: 'skill', publisher: 'cat', visibility: 'public', trust: 'community', state: 'submitted', latestVersion: '1.1.0', latestVersionId: 'cv_a2',
-      installs: 2, activeInstalls: 1, ratingAvg: 4.5, ratingCount: 2, updatedAt: undefined, scanVerdict: 'pending' });
+      installs: 2, activeInstalls: 1, ratingAvg: 4.5, ratingCount: 2, updatedAt: undefined, scanVerdict: 'pending', riskTier: null, manualReview: false });
     assert.equal(typeof alpha.updatedAt, 'string');
     const gamma = all.json.items.find((i: any) => i.id === 'cat/gamma');
     assert.equal(gamma.ratingAvg, null); assert.equal(gamma.ratingCount, 0); assert.equal(gamma.state, null); assert.equal(gamma.latestVersion, null); assert.equal(gamma.installs, 0);
