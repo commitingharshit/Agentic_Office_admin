@@ -43,7 +43,7 @@ before(() => { unregisterPipelineForTest('skill'); registerSkillPipeline(); });
 
 describe('skill pipeline: corpus (real Skills Guard)', () => {
   test('stage list is explicit and starts with manifest', () => {
-    assert.deepEqual(createSkillPipeline().stages.map((s) => s.id), ['manifest', 'spec', 'references', 'scan', 'permissions-consistency', 'tool-grounding', 'trigger-proxy']);
+    assert.deepEqual(createSkillPipeline().stages.map((s) => s.id), ['manifest', 'spec', 'references', 'scan', 'permissions-consistency', 'tool-grounding', 'trigger-proxy', 'task-evals']);
   });
   test('all 12 benign skills pass (incomplete only if python3/scanner is absent); results carry no score', async () => {
     assert.equal(benign.length, 12);

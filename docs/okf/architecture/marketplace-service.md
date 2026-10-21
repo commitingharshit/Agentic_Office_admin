@@ -137,16 +137,38 @@ result for the version's current sha to be `pass` (409 `verification_required` /
 `incomplete` plus `acknowledgeIncomplete` text recorded in `admin_audit` (`marketplace.approve_incomplete`). A
 separate DB trigger (`marketplace_verification_gate`) enforces the same, composing with the 0016/0018/0019 guards.
 
-Skill pipeline (`src/marketplace/verify/stages/skill/`, pipeline `skill-static` v1): stages `manifest`, `spec` (the
+Skill pipeline (`src/marketplace/verify/stages/skill/`, pipeline `skill-static` v2): stages `manifest`, `spec` (the
 existing skill validator minus its scan), `references`, `scan` (Skills Guard; absent scanner is `skipped`, so the
 verdict is `incomplete`), `permissions-consistency` (scripts need `exec.script`, network code or URLs in code need
 `network`, env or secret reads need `secrets.use`), then advisory `tool-grounding` and `trigger-proxy`, which are
-honest skips today. `main.ts` registers it and passes the scanner as `verifyTools` to both handlers. **Enabling the
+honest skips today, then the opt-in `task-evals` (next paragraph). `main.ts` registers it and passes the scanner as `verifyTools` to both handlers. **Enabling the
 gate for skills** (a deployment decision, off by default): as the owner role run
 `UPDATE marketplace_settings SET verification_required_types = verification_required_types || '{skill}';`.
 Then a creator's private/team auto-publish runs the pipeline server-side and stores the result (`run_by`
 `creator:<uid>`) before the state change: `pass` publishes, `fail` is `rejected`, `incomplete` stays `submitted`;
 no registered pipeline or a pipeline crash never publishes. Admin approval of public skills follows the gate above.
+
+Skill task evaluations (`stages/skill/taskEvals.ts`, `taskCheckers.ts`, `taskSchema.ts`; sandboxed half
+`verify/worker/taskeval.mjs`, runners `verify/worker/taskevalTools.ts`; fixtures and runner under
+`services/accounts-sync/evals/skill-tasks/` and `evals/run-skill-tasks.ts`). A skill declares up to 5 example tasks in
+`evals/tasks.json` (text-only skill packages, so input and expected files travel as sha256-pinned base64). The stage runs
+each task through `PipelineTools.hermes.runTask` and judges the produced files with deterministic checkers only
+(`functional`, `integrity`, `render`, `fidelity`, `diff`, `regression`; no LLM judge, no score). Semantics: with no runner
+configured the stage is `skipped: not-enabled`; no declaration is `skipped: no-evals-declared`; no containment is
+`skipped: sandbox-unavailable` (no skill code runs); a check whose tool is missing is `skipped`, never `pass`; a timeout,
+non-zero exit, output cap or failed check is `fail` with bounded evidence. The stage is NON-required by default, so a skip
+does not change the verdict; `createSkillPipeline({ taskEvals: { required: true } })` (the type's verification policy)
+makes the skip `incomplete`. A skill that passes every static stage but fails its task evals is `fail` either way, so it
+is never verified. Runners: the scripted runner (a function stands in for the model; the skill's own commands run for real
+in the Task 5 sandbox: network denied, writes jailed to the workdir, env scrubbed, credential directories unreadable,
+rlimits, per-step output cap, process-group kill) is deterministic and is what tests use. The Hermes runner
+(`VERIFY_TASK_EVALS=real`, keys named in `VERIFY_TASK_EVALS_PASS_ENV`, one `hermes -z` in a throwaway `HERMES_HOME`) is
+manual only and never a CI gate: the sandbox can only allow or deny the network wholesale, so in that mode the network is
+OPEN (documented, not contained) while writes stay jailed. macOS cannot nest `sandbox-exec`, so inside the verifier worker
+child the runner executes under that child's own profile and the real runner cannot reach a model there; the default
+worker therefore reports `not-enabled` until an operator supplies a `VERIFY_TOOLS_MODULE` that provides a runner. Not
+bounded: total disk written by a hostile step before the wall clock ends (per-file `ulimit -f` and the 60 s default only),
+Linux containment (needs `unshare`, the write jail is macOS-only), and an unbounded fork bomb (tested bounded at 150 forks).
 
 Analytics are computed from rows only. Metrics this release does not collect (`invocations`,
 `workflow_completions`, `first_use_activation`) are listed in `notCollected`, and `telemetryCoverage`
