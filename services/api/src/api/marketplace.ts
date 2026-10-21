@@ -13,6 +13,8 @@ import { BadQuery, parseListParams } from '../marketplace/search.ts';
 import * as store from '../marketplace/store.ts';
 import { typeSupport } from '../marketplace/support.ts';
 import { checkNoLiteralSecrets } from '../marketplace/validate/advanced-common.ts';
+import { sha256Hex } from '../marketplace/artifacts.ts';
+import { latestVerification, toView } from '../marketplace/verifyStore.ts';
 import { HttpError, json } from './sync.ts';
 
 export interface MarketplaceDeps {
@@ -357,6 +359,32 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (!a) throw notFound();
         res.writeHead(200, { 'content-type': 'application/zip', 'content-length': a.bytes.length, 'x-content-sha256': a.sha256, 'cache-control': 'private, no-store' });
         res.end(Buffer.from(a.bytes.buffer, a.bytes.byteOffset, a.bytes.byteLength));
+        return true;
+      }
+
+      // ── verification result for a version: the same visibility as the version itself (RLS), and ONE uniform 404 for "no such
+      //    version", "not visible to you" and "visible but never verified", so the status code is no existence oracle.
+      const vm = /^versions\/([^/]+)\/verification(?:\/evidence\/([^/]+))?$/.exec(rest);
+      if (vm && m === 'GET') {
+        const vid = vm[1], blobSha = vm[2];
+        if (!OPAQUE_ID.test(vid) || (blobSha !== undefined && !/^[0-9a-f]{64}$/.test(blobSha))) throw notFound();
+        const access = await q((c) => store.versionAccess(c, vid, signedIn));
+        if (access === 'missing') throw notFound();
+        if (access === 'gone') throw new HttpError(410, 'This version was withdrawn.');
+        if (blobSha === undefined) {
+          const sv = await q((c) => latestVerification(c, vid));
+          if (!sv) throw notFound();
+          return send(200, toView(sv)), true;
+        }
+        // evidence: only a blob referenced by a verification row the caller can see; never listed, never guessed
+        const row = (await q((c) => c.query('SELECT stages FROM marketplace_verifications WHERE version_id = $1 AND $2 = ANY(evidence_shas) ORDER BY seq DESC LIMIT 1', [vid, blobSha]))).rows[0];
+        const mime = row ? (row.stages as any[]).flatMap((st) => st.evidence ?? []).find((e: any) => e.blob?.sha256 === blobSha)?.blob?.mime : undefined;
+        if (!mime) throw notFound();
+        const bytes = await heavy.run(() => deps.store.get(blobSha));
+        if (!bytes || sha256Hex(bytes) !== blobSha) throw notFound();
+        res.writeHead(200, { 'content-type': mime, 'content-length': bytes.byteLength, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; sandbox", 'content-disposition': 'attachment' });
+        res.end(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
         return true;
       }
 

@@ -14,6 +14,10 @@ import { INSTALL_STATES } from '../marketplace/store.ts';
 import { TYPE_POLICY, maxTier, trustAtLeast } from '../marketplace/support.ts';
 import { LISTING_TYPES, type ListingType, type ValidationReport, type UnpackedPackage, type VersionState, type Visibility } from '../marketplace/types.ts';
 import { validateArtifact } from '../marketplace/validate/index.ts';
+import { storeEvidenceSink } from '../marketplace/verify/evidence.ts';
+import { runPipeline } from '../marketplace/verify/runner.ts';
+import { MAX_RESULT_BYTES, type PipelineTools } from '../marketplace/verify/types.ts';
+import { checkApprovalGate, latestVerification, normaliseResult, recordVerification, validateAgainstVersion, VerificationError, toView } from '../marketplace/verifyStore.ts';
 
 export interface MarketplaceAdminDeps {
   /** ao_admin. The only pool this module touches. */
@@ -29,6 +33,8 @@ export interface MarketplaceAdminDeps {
   maxSubmissionBytes?: number;
   /** False while the skill scanner is unavailable (startup self-check): skill submissions answer 503 scanner_unavailable. */
   scannerOk?: () => boolean;
+  /** Tools the in-process verification run may use (light stages only; heavy stages belong to the out-of-process worker, which POSTs its result to .../verification). Absent tools make their stages 'skipped'. */
+  verifyTools?: PipelineTools;
 }
 
 export class ApiError extends Error {
@@ -119,8 +125,8 @@ async function readBytes(req: IncomingMessage, max: number): Promise<Buffer> {
   }
   return Buffer.concat(chunks);
 }
-async function jsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const b = await readBytes(req, MAX_JSON);
+async function jsonBody(req: IncomingMessage, max = MAX_JSON): Promise<Record<string, unknown>> {
+  const b = await readBytes(req, max);
   if (!b.length) return {};
   let d: unknown;
   try { d = JSON.parse(b.toString('utf8')); } catch { throw fail(400, 'bad_request', 'Body is not JSON.'); }
@@ -325,6 +331,15 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
         if (sub?.actor === adminId) throw fail(409, 'self_review', 'You submitted this version; another admin must approve and publish it.');
       }
       if (NEEDS_SCAN.has(action)) await requireScan(c, versionId);
+      if (NEEDS_SCAN.has(action)) {
+        // Verification gate: a failed, missing or (unacknowledged) incomplete verification of THIS artifact blocks approval and publication.
+        const rawAck = body.acknowledgeIncomplete;
+        if (rawAck !== undefined && (typeof rawAck !== 'string' || !rawAck.trim() || rawAck.length > 500)) throw fail(400, 'bad_request', 'acknowledgeIncomplete must be a non-empty string of at most 500 characters.');
+        let gate;
+        try { gate = await checkApprovalGate(c, { id: versionId, sha256: v.sha256, type: String(v.manifest?.type) }, typeof rawAck === 'string' ? rawAck.trim() : undefined); }
+        catch (e) { if (e instanceof VerificationError) throw fail(e.status, e.code, e.message, e.extra); throw e; }
+        if (gate.ackFor) await audit(c, adminId, 'approve_incomplete', null, { listingId: v.listing_id, versionId, verificationId: gate.ackFor, sha256: v.sha256, acknowledgement: (rawAck as string).trim() });
+      }
       try { await c.query('UPDATE marketplace_versions SET state = $2 WHERE id = $1', [versionId, to]); }
       catch (e: any) { if (typeof e?.code === 'string' && e.code.startsWith('23')) throw fail(409, 'invalid_transition', 'The database refused that transition (the version is immutable once published).'); throw e; }
       let madePublic = false;
@@ -382,6 +397,56 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       await c.query('UPDATE marketplace_versions SET scan_verdict = $2 WHERE id = $1', [versionId, verdict]);
       await audit(c, adminId, 'rescan', null, { listingId: v.listing_id, versionId, ok: report.ok, verified, verdict });
       return { versionId, listingId: v.listing_id, state: v.state as string, validation: { ok: report.ok, verified, checks: report.checks } };
+    });
+  }
+
+  // ── verification (Plan 4 Task 2)
+  const MAX_RUNS_PER_MINUTE = 6;
+  const recentRuns = new Map<string, number[]>();
+  async function versionForVerify(c: Client | pg.Pool, versionId: string) {
+    const v = (await c.query(`SELECT v.id, v.listing_id, v.sha256, v.state, l.type FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id WHERE v.id = $1`, [versionId])).rows[0];
+    if (!v) throw fail(404, 'not_found', 'No such version.');
+    return v as { id: string; listing_id: string; sha256: string; state: string; type: string };
+  }
+  const wrapV = async <T>(fn: () => Promise<T>): Promise<T> => { try { return await fn(); } catch (e) { if (e instanceof VerificationError) throw fail(e.status, e.code, e.message, e.extra); throw e; } };
+  /** A result produced elsewhere (the verifier worker). Strictly validated and bound to this version's artifact; the verdict is recomputed. */
+  async function recordResult(adminId: string, versionId: string, raw: Record<string, unknown>) {
+    return wrapV(() => tx(async (c) => {
+      const v = await versionForVerify(c, versionId);
+      const n = normaliseResult(raw);
+      await validateAgainstVersion(c, deps.store, n, { sha256: v.sha256, type: v.type });
+      const rec = await recordVerification(c, versionId, n, adminId);
+      if (!rec.duplicate) await audit(c, adminId, 'verification_record', null, { listingId: v.listing_id, versionId, verificationId: rec.id, verdict: n.result.verdict, sha256: v.sha256 });
+      return { verificationId: rec.id, duplicate: rec.duplicate, verdict: n.result.verdict };
+    }));
+  }
+  /** Runs the registered pipeline now, on the STORED bytes, and records the result. Admin re-run request. */
+  async function runVerification(adminId: string, versionId: string) {
+    const now = Date.now(), runs = (recentRuns.get(adminId) ?? []).filter((t) => now - t < 60_000);
+    if (runs.length >= MAX_RUNS_PER_MINUTE) throw fail(429, 'rate_limited', 'Too many verification runs; try again in a minute.');
+    recentRuns.set(adminId, [...runs, now]);
+    const v = await versionForVerify(pool, versionId);
+    const bytes = await deps.store.get(v.sha256);
+    if (!bytes) throw fail(409, 'artifact_missing', 'The stored artifact is missing.');
+    let pkg: UnpackedPackage;
+    try { pkg = unpack(bytes); } catch (e) { if (e instanceof UnpackError) throw fail(409, 'artifact_unreadable', e.message); throw e; }
+    const result = await runPipeline(v.type as ListingType, pkg, deps.verifyTools ?? {}, { subjectSha256: v.sha256, evidence: storeEvidenceSink(deps.store), env: {} });
+    return wrapV(() => tx(async (c) => {
+      const cur = await versionForVerify(c, versionId);
+      if (cur.sha256 !== v.sha256) throw fail(409, 'invalid_state', 'The version changed while it was being verified.');
+      const n = normaliseResult(JSON.parse(JSON.stringify(result)));
+      const rec = await recordVerification(c, versionId, n, adminId);
+      await audit(c, adminId, 'verify', null, { listingId: v.listing_id, versionId, verificationId: rec.id, verdict: result.verdict, sha256: v.sha256 });
+      return { verificationId: rec.id, duplicate: rec.duplicate, verdict: result.verdict };
+    }));
+  }
+  async function readVerification(adminId: string, versionId: string) {
+    return read(adminId, 'view_verification', null, { versionId }, async (c) => {
+      await versionForVerify(c, versionId);
+      const s = await latestVerification(c, versionId);
+      const history = (await c.query('SELECT id, sha256, verdict, pipeline, pipeline_version, finished_at FROM marketplace_verifications WHERE version_id = $1 ORDER BY seq DESC LIMIT 50', [versionId])).rows;
+      return { verification: s ? { id: s.id, ...toView(s) } : null,
+        history: history.map((h) => ({ id: h.id, artifactSha256: h.sha256, verdict: h.verdict, pipeline: h.pipeline, pipelineVersion: h.pipeline_version, at: new Date(h.finished_at).toISOString() })) };
     });
   }
 
@@ -723,6 +788,9 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
         need(ACTION_PERMISSION[action]);
         return send(200, await act(adminId, role, vid(id), action, await jsonBody(req))), true;
       }
+      if (a === 'versions' && id && sub === 'verify' && m === 'POST') { need('marketplace.review'); return send(200, await runVerification(adminId, vid(id))), true; }
+      if (a === 'versions' && id && sub === 'verification' && m === 'POST') { need('marketplace.review'); return send(200, await recordResult(adminId, vid(id), await jsonBody(req, MAX_RESULT_BYTES))), true; }
+      if (a === 'versions' && id && sub === 'verification' && m === 'GET') { need('marketplace.read'); return send(200, await readVerification(adminId, vid(id))), true; }
       if (a === 'versions' && id && sub === 'rescan' && m === 'POST') { need('marketplace.write'); return send(200, await rescan(adminId, vid(id))), true; }
       if (a === 'installations' && !id && m === 'GET') { need('marketplace.read'); return send(200, await installations(adminId, sp)), true; }
       if (a === 'users' && id && sub === 'installs' && m === 'GET') { need('marketplace.read'); return send(200, await userInstalls(adminId, vid(id))), true; }

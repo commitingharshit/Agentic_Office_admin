@@ -221,4 +221,20 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
     assert.ok(!st.rows.some((r) => r.listing_id === 'pa/secret'), 'mismatched listing/version row is not returned');
     assert.ok(st.rows.some((r) => r.version_id === 'v_other' && r.state === 'revoked'), 'legit revoked install still reported');
   });
+
+  test('verifications: readable exactly where the version is, never writable or alterable by ao_app, settings read-only', async () => {
+    await owner.query(`INSERT INTO marketplace_verifications(id, version_id, sha256, pipeline, pipeline_version, verdict, stages, result_sha256, started_at, finished_at, run_by) VALUES
+      ('vr_open','v_open','${SHA('a')}','p',1,'pass','[]','${SHA('1')}',now(),now(),'x'), ('vr_secret','v_secret','${SHA('a')}','p',1,'fail','[]','${SHA('2')}',now(),now(),'x')`);
+    for (const u of ['u1', 'u2']) await asUser(u, async () => {
+      const vis = (await app.query(`SELECT id FROM marketplace_versions`)).rows.map((x) => x.id);
+      const got = (await app.query(`SELECT version_id FROM marketplace_verifications`)).rows.map((x) => x.version_id).sort();
+      assert.deepEqual(got, [...vis].filter((id) => id === 'v_open' || id === 'v_secret').sort(), u);   // exactly the versions the user can see
+      if (u === 'u2') assert.ok(!got.includes('v_secret'));
+    });
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_verifications SET verdict = 'pass'`)), /permission denied/);
+    await assert.rejects(asUser('u1', () => app.query(`DELETE FROM marketplace_verifications`)), /permission denied/);
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_settings SET verification_required_types = '{}'`)), /permission denied/);
+    await assert.rejects(admin.query(`UPDATE marketplace_settings SET verification_required_types = '{}'`), /permission denied/);
+    await assert.rejects(app.query(`SELECT marketplace_verification_gate()`), /permission denied|trigger/);
+  });
 });
