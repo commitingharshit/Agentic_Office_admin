@@ -19,7 +19,7 @@ export interface MarketplaceAdminDeps {
   admin: pg.Pool;
   /** admin.ts's authenticate: resolves the bearer token to an admin id, or throws an error with a `status` (401/403). */
   authenticate(req: IncomingMessage): Promise<string>;
-  /** The acting admin's role. Default: every authenticated admin is a superadmin (admin.ts has no roles yet). */
+  /** The acting admin's role. FAILS CLOSED: without it every admin is an 'analyst' (read-only) until roles are configured (AO_MARKETPLACE_ROLES in main.ts). */
   roleOf?(adminId: string): AdminRole | Promise<AdminRole>;
   store: ArtifactStore;
   /** Validation with the real injected scanner/renderers; defaults to the global registry (validate/index.ts). */
@@ -29,10 +29,10 @@ export interface MarketplaceAdminDeps {
 }
 
 export class ApiError extends Error {
-  readonly status: number; readonly code: string;
-  constructor(status: number, code: string, message: string) { super(message); this.status = status; this.code = code; }
+  readonly status: number; readonly code: string; readonly extra?: Record<string, unknown>;
+  constructor(status: number, code: string, message: string, extra?: Record<string, unknown>) { super(message); this.status = status; this.code = code; this.extra = extra; }
 }
-const fail = (status: number, code: string, message: string) => new ApiError(status, code, message);
+const fail = (status: number, code: string, message: string, extra?: Record<string, unknown>) => new ApiError(status, code, message, extra);
 
 // ───────────────────────────────────────────── the lifecycle state machine
 
@@ -182,7 +182,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
   }
 
   // ── submissions
-  async function submit(adminId: string, req: IncomingMessage, sp: URLSearchParams) {
+  async function submit(adminId: string, role: AdminRole, req: IncomingMessage, sp: URLSearchParams) {
     const ct = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
     if (ct !== 'application/zip') throw fail(415, 'unsupported_media_type', 'Send the package as application/zip.');
     const visibility = oneOf(sp.get('visibility'), VISIBILITIES, 'visibility') ?? 'public';
@@ -210,21 +210,31 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
 
     try {
       await tx(async (c) => {
-        const ex = (await c.query('SELECT type, owner_user_id FROM marketplace_listings WHERE id = $1 FOR UPDATE', [m.id])).rows[0];
+        // serialize submissions of the same listing id (two first submissions of a new id would otherwise race on the listing insert)
+        await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [m.id]);
+        const ex = (await c.query('SELECT type, owner_user_id, visibility FROM marketplace_listings WHERE id = $1 FOR UPDATE', [m.id])).rows[0];
         if (ex && ex.type !== m.type) throw fail(409, 'type_mismatch', `${m.id} already exists as a ${ex.type}, not a ${m.type}.`);
         let owner: string;
         if (ex) owner = ex.owner_user_id;
         else {
           let pub = (await c.query('SELECT owner_user_id FROM marketplace_publishers WHERE id = $1', [publisherId])).rows[0];
           if (!pub) {
+            // Separation of duties / anti-squatting: only a superadmin creates a publisher, and only for a package that validated.
+            // (An auto-rejected package under an unknown publisher is not recorded: it would need a publisher row to hang on.)
+            if (role !== 'superadmin' || !report.ok) {
+              throw fail(400, 'unknown_publisher', role !== 'superadmin' ? `Publisher ${publisherId} does not exist; only a superadmin can create one.` : `Publisher ${publisherId} does not exist and the package failed validation.`,
+                { validation: { ok: report.ok, verified, checks: report.checks } });
+            }
             await ensureUser(c, SYSTEM_USER);
-            await c.query('INSERT INTO marketplace_publishers(id, display_name, owner_user_id, verified) VALUES ($1,$2,$3,false)', [publisherId, publisherId, SYSTEM_USER]);
-            pub = { owner_user_id: SYSTEM_USER };
+            await c.query('INSERT INTO marketplace_publishers(id, display_name, owner_user_id, verified) VALUES ($1,$2,$3,false) ON CONFLICT (id) DO NOTHING', [publisherId, publisherId, SYSTEM_USER]);
+            pub = { owner_user_id: (await c.query('SELECT owner_user_id FROM marketplace_publishers WHERE id = $1', [publisherId])).rows[0].owner_user_id };
           }
           owner = pub.owner_user_id;
           if (teamId && !(await c.query('SELECT 1 FROM marketplace_teams WHERE id = $1', [teamId])).rowCount) throw fail(404, 'not_found', 'Unknown team.');
           await c.query(
             `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, team_id, trust, title, summary) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            // Trust is only ever derived from the publisher row (verified/official), which only a superadmin can create or change
+            // (POST publishers; new publishers start unverified). A submission can therefore never raise its own trust.
             [m.id, m.type, publisherId, owner, visibility, visibility === 'team' ? teamId : null, await publisherTrust(c, publisherId), m.title, m.summary]);
         }
         if (ex && sp.has('visibility')) {
@@ -251,10 +261,11 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
           await c.query('INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,$3,$4,$5)',
             [m.id, versionId, 'rejected', adminId, JSON.stringify({ reason: 'automatic: validation failed', failed: report.checks.filter((k) => !k.ok).map((k) => k.name) })]);
         }
-        await audit(c, adminId, 'submit', null, { listingId: m.id, versionId, version: m.version, type: m.type, state, ok: report.ok, verified, sha256: stored.sha256, size: stored.size, visibility });
+        await audit(c, adminId, 'submit', null, { listingId: m.id, versionId, version: m.version, type: m.type, state, ok: report.ok, verified, sha256: stored.sha256, size: stored.size, visibility,
+          ...(ex && sp.has('visibility') && ex.visibility !== visibility ? { previousVisibility: ex.visibility } : {}) });
       });
     } catch (e: any) {
-      if (e?.code === '23505') throw fail(409, 'version_exists', `${m.id} ${m.version} already exists.`);
+      if (e?.code === '23505' && e?.constraint === 'marketplace_versions_listing_id_version_key') throw fail(409, 'version_exists', `${m.id} ${m.version} already exists.`);
       throw e;
     }
     return { status: 201, body: { listingId: m.id, versionId, state, validation: { ok: report.ok, verified, checks: report.checks } } };
@@ -270,12 +281,17 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     if (s.findings?.ok !== true || s.verdict === 'blocked') throw fail(409, 'scan_failed', 'The latest security scan failed.');
     if (s.findings?.verified !== true) throw fail(409, 'scan_required', 'The latest scan is not verified (a required check, such as the skill security scan, did not run).');
   }
-  async function act(adminId: string, versionId: string, action: Action, body: Record<string, unknown>) {
+  async function act(adminId: string, role: AdminRole, versionId: string, action: Action, body: Record<string, unknown>) {
     const reason = reasonOf(body.reason, NEEDS_REASON.has(action));
     return tx(async (c) => {
       const v = (await c.query('SELECT id, listing_id, version, state, manifest FROM marketplace_versions WHERE id = $1 FOR UPDATE', [versionId])).rows[0];
       if (!v) throw fail(404, 'not_found', 'No such version.');
       const to = transition(v.state, action);
+      if ((action === 'approve' || action === 'publish') && role !== 'superadmin') {
+        // separation of duties: whoever submitted a version cannot approve or publish it (a superadmin can)
+        const sub = (await c.query(`SELECT actor FROM marketplace_release_events WHERE version_id = $1 AND event = 'submitted' ORDER BY id LIMIT 1`, [versionId])).rows[0];
+        if (sub?.actor === adminId) throw fail(409, 'self_review', 'You submitted this version; another admin must approve and publish it.');
+      }
       if (NEEDS_SCAN.has(action)) await requireScan(c, versionId);
       try { await c.query('UPDATE marketplace_versions SET state = $2 WHERE id = $1', [versionId, to]); }
       catch (e: any) { if (typeof e?.code === 'string' && e.code.startsWith('23')) throw fail(409, 'invalid_transition', 'The database refused that transition (the version is immutable once published).'); throw e; }
@@ -286,7 +302,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const subState = action === 'claim' ? 'in_review' : action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : null;
       if (subState) {
         await c.query(`UPDATE marketplace_submissions SET state = $2::text, decided_at = CASE WHEN $2::text = 'in_review' THEN NULL ELSE now() END, notes = coalesce($3, notes)
-                       WHERE version_id = $1 AND state IN ('submitted','in_review')`, [versionId, subState, reason]);
+                       WHERE version_id = $1 AND state IN ('submitted','in_review','approved')`, [versionId, subState, reason]);
       }
       await c.query('INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,$3,$4,$5)',
         [v.listing_id, versionId, EVENT[action], adminId, JSON.stringify({ reason, from: v.state, to })]);
@@ -594,23 +610,24 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     };
     try {
       const adminId = await deps.authenticate(req);
-      const role: AdminRole = deps.roleOf ? await deps.roleOf(adminId) : 'superadmin';
+      const role: AdminRole = deps.roleOf ? await deps.roleOf(adminId) : 'analyst';
       const need = (p: MarketplacePermission) => { if (!can(role, p)) throw fail(403, 'forbidden', `Your role (${role}) does not have ${p}.`); };
       let parts: string[];
       try { parts = url.pathname.slice('/admin/marketplace'.length).split('/').filter(Boolean).map(decodeURIComponent); } catch { throw fail(400, 'bad_request', 'Malformed path.'); }
       const m = req.method ?? 'GET';
+      if (parts.length > 3) throw fail(404, 'not_found', 'Not found.');
       const [a, id, sub] = parts;
       const sp = url.searchParams;
       const vid = (v: string) => { if (!OPAQUE_ID.test(v)) throw fail(404, 'not_found', 'Not found.'); return v; };
 
-      if (a === 'submissions' && !id && m === 'POST') { need('marketplace.write'); const r = await submit(adminId, req, sp); return send(r.status, r.body), true; }
+      if (a === 'submissions' && !id && m === 'POST') { need('marketplace.write'); const r = await submit(adminId, role, req, sp); return send(r.status, r.body), true; }
       if (a === 'submissions' && !id && m === 'GET') { need('marketplace.read'); return send(200, await queue(adminId, sp)), true; }
       if (a === 'catalog' && !id && m === 'GET') { need('marketplace.read'); return send(200, await catalog(adminId, sp)), true; }
       if (a === 'versions' && id && !sub && m === 'GET') { need('marketplace.read'); return send(200, await versionDetail(adminId, vid(id))), true; }
       if (a === 'versions' && id && sub && m === 'POST' && (ACTIONS as readonly string[]).includes(sub)) {
         const action = sub as Action;
         need(ACTION_PERMISSION[action]);
-        return send(200, await act(adminId, vid(id), action, await jsonBody(req))), true;
+        return send(200, await act(adminId, role, vid(id), action, await jsonBody(req))), true;
       }
       if (a === 'installations' && !id && m === 'GET') { need('marketplace.read'); return send(200, await installations(adminId, sp)), true; }
       if (a === 'users' && id && sub === 'installs' && m === 'GET') { need('marketplace.read'); return send(200, await userInstalls(adminId, vid(id))), true; }
@@ -627,7 +644,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       if (a === 'analytics' && !id && m === 'GET') { need('marketplace.read'); return send(200, await analytics(adminId, sp)), true; }
       throw fail(404, 'not_found', 'Not found.');
     } catch (e: any) {
-      if (e instanceof ApiError) send(e.status, { error: e.message, code: e.code });
+      if (e instanceof ApiError) send(e.status, { error: e.message, code: e.code, ...(e.extra ?? {}) });
       else if (typeof e?.status === 'number' && e.status < 500) send(e.status, { error: e.message });   // admin.ts HttpError (401/403/413/400)
       else { console.error(e); send(500, { error: 'Server error.' }); }
       return true;
@@ -635,7 +652,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
   };
 }
 
-/** Owner of publishers and listings that no real user owns yet (a plain users row nobody can sign in as: it has no Clerk id). */
+/** Owner of publishers and listings that no real user owns yet (a plain users row nobody can sign in as: it has no Clerk id).
+ *  RESERVED id: real user ids are `usr_` + 26 base36 chars from sync.ts's generator (no underscore after the prefix), so signup can never produce this one. */
 export const SYSTEM_USER = 'usr_marketplace_system';
 /** The scanner name of the per-version summary row in marketplace_security_scans (the per-check rows use the check names). */
 const OVERALL = 'validation';

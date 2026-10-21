@@ -21,3 +21,5 @@ behind Clerk sign-in. The only service with versioned SQL migrations.
   + base backups.
 
 Layout: `src/api/` (HTTP: `sync.ts`, `admin.ts`, `s3.ts`), `src/auth/` (`clerk.ts`: the Clerk session verifier — server-side sign-in lives here), `db/` (migrations + runner), `test/`. Identity across the repo: `okf/architecture/identity.md`.
+
+- **Marketplace admin API roles:** `AO_MARKETPLACE_ROLES=adminName:role[,...]` (roles: superadmin, engineer, support, finance, analyst). Without it every admin is read-only (analyst) on `/admin/marketplace/*`.

@@ -13,6 +13,7 @@ import { adminHandler, authenticate as adminAuthenticate, parseTokens } from './
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { S3 } from './s3.ts';
 import { marketplaceHandler } from './marketplace.ts';
+import { parseRoleMap } from '../marketplace/permissions.ts';
 import { marketplaceAdminHandler } from './marketplace-admin.ts';
 import { syncHandler } from './sync.ts';
 import { s3ArtifactStore } from '../marketplace/artifacts.ts';
@@ -59,8 +60,10 @@ const admin = adminHandler(deps);
 // Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.
 try { registerValidator('skill', createSkillValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: skill scanner unavailable, skill submissions stay unverified:', (e as Error).message); }
 if (env.OFFICECLI_BIN) registerValidator('template', createTemplateValidator({ officecli: officecliRenderer() }));
-// No roleOf yet: every authenticated admin is a superadmin, as admin.ts treats them today (see marketplace/permissions.ts).
-const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') }) : undefined;
+// Roles fail closed: an admin not listed in AO_MARKETPLACE_ROLES (adminName:role[,..]; Clerk admins by email or user id) is an analyst, so without it the API is read-only.
+let marketplaceRoles: ReturnType<typeof parseRoleMap>;
+try { marketplaceRoles = parseRoleMap(env.AO_MARKETPLACE_ROLES); } catch (e) { console.error((e as Error).message); process.exit(2); }
+const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') }) : undefined;
 
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);

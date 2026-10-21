@@ -40,8 +40,12 @@ never artifact bytes) in the same transaction. A denied request changes nothing 
 
 Permissions (`src/marketplace/permissions.ts`, same shape as the control-plane `rbac.ts`, which is not in this
 branch): `marketplace.read|write|review|moderate`; superadmin all, engineer read+write+review, analyst read,
-support and finance none. `roleOf(adminId)` is the seam: until roles exist every authenticated admin is a
-superadmin, as `admin.ts` already treats them. Replace `permissions.ts` with a re-export of `rbac.ts` when it
+support and finance none. Roles fail closed: `roleOf(adminId)` comes from `AO_MARKETPLACE_ROLES`
+(`adminName:role,...`; unknown role is a startup error; Clerk admins map by email or user id), and an admin not
+listed is an analyst, so **without `AO_MARKETPLACE_ROLES` the marketplace admin API is read-only**. Separation of
+duties: only a superadmin creates publishers (an unknown publisher is 400 `unknown_publisher`; a failed package never
+creates one), and a non-superadmin cannot approve or publish a version they submitted (409 `self_review`). A DB
+trigger additionally refuses to move a version to approved/published unless its scan verdict is clean or warnings. Replace `permissions.ts` with a re-export of `rbac.ts` when it
 lands. User emails are never returned; the endpoints expose user ids only.
 
 Routes: `POST submissions` (body the package zip, 64 MiB cap enforced while reading; `visibility`,

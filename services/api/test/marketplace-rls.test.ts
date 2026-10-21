@@ -45,7 +45,7 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
   });
 
   test('owner_cannot_publish_own_version_or_set_scan_verdict', async () => {
-    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_versions SET state = 'published' WHERE id = 'v_draft'`)), /row-level security/);
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_versions SET state = 'published' WHERE id = 'v_draft'`)), /row-level security|cannot become/);
     await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_versions SET scan_verdict = 'clean' WHERE id = 'v_draft'`)), /permission denied/);
     await assert.rejects(asUser('u1', () => app.query(
       `INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, manifest, sha256, size, state)
@@ -144,7 +144,7 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
   test('version_lifecycle_for_the_owner_stops_at_submitted', async () => {
     await owner.query(`INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size)
                        VALUES ('v_life','pa/secret','9.0.0',9,0,0,'draft','{}','${SHA('a')}',1)`);
-    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_versions SET state = 'published' WHERE id = 'v_life'`)), /row-level security/);
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_versions SET state = 'published' WHERE id = 'v_life'`)), /row-level security|cannot become/);
     await asUser('u1', async () => { const r = await app.query(`UPDATE marketplace_versions SET state = 'submitted' WHERE id = 'v_life'`); assert.equal(r.rowCount, 1); });
   });
 

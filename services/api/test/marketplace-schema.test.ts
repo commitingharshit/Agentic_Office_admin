@@ -142,7 +142,7 @@ describe('marketplace schema (pglite)', () => {
   test('draft_to_published_sets_published_at', async () => {
     const lid = await listing();
     const vid = await version(lid, '0.2.0', 'draft');
-    await db.query(`UPDATE marketplace_versions SET state = 'published' WHERE id = $1`, [vid]);
+    await db.query(`UPDATE marketplace_versions SET state = 'published', scan_verdict = 'clean' WHERE id = $1`, [vid]);
     const r = await db.query<{ published_at: string | null }>(`SELECT published_at FROM marketplace_versions WHERE id = $1`, [vid]);
     assert.ok(r.rows[0].published_at);
     await assert.rejects(db.query(`UPDATE marketplace_versions SET manifest = '{}' WHERE id = $1`, [vid]), /immutable/i);

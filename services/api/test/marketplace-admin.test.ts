@@ -14,7 +14,7 @@ import { marketplaceAdminHandler, transition, ACTIONS, type Action } from '../sr
 import { marketplaceHandler } from '../src/api/marketplace.ts';
 import { HttpError } from '../src/api/sync.ts';
 import { MANIFEST_NAME, memoryArtifactStore, sha256Hex } from '../src/marketplace/artifacts.ts';
-import { ADMIN_ROLES, MARKETPLACE_PERMISSIONS, can, permissionsOf, type AdminRole } from '../src/marketplace/permissions.ts';
+import { ADMIN_ROLES, MARKETPLACE_PERMISSIONS, can, parseRoleMap, permissionsOf, type AdminRole } from '../src/marketplace/permissions.ts';
 import type { VersionState } from '../src/marketplace/types.ts';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
@@ -62,6 +62,16 @@ describe('permissions', () => {
     assert.deepEqual([...permissionsOf('support')], []);
     assert.deepEqual([...permissionsOf('finance')], []);
     for (const r of ADMIN_ROLES) assert.equal(can(r, 'marketplace.moderate'), r === 'superadmin', r);
+  });
+});
+
+describe('AO_MARKETPLACE_ROLES parsing', () => {
+  test('valid entries, empty, unknown role and malformed entries', () => {
+    assert.deepEqual([...parseRoleMap('alice:superadmin, bob@x.test:engineer')], [['alice', 'superadmin'], ['bob@x.test', 'engineer']]);
+    assert.equal(parseRoleMap('').size, 0); assert.equal(parseRoleMap(undefined).size, 0);
+    assert.throws(() => parseRoleMap('alice:root'), /unknown role/);
+    assert.throws(() => parseRoleMap('alice'), /adminName:role/);
+    assert.throws(() => parseRoleMap(':superadmin'), /adminName:role/);
   });
 });
 
@@ -310,10 +320,10 @@ describe('marketplace admin API (real Postgres)', { skip }, () => {
   });
 
   test('the engineer is the actor recorded when the engineer approves and publishes', async () => {
-    const vid = (await submit(templateZip({ id: 'acme/engflow' }), '', 'eng')).json.versionId;
+    const vid = (await submit(templateZip({ id: 'acme/engflow' }), '', 'root')).json.versionId;
     assert.equal((await act(vid, 'approve', {}, 'eng')).status, 200);
     assert.equal((await act(vid, 'publish', {}, 'eng')).status, 200);
-    assert.deepEqual((await events(vid)).map((e) => [e.event, e.actor]), [['submitted', 'eng'], ['approved', 'eng'], ['published', 'eng']]);
+    assert.deepEqual((await events(vid)).map((e) => [e.event, e.actor]), [['submitted', 'root'], ['approved', 'eng'], ['published', 'eng']]);
     assert.equal((await act(vid, 'deprecate', {}, 'eng')).status, 200);   // deprecate needs only write
   });
 
@@ -349,7 +359,8 @@ describe('marketplace admin API (real Postgres)', { skip }, () => {
     const a = await act(vid, 'approve'); assert.equal(a.status, 409); assert.equal(a.json.code, 'scan_required');
     assert.equal(await vstate(vid), 'submitted');
     // force it to approved behind the API's back: publish must still refuse
-    await admin.query(`UPDATE marketplace_versions SET state = 'approved' WHERE id = $1`, [vid]);
+    await assert.rejects(admin.query(`UPDATE marketplace_versions SET state = 'approved' WHERE id = $1`, [vid]), /cannot become approved/);   // the DB backstop
+    await admin.query(`UPDATE marketplace_versions SET state = 'approved', scan_verdict = 'clean' WHERE id = $1`, [vid]);
     const p = await act(vid, 'publish'); assert.equal(p.status, 409); assert.equal(p.json.code, 'scan_required');
     assert.equal(await vstate(vid), 'approved');
     // a newer, failed scan row wins ("latest")
@@ -365,7 +376,7 @@ describe('marketplace admin API (real Postgres)', { skip }, () => {
     const adminPool = h.pool('ao_admin');
     const { createSkillValidator } = await import('../src/marketplace/validate/skill.ts');
     const { validateArtifact, registerValidator } = await import('../src/marketplace/validate/index.ts');
-    const handler = marketplaceAdminHandler({ admin: adminPool, authenticate: async () => 'root', store, validate: async (type, pkg) => {
+    const handler = marketplaceAdminHandler({ admin: adminPool, authenticate: async () => 'root', roleOf: () => 'superadmin', store, validate: async (type, pkg) => {
       registerValidator('skill', createSkillValidator({ scanner: async () => ({ verdict: 'safe', findings: [] }) }));
       try { return await validateArtifact(type, pkg); } finally { registerValidator('skill', createSkillValidator()); }
     } });
@@ -433,6 +444,82 @@ describe('marketplace admin API (real Postgres)', { skip }, () => {
     const big = await list('?publisher=bulk&limit=1000');
     assert.equal(big.json.items.length, 100); assert.ok(big.json.nextPage);
     assert.equal((await list(`?publisher=bulk&page=${encodeURIComponent(big.json.nextPage)}`)).json.items.length, 5);
+  });
+
+  // ── review round: fail-closed roles, separation of duties, DB backstop, concurrency
+  test('without roleOf the API is read-only: submissions, transitions and publishers are 403 with zero rows changed', async () => {
+    const h2 = createServer(await (async () => { const hd = marketplaceAdminHandler({ admin: h.pool('ao_admin'), authenticate: (req) => authenticate(req, { tokens } as unknown as AdminDeps), store });
+      return async (req: any, res: any) => { if (!(await hd(req, res))) res.writeHead(404).end(); }; })());
+    await new Promise<void>((r) => h2.listen(0, '127.0.0.1', r));
+    const origin = `http://127.0.0.1:${(h2.address() as AddressInfo).port}`;
+    try {
+      const vid = (await submit(templateZip({ id: 'acme/failclosed' }))).json.versionId;
+      const before_ = await counts();
+      assert.equal((await call('/admin/marketplace/submissions', { as: 'root', zip: templateZip({ id: 'acme/fc2' }), origin })).status, 403);
+      for (const a of ['claim', 'approve', 'publish', 'quarantine', 'revoke']) assert.equal((await call(`/admin/marketplace/versions/${vid}/${a}`, { as: 'root', method: 'POST', body: { reason: 'x' }, origin })).status, 403, a);
+      assert.equal((await call('/admin/marketplace/publishers', { as: 'root', method: 'POST', body: { id: 'zzz', trust: 'verified' }, origin })).status, 403);
+      assert.equal((await call('/admin/marketplace/reviews/x', { as: 'root', method: 'DELETE', origin })).status, 403);
+      assert.deepEqual(await counts(), before_);
+      assert.equal((await call('/admin/marketplace/catalog', { as: 'root', origin })).status, 200);
+    } finally { h2.close(); }
+  });
+
+  test('publisher squatting: only a superadmin creates a publisher; an engineer submits under an existing one; a failed package never creates one', async () => {
+    const before_ = await counts();
+    const e1 = await submit(templateZip({ id: 'newsquat/a' }), '', 'eng');
+    assert.equal(e1.status, 400); assert.equal(e1.json.code, 'unknown_publisher');
+    const e2 = await submit(templateZip({ id: 'failpub/a', pptx: macroPptx() }), '', 'root');
+    assert.equal(e2.status, 400); assert.equal(e2.json.code, 'unknown_publisher'); assert.equal(e2.json.validation.ok, false);
+    assert.deepEqual(await counts(), before_);
+    assert.equal((await one(`SELECT count(*)::int AS n FROM marketplace_publishers WHERE id IN ('newsquat','failpub')`)).n, 0);
+    assert.equal((await submit(templateZip({ id: 'acme/by-eng' }), '', 'eng')).status, 201);                       // existing publisher: fine
+    const s = await submit(templateZip({ id: 'brandnew/a' }), '', 'root');                                           // superadmin creates it
+    assert.equal(s.status, 201);
+    assert.deepEqual(await one(`SELECT verified FROM marketplace_publishers WHERE id = 'brandnew'`), { verified: false });
+    assert.equal((await one(`SELECT trust FROM marketplace_listings WHERE id = 'brandnew/a'`)).trust, 'community');
+  });
+
+  test('self review: the submitter (non-superadmin) cannot approve or publish their own version; a superadmin can', async () => {
+    const vid = (await submit(templateZip({ id: 'acme/selfrev' }), '', 'eng')).json.versionId;
+    let r = await act(vid, 'approve', {}, 'eng'); assert.equal(r.status, 409); assert.equal(r.json.code, 'self_review');
+    assert.equal(await vstate(vid), 'submitted');
+    assert.equal((await act(vid, 'approve', {}, 'root')).status, 200);
+    r = await act(vid, 'publish', {}, 'eng'); assert.equal(r.status, 409); assert.equal(r.json.code, 'self_review');
+    assert.equal((await act(vid, 'publish', {}, 'root')).status, 200);
+    const own = (await submit(templateZip({ id: 'acme/selfrev2' }), '', 'root')).json.versionId;
+    assert.equal((await act(own, 'approve', {}, 'root')).status, 200);   // superadmin may review their own
+  });
+
+  test('DB backstop: a version cannot become approved/published with a pending or blocked scan verdict, but can with clean', async () => {
+    const vid = (await submit(templateZip({ id: 'acme/backstop' }))).json.versionId;
+    for (const v of ['pending', 'blocked']) {
+      await admin.query('UPDATE marketplace_versions SET scan_verdict = $2 WHERE id = $1', [vid, v]);
+      for (const st of ['approved', 'published']) await assert.rejects(admin.query('UPDATE marketplace_versions SET state = $2 WHERE id = $1', [vid, st]), /cannot become/, `${v} ${st}`);
+    }
+    assert.equal(await vstate(vid), 'submitted');
+    await admin.query(`UPDATE marketplace_versions SET scan_verdict = 'clean', state = 'published' WHERE id = $1`, [vid]);
+    assert.equal(await vstate(vid), 'published');
+  });
+
+  test('concurrent submissions: same id+version -> one 201 and one 409 version_exists; different versions both succeed', async () => {
+    const same = await Promise.all([submit(templateZip({ id: 'acme/race', version: '1.0.0' })), submit(templateZip({ id: 'acme/race', version: '1.0.0' }))]);
+    assert.deepEqual(same.map((r) => r.status).sort(), [201, 409]);
+    assert.equal(same.find((r) => r.status === 409)!.json.code, 'version_exists');
+    const diff = await Promise.all([submit(templateZip({ id: 'acme/race2', version: '1.0.0' })), submit(templateZip({ id: 'acme/race2', version: '1.1.0' })), submit(templateZip({ id: 'acme/race2', version: '2.0.0' }))]);
+    assert.deepEqual(diff.map((r) => r.status), [201, 201, 201]);
+    assert.equal((await one(`SELECT count(*)::int AS n FROM marketplace_versions WHERE listing_id = 'acme/race2'`)).n, 3);
+  });
+
+  test('minors: reject from approved updates the submission row; extra path segments are 404; a visibility rewrite records the previous one', async () => {
+    const vid = (await submit(templateZip({ id: 'acme/minor' }))).json.versionId;
+    assert.equal((await act(vid, 'approve')).status, 200);
+    assert.equal((await act(vid, 'reject', { reason: 'changed my mind' })).status, 200);
+    assert.equal((await one('SELECT state FROM marketplace_submissions WHERE version_id = $1', [vid])).state, 'rejected');
+    const v2 = (await submit(templateZip({ id: 'acme/minor', version: '1.1.0' }), '?visibility=private')).json.versionId;
+    assert.equal((await act(`${v2}/approve/anything`, 'x')).status, 404);
+    assert.equal((await call(`/admin/marketplace/versions/${v2}/approve/anything`, { as: 'root', method: 'POST', body: {} })).status, 404);
+    assert.equal(await vstate(v2), 'submitted');
+    assert.equal((await auditFor(v2))[0].detail.previousVisibility, 'public');
   });
 
   test('catalog SQL injection attempts are inert', async () => {

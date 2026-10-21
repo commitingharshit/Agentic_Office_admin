@@ -118,6 +118,10 @@ BEGIN
       END IF;
     END IF;
   END IF;
+  -- Backstop for the API check: a version only becomes approved/published with a passing scan verdict (clean or warnings).
+  IF TG_OP = 'UPDATE' AND NEW.state IN ('approved','published') AND NEW.state IS DISTINCT FROM OLD.state AND NEW.scan_verdict NOT IN ('clean','warnings') THEN
+    RAISE EXCEPTION 'marketplace_versions: % cannot become % with scan verdict %', OLD.id, NEW.state, NEW.scan_verdict USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
   IF NEW.state = 'published' AND NEW.published_at IS NULL THEN NEW.published_at := now(); END IF;
   RETURN NEW;
 END $$;
