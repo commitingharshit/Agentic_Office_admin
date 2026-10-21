@@ -45,7 +45,9 @@ export async function evaluateAdvancedGate(corpora: Corpus[], gaps: Map<string, 
     const own: CaseResult[] = [];
     for (const x of all) {
       const j = await judge(c.type, x);
-      const gap = gaps.get(`${c.type}/${x.id}`);
+      const gapEntry = gaps.get(`${c.type}/${x.id}`);
+      const gap = x.label === 'malicious' ? gapEntry : undefined;   // a known gap is a malicious case accepted today; an entry naming a benign case is a mistake, reported below
+      if (gapEntry && x.label === 'benign') notes.push(`${c.type}/${x.id}: known-gap entry names a benign case; remove it`);
       own.push({ type: c.type, id: x.id, label: x.label, category: x.category, ...j, ...(gap ? { knownGap: gap } : {}) });
       if (j.verdict === 'crash') failures.push(`${c.type}/${x.id}: validator crash is not detection (${x.label})`);
       else if (x.label === 'malicious' && j.verdict === 'accept' && !gap) failures.push(`${c.type}/${x.id}: malicious case accepted`);
