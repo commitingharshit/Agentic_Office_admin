@@ -6,6 +6,24 @@
 --    * quarantined can only become revoked (the API's only action from quarantined);
 --    * a not-yet-locked version cannot reach a locked state in the same statement that edits its content
 --      (draft -> deprecated + new manifest used to slip past the immutability check).
+--
+--    COMPOSITION: CREATE OR REPLACE replaces the whole function body, so this body must be the UNION of every rule
+--    that earlier migrations put into marketplace_versions_guard (an earlier version of this file silently dropped
+--    the 0018 rule). Rules, and where each was introduced:
+--      0016  content immutable once locked: sha256, manifest, version, listing_id, size, compat
+--      0016  a locked version never returns to a pre-publication state
+--      0016  published_at, once set, cannot be changed or cleared
+--      0016  becoming approved/published requires scan_verdict clean|warnings
+--      0016  published_at is stamped when the state first becomes published
+--      0018  risk_tier is part of the frozen content of a locked version (frozen once OLD is locked; the creator
+--            assigns it in the same UPDATE that moves a draft to its final state, as under 0018, so a move
+--            into a locked state may still set it)
+--      0019  revoked is terminal
+--      0019  quarantined can only become quarantined|revoked
+--      0019  no content edit in the same statement as a move into a locked state
+--    The manual-review rule of 0018 lives in its own function (marketplace_manual_review_guard, trigger
+--    trg_mkt_manual_review_guard), which this migration does not touch. Any later migration that replaces this
+--    function must keep every rule above; test/marketplace-migrations-compose.test.ts asserts each of them.
 CREATE OR REPLACE FUNCTION marketplace_versions_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE locked boolean;
 BEGIN
@@ -20,7 +38,8 @@ BEGIN
     IF locked OR NEW.state IN ('published','deprecated','quarantined','revoked') THEN
       IF NEW.sha256 IS DISTINCT FROM OLD.sha256 OR NEW.manifest IS DISTINCT FROM OLD.manifest OR
          NEW.version IS DISTINCT FROM OLD.version OR NEW.listing_id IS DISTINCT FROM OLD.listing_id OR
-         NEW.size IS DISTINCT FROM OLD.size OR NEW.compat IS DISTINCT FROM OLD.compat THEN
+         NEW.size IS DISTINCT FROM OLD.size OR NEW.compat IS DISTINCT FROM OLD.compat OR
+         (locked AND NEW.risk_tier IS DISTINCT FROM OLD.risk_tier) THEN
         RAISE EXCEPTION 'marketplace_versions: published version % is immutable', OLD.id USING ERRCODE = 'integrity_constraint_violation';
       END IF;
     END IF;
