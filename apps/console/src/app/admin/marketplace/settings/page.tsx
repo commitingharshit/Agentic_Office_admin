@@ -19,7 +19,7 @@ export default async function MarketplaceSettings() {
       <PageHeader title="Settings" subtitle={`Effective marketplace configuration, read-only. Signed in as ${person.email}.`} />
       <Notice icon="info">Nothing here can be changed from the console. It shows only what the admin API tells this console; anything it does not expose is marked as such rather than guessed.</Notice>
       <Section title="Configuration">
-        <div className="table-wrap"><table className="dt"><tbody>{rows.map(([k, v, hint]) => <tr key={k}><td>{k}</td><td>{v}</td><td className="muted">{hint}</td></tr>)}</tbody></table></div>
+        <div className="table-wrap"><table className="dt"><tbody>{rows.map(([k, v, hint]) => <tr key={k}><td className="wrap">{k}</td><td className="wrap">{v}</td><td className="wrap muted">{hint}</td></tr>)}</tbody></table></div>
       </Section>
     </>
   );

@@ -94,6 +94,7 @@ table.dt { width: 100%; border-collapse: separate; border-spacing: 0; font-size:
 .dt th { position: sticky; top: 0; z-index: 1; background: var(--bg-surface); text-align: left; font-weight: 500; color: var(--text-2); font-size: var(--fs-sm); padding: 0 12px; height: 32px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .dt th a { color: inherit; display: inline-flex; align-items: center; gap: 4px; } .dt th a:hover { color: var(--text); text-decoration: none; }
 .dt td { padding: 0 12px; height: var(--row-h); border-bottom: 1px solid var(--border-soft); white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.dt td.wrap { white-space: normal; max-width: none; overflow: visible; text-overflow: clip; height: auto; padding-top: 8px; padding-bottom: 8px; overflow-wrap: anywhere; }
 .dt tbody tr:hover td { background: var(--bg-hover); }
 .dt tbody tr:last-child td { border-bottom: 0; }
 .dt .num { text-align: right; } .dt .right { text-align: right; }

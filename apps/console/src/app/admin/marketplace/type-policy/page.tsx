@@ -22,8 +22,8 @@ export default async function TypePolicy({ searchParams }: { searchParams: Promi
           <tbody>{(res.data.items as any[]).map((r) => (
             <tr key={r.type}>
               <td className="mono">{r.type}</td>
-              <td>{r.floor.riskTier} · {r.floor.manualReview ? 'manual review' : 'no manual review'} · publisher {r.floor.minPublisherTrust}+</td>
-              <td>{r.riskTier} · {r.manualReview ? 'manual review' : 'no manual review'} · publisher {r.minPublisherTrust}+ {r.raised ? <StatusBadge status="pending">raised</StatusBadge> : null}{r.updatedAt ? <div className="faint">{r.updatedBy} {when(r.updatedAt)}</div> : null}</td>
+              <td className="wrap">{r.floor.riskTier} · {r.floor.manualReview ? 'manual review' : 'no manual review'} · publisher {r.floor.minPublisherTrust}+</td>
+              <td className="wrap">{r.riskTier} · {r.manualReview ? 'manual review' : 'no manual review'} · publisher {r.minPublisherTrust}+ {r.raised ? <StatusBadge status="pending">raised</StatusBadge> : null}{r.updatedAt ? <div className="faint">{r.updatedBy} {when(r.updatedAt)}</div> : null}</td>
               <td>{r.supported ? 'yes' : <span className="faint">not yet</span>}</td>
               {canEdit && <td>
                 <form action={saveTypePolicy} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>

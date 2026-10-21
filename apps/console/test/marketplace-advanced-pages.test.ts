@@ -47,7 +47,8 @@ before(async () => {
     if (path === '/admin/marketplace/security/verification') return send({ items: [] });
     if (path === '/admin/marketplace/reports') return send({ items: [], nextPage: null });
     if (path === '/admin/marketplace/catalog') return send({ items: [{ id: 'acme/hook1', name: 'Pre-save hook', type: 'hook', riskTier: 'executable', manualReview: true, publisher: 'acme', visibility: 'public', trust: 'verified', state: 'published', latestVersionId: 'ver_h2', latestVersion: '1.0.0', updatedAt: '2026-10-21T10:00:00Z' }], nextPage: null });
-    if (path === '/admin/marketplace/submissions') return send({ items: [{ versionId: 'ver_h3', name: 'Risky hook', type: 'hook', publisher: 'acme', version: '1.0.0', state: 'submitted', scanVerdict: 'clean', verified: true, submittedAt: '2026-10-21T10:00:00Z', riskTier: 'executable', manualReview: true, highRisk: ['runs a script', 'reaches network', 'writes files', 'reads secrets'] }] });
+    if (path === '/admin/marketplace/submissions') return send({ items: [{ versionId: 'ver_h3', name: 'Risky hook', type: 'hook', publisher: 'acme', version: '1.0.0', state: 'submitted', scanVerdict: 'clean', verified: true, submittedAt: '2026-10-21T10:00:00Z', riskTier: 'executable', manualReview: true, highRisk: ['runs a script', 'reaches network', 'writes files', 'reads secrets'] },
+      { versionId: 'ver_u1', name: 'Unverified one', type: 'skill', publisher: 'acme', version: '1.0.0', state: 'submitted', scanVerdict: 'pending', verified: false, submittedAt: '2026-10-21T10:00:00Z', riskTier: 'declarative', manualReview: false, highRisk: [] }] });
     if (path === '/admin/marketplace/submissions/ver_h3') return send({ versionId: 'ver_h3', listingId: 'acme/risky', name: 'Risky hook', type: 'hook', publisher: 'acme', trust: 'verified', version: '1.0.0', state: 'submitted', scanVerdict: 'clean', verified: true, submittedAt: '2026-10-21T10:00:00Z', submittedBy: 'usr_9', riskTier: 'executable', manualReview: true,
       policy: { effective: { riskTier: 'executable', manualReview: true, minPublisherTrust: 'verified' }, floor: { riskTier: 'executable', manualReview: true, minPublisherTrust: 'community' } },
       summary: { text: 'x', sections: [{ title: 'Runs', lines: ['script <img src=x onerror=alert(1)>'] }], validation: [{ name: 'scan', ok: true }], truncated: false }, summarySha256: H, highRisk: ['runs a script'] });
@@ -118,4 +119,21 @@ test('By type analytics and Suspicious install bursts render from the API; catal
   assert.match(sec, /Suspicious install bursts 1/); assert.match(sec, /acme\/hook1 12 9/); assert.match(sec, /A signal for review only/);
   const cat = await get('/admin/marketplace/catalog', 'ana');
   assert.match(cat.body, /name="riskTier"/); assert.match(cat.body, /name="manualReview"/); assert.match(text(cat.body), /executable/);
+});
+
+// Found by the real end-to-end run (scripts/e2e/marketplace-admin): `.dt td` is nowrap + ellipsis, so the Type Policy table's Floor and Now
+// text ("publisher comm…") and the review queue's action buttons were cut off. Cells that hold sentences or button groups opt out with `wrap`.
+test('cells that hold sentences or buttons wrap instead of clipping, and the stylesheet lets them', { skip }, async () => {
+  const css = (await import('node:fs')).readFileSync('src/styles/admin.css', 'utf8');
+  assert.match(css, /\.dt td\.wrap\s*\{[^}]*white-space:\s*normal[^}]*max-width:\s*none[^}]*overflow:\s*visible/);
+  const p = await get('/admin/marketplace/type-policy', 'root');
+  assert.equal((p.body.match(/<td class="wrap"/g) ?? []).length, 4, 'the Floor and Now cell of both rows wrap');
+  const q = await get('/admin/marketplace/review', 'root');
+  assert.match(q.body, /<td class="wrap"[^>]*><span[^>]*>(?:<a|<button)/, 'the queue actions cell wraps');
+});
+
+test('the review queue shows "not verified" once, not twice', { skip }, async () => {
+  const q = await get('/admin/marketplace/review', 'root');
+  const row = q.body.slice(q.body.indexOf('Unverified one'));
+  assert.equal((text(row).match(/not verified/g) ?? []).length, 1);
 });

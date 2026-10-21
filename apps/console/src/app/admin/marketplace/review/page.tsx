@@ -26,12 +26,12 @@ export default async function ReviewQueue({ searchParams }: { searchParams: Prom
               <tr key={r.versionId}>
                 <td><Link href={`/admin/marketplace/review/${encodeURIComponent(r.versionId)}`}><b>{r.name}</b></Link> <span className="faint">{r.type} · {r.publisher}</span></td>
                 <td className="mono">{r.version}</td>
-                <td>{r.riskTier ? <StatusBadge status={tierTone(r.riskTier)}>{r.riskTier}</StatusBadge> : <span className="faint">—</span>} {r.manualReview && <StatusBadge status="pending">manual review</StatusBadge>}
+                <td className="wrap">{r.riskTier ? <StatusBadge status={tierTone(r.riskTier)}>{r.riskTier}</StatusBadge> : <span className="faint">—</span>} {r.manualReview && <StatusBadge status="pending">manual review</StatusBadge>}
                   {risks.shown.length > 0 && <div className="faint" style={{ maxWidth: 280 }}>{risks.shown.join('; ')}{risks.more ? `; +${risks.more} more` : ''}</div>}</td>
                 <td><StateBadge state={r.state} /></td>
-                <td><VerdictBadge verdict={r.scanVerdict} /> {!r.verified && <StatusBadge status="pending">not verified</StatusBadge>}</td>
+                <td><VerdictBadge verdict={r.scanVerdict} /> {!r.verified && r.scanVerdict !== 'pending' && <StatusBadge status="pending">not verified</StatusBadge>}</td>
                 <td>{ago(r.submittedAt)}</td>
-                <td>{allowedActions(r.state, permissions).length || permissions.includes('marketplace.write') ? <VersionActions versionId={r.versionId} state={r.state} permissions={permissions} back="/admin/marketplace/review" ackRequired={r.manualReview === true} /> : <span className="faint">—</span>}</td></tr>);
+                <td className="wrap">{allowedActions(r.state, permissions).length || permissions.includes('marketplace.write') ? <VersionActions versionId={r.versionId} state={r.state} permissions={permissions} back="/admin/marketplace/review" ackRequired={r.manualReview === true} /> : <span className="faint">—</span>}</td></tr>);
           })}
             {!res.data.items.length && <tr><td colSpan={7} className="dt-empty">Nothing is waiting for review.</td></tr>}</tbody></table></div>
       ) : <ErrorState message={res.error} />}
