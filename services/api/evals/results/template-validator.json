@@ -6,10 +6,10 @@
   },
   "passed": true,
   "confusion": {
-    "truePositive": 20,
+    "truePositive": 60,
     "falseNegative": 0,
     "falsePositive": 0,
-    "trueNegative": 5
+    "trueNegative": 6
   },
   "metrics": {
     "recall": 1,
@@ -89,8 +89,9 @@
       "note": "main part declared macroEnabled in [Content_Types].xml",
       "verdict": "reject",
       "stage": "validate",
-      "reason": "no-active-content: macro/ActiveX content type \"application/vnd.ms-word.document.macroEnabled.main+xml\"",
+      "reason": "ooxml-zip: main part word/document.xml has content type \"application/vnd.ms-word.document.macroenabled.main+xml\", not a docx main type",
       "failedChecks": [
+        "ooxml-zip",
         "no-active-content"
       ]
     },
@@ -101,7 +102,7 @@
       "note": "relationship with TargetMode External to http://",
       "verdict": "reject",
       "stage": "validate",
-      "reason": "no-active-content: external relationship in word/_rels/x.rels (\"attachedTemplate\" -> \"http://evil.example/t.dotm\"): only https hyperlinks are allowed",
+      "reason": "no-active-content: active-content relationship in word/_rels/x.rels (\"attachedTemplate\" -> \"http://evil.example/t.dotm\")",
       "failedChecks": [
         "no-active-content"
       ]
@@ -149,7 +150,7 @@
       "note": "DDEAUTO field launching cmd.exe in word/document.xml",
       "verdict": "reject",
       "stage": "validate",
-      "reason": "no-active-content: word/document.xml: field DDEAUTO (DDE/include/link fields are not allowed)",
+      "reason": "no-active-content: word/document.xml: field DDEAUTO (DDE/include/link/macro/database fields are not allowed)",
       "failedChecks": [
         "no-active-content"
       ]
@@ -310,6 +311,497 @@
       "failedChecks": [
         "pdf-header"
       ]
+    },
+    {
+      "id": "h01-doctype-unlisted-part",
+      "label": "malicious",
+      "category": "xml-all-parts",
+      "note": "DOCTYPE with an entity in customXml/item1.xml (not a listed part)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: customXml/item1.xml: is not well-formed XML: DOCTYPE/DTD is not allowed (no entity processing)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h02-malformed-unlisted-part",
+      "label": "malicious",
+      "category": "xml-all-parts",
+      "note": "unbalanced XML in customXml/item1.xml",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: customXml/item1.xml: is not well-formed XML: mismatched end tag </r>",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h03-stylesheet-pi-first-bytes",
+      "label": "malicious",
+      "category": "processing-instruction",
+      "note": "xml-stylesheet PI as the first bytes of docProps/core.xml",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: docProps/core.xml: processing instruction <?xml-stylesheet?> (OOXML parts carry none)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h04-pi-in-slide",
+      "label": "malicious",
+      "category": "processing-instruction",
+      "note": "a custom PI inside a slide part",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: ppt/slides/slide1.xml: processing instruction <?evil?> (OOXML parts carry none)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h05-dde-glossary",
+      "label": "malicious",
+      "category": "dde",
+      "note": "DDEAUTO field in word/glossary/document.xml (not a listed part)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/glossary/document.xml: field DDEAUTO (DDE/include/link/macro/database fields are not allowed)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h06-field-zero-width",
+      "label": "malicious",
+      "category": "dde",
+      "note": "DDE field name with a zero-width space inside",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/document.xml: field DDE (DDE/include/link/macro/database fields are not allowed)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h07-field-deleted-instr",
+      "label": "malicious",
+      "category": "dde",
+      "note": "DDE inside w:delInstrText",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/document.xml: field DDE (DDE/include/link/macro/database fields are not allowed)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h08-field-macrobutton",
+      "label": "malicious",
+      "category": "dde",
+      "note": "MACROBUTTON field",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/document.xml: field MACROBUTTON (DDE/include/link/macro/database fields are not allowed)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h09-field-hyperlink-http",
+      "label": "malicious",
+      "category": "external-link",
+      "note": "HYPERLINK field to http://",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/document.xml: field HYPERLINK to a non-https target \"http://evil.example/x\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h10-xlsx-table-formula",
+      "label": "malicious",
+      "category": "dde",
+      "note": "DDE in a table calculatedColumnFormula",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: xl/tables/table1.xml: DDE/command formula \"cmd|' /c calc'!A0\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h11-xlsx-validation-dde",
+      "label": "malicious",
+      "category": "dde",
+      "note": "DDE() in a data validation formula1",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: xl/worksheets/sheetx.xml: DDE/command formula \"DDE(\\\"a\\\",\\\"b\\\",\\\"c\\\")\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h12-script-element",
+      "label": "malicious",
+      "category": "svg-script",
+      "note": "a <script> element in an unlisted XML part",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: ppt/extra.xml: active or remote element <script>",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h13-svgblip",
+      "label": "malicious",
+      "category": "svg-script",
+      "note": "SVG blip extension element in a slide",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: ppt/slides/slide1.xml: active or remote element <asvg:svgBlip>",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h14-svg-as-png",
+      "label": "malicious",
+      "category": "svg-script",
+      "note": "SVG with script stored as word/media/image99.png",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/media/image99.png: active or remote element <svg>; word/media/image99.png: active or remote element <script>",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h15-svg-content-type",
+      "label": "malicious",
+      "category": "svg-script",
+      "note": "image/svg+xml declared as a Default content type",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: macro/ActiveX/remote content type \"image/svg+xml\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h16-vml-remote-href",
+      "label": "malicious",
+      "category": "external-link",
+      "note": "VML o:href pointing at http://",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/vmlDrawing9.vml: remote or UNC o:href attribute \"http://evil.example/p.png\" on <v:imagedata>",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h17-rel-attached-template-internal",
+      "label": "malicious",
+      "category": "rel-kind",
+      "note": "internal attachedTemplate relationship",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: active-content relationship in word/_rels/settings.xml.rels (\"attachedTemplate\" -> \"document.xml\")",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h18-rel-customui",
+      "label": "malicious",
+      "category": "rel-kind",
+      "note": "ribbon extensibility (customUI) relationship",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: active-content relationship in _rels/.rels (\"extensibility\" -> \"word/document.xml\")",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h19-rel-kind-query",
+      "label": "malicious",
+      "category": "rel-kind",
+      "note": "oleObject relationship type with a ?query suffix",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: active-content relationship in word/_rels/settings.xml.rels (\"oleObject?x=1\" -> \"document.xml\")",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h20-xlsx-connections",
+      "label": "malicious",
+      "category": "remote-data",
+      "note": "xl/connections.xml part",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: remote-data / ribbon-callback / web-add-in part xl/connections.xml",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h21-webextension-part",
+      "label": "malicious",
+      "category": "remote-data",
+      "note": "word/webextensions/webextension1.xml",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: remote-data / ribbon-callback / web-add-in part word/webextensions/webextension1.xml",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h22-html-part",
+      "label": "malicious",
+      "category": "disguised-file",
+      "note": "word/media/page.html",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: script/executable/SVG/markup part word/media/page.html; word/media/page.html: SVG/HTML/script markup under a non-markup name",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h23-trailing-dot-exe",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "word/media/x.exe. (Windows strips the dot)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: a path segment ends in a dot or space (stripped by Windows): \"word/media/x.exe.\"; script/executable/SVG/markup part word/media/x.exe.",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h24-percent-traversal-name",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "part named word/%2e%2e/evil.xml",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: encoded or compatibility-form path separator or dot segment: \"word/%2e%2e/evil.xml\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h25-fullwidth-slash-name",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "part named with a fullwidth solidus (U+FF0F)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: encoded or compatibility-form path separator or dot segment: \"word／extra.xml\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h26-bidi-name",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "part name with a right-to-left override",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: invisible or bidi-control character in the part name: \"word/doc‮xlsx.xml\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h27-percent-twin",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "word/%64ocument.xml shadows word/document.xml after decoding",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: part names differ only by case: \"word/document.xml\" and \"word/%64ocument.xml\"",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "h28-ads-colon",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "NTFS alternate data stream name word/a.xml:evil.exe",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: backslash or colon (encoded or compatibility form) in the part name: \"word/a.xml:evil.exe\"; script/executable/SVG/markup part word/a.xml:evil.exe",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h29-target-above-root",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "relationship target that climbs above the root and is clamped onto a real part",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: target climbs above the package root in word/_rels/settings.xml.rels (\"hyperlink\" -> \"../../word/document.xml\")",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h30-target-double-encoded",
+      "label": "malicious",
+      "category": "name-trick",
+      "note": "relationship target %252e%252e/ (double-encoded traversal)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: encoded traversal or separator in target of word/_rels/settings.xml.rels (\"hyperlink\" -> \"%252e%252e/word/document.xml\")",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h31-deep-nesting",
+      "label": "malicious",
+      "category": "budget",
+      "note": "5000-level nested XML in customXml (stack/time budget)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: customXml/deep.xml: is not well-formed XML: nesting deeper than 256 levels",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h32-nested-workbook-doctype",
+      "label": "malicious",
+      "category": "budget",
+      "note": "chart workbook whose own customXml carries a DOCTYPE",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: ppt/embeddings/w0.xlsx: customXml/i.xml: is not well-formed XML: DOCTYPE/DTD is not allowed (no entity processing)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h33-override-retypes-rels",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "Override gives a .rels part the application/xml content type (OfficeCLI: cannot open)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: relationship part \"word/_rels/document.xml.rels\" must have the relationships content type (is \"application/xml\")",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "h34-duplicate-override",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "second Override for the same part (OfficeCLI: cannot open)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: duplicate content type declarations: ppt/presentation.xml",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "h35-main-part-retyped",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "document.xml declared application/xml",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: main part word/document.xml has content type \"application/xml\", not a docx main type",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "h36-duplicate-relationship-id",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "a Relationship repeated inside one .rels (OfficeCLI: ID conflict)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: ppt/_rels/presentation.xml.rels: duplicate relationship id(s) rId1",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "h37-bad-xml-encoding",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "XML declaration with encoding=\"UT-8\"",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: _rels/.rels is not well-formed XML: unsupported encoding \"UT-8\" in the XML declaration",
+      "failedChecks": [
+        "ooxml-zip",
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "h38-rels-unknown-child",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "a foreign element inside _rels/.rels",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: _rels/.rels has unknown child element(s): Junk",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "h39-rels-namespace-typo",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "OPC relationships namespace misspelled (OfficeCLI: Relationships tag expected at root level)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: ppt/slideLayouts/_rels/slideLayout3.xml.rels root namespace must be http://schemas.openxmlformats.org/package/2006/relationships",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "h40-types-namespace-typo",
+      "label": "malicious",
+      "category": "opc-structure",
+      "note": "content-types namespace misspelled (OfficeCLI: Required Types tag not found)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: [Content_Types].xml root namespace must be http://schemas.openxmlformats.org/package/2006/content-types",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "b06-hyperlink-field-https-link-path",
+      "label": "benign",
+      "category": "real-template",
+      "note": "HYPERLINK field to https://example.com/link/import: the word \"link\" in a URL must not trip the LINK rule",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed (verified)",
+      "failedChecks": []
     }
   ]
 }
