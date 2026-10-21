@@ -14,6 +14,7 @@ import { createGate, defaultLimits, type Gate, type Limits } from './limits.ts';
 import { latestPublished } from './search.ts';
 import { newId, SHOWN, StoreError, withUser } from './store.ts';
 import type { ListingType, ManifestV1, UnpackedPackage, ValidationReport } from './types.ts';
+import { TYPE_POLICY, maxTier } from './support.ts';
 import { validateArtifact } from './validate/index.ts';
 
 export const CREATOR_TYPES: readonly ListingType[] = ['skill', 'template'];
@@ -78,6 +79,8 @@ async function ingestNow(bytes: Uint8Array, expectType?: ListingType, precheck?:
     throw e;
   }
   const type = pkg.manifest.type;
+  // A type that needs a reviewer is never published by its own creator; it goes through the admin submission and review path.
+  if (TYPE_POLICY[type]?.manualReview) throw err(409, 'manual_review_required', `A ${type} package needs a manual review and cannot be published from here; submit it for review.`);
   if (!CREATOR_TYPES.includes(type)) throw err(400, 'type_not_supported', `Only ${CREATOR_TYPES.join(' and ')} packages can be created in this release (this one is ${type}).`);
   if (expectType && type !== expectType) throw err(400, 'manifest_mismatch', `The package is a ${type}, the listing is a ${expectType}.`);
   const parts = pkg.manifest.version.split('-')[0].split('.').map(Number);
@@ -150,7 +153,11 @@ export interface Committed { listingId: string; versionId: string; version: stri
  */
 async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewListing | { id: string },
   prepare?: (c: pg.PoolClient) => Promise<void>): Promise<Committed> {
-  const m = ing.pkg.manifest, out = outcomeOf(ing.report);
+  const m = ing.pkg.manifest;
+  let out = outcomeOf(ing.report);
+  // defence in depth: no path through here may auto-publish a manual-review type (the database refuses it as well)
+  if (out.state === 'published' && (TYPE_POLICY[m.type]?.manualReview ?? true)) out = { state: 'submitted', scan: 'pending' };
+  const riskTier = maxTier(TYPE_POLICY[m.type]?.riskTier ?? 'executable', ing.report.riskTier ?? 'data');
   const { sha256, size, wrote } = await putArtifact(d.store, ing.bytes);
   await d.admin.query(`INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1,$2,$3) ON CONFLICT (sha256) DO NOTHING`, [sha256, size, artifactKey(sha256)]);
   const versionId = newId('ver'), isNew = 'type' in listing;
@@ -177,7 +184,7 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
   }
   try {
     await withAdmin(d.admin, async (c) => {
-      await c.query(`UPDATE marketplace_versions SET state = $2, scan_verdict = $3 WHERE id = $1`, [versionId, out.state, out.scan]);
+      await c.query(`UPDATE marketplace_versions SET state = $2, scan_verdict = $3, risk_tier = $4 WHERE id = $1`, [versionId, out.state, out.scan, riskTier]);
       // the SAME record the admin path writes and requireScan reads: scanner 'validation', findings {ok, verified, checks}
       await c.query(`INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,'validation',$3,$4)`,
         [newId('scn'), versionId, out.scan, JSON.stringify({ ok: ing.report.ok, verified: ing.report.verified === true && ing.report.ok, checks: ing.report.checks })]);
