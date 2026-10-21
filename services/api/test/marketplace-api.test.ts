@@ -216,7 +216,8 @@ describe('marketplace API (real Postgres)', { skip }, () => {
     const r = await call('/v1/marketplace/listings?q=toolkit', { user: 'u2' });
     const item = r.json.items[0];
     assert.equal(item.latestVersion, '1.2.0');          // stable beats the 2.0.0-beta.1, draft 3.0.0 is ignored
-    assert.deepEqual(Object.keys(item).sort(), ['capabilities', 'id', 'latestVersion', 'latestVersionId', 'previews', 'publisher', 'stats', 'summary', 'title', 'trust', 'type', 'viewer', 'visibility']);
+    assert.deepEqual(Object.keys(item).sort(), ['capabilities', 'id', 'latestVersion', 'latestVersionId', 'previews', 'publisher', 'stats', 'summary', 'title', 'trust', 'type', 'verification', 'viewer', 'visibility']);
+    assert.deepEqual(item.verification, { verified: false, verdict: null, skipped: 0 });   // never verified: no badge
     assert.equal(item.publisher, 'pa');
     assert.equal(item.viewer.favorited, false);
     const inst = await call('/v1/marketplace/listings?installed=true', { user: 'u2' });
