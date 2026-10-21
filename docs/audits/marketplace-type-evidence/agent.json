@@ -1,10 +1,10 @@
 {
-  "type": "agent+bundle",
+  "type": "agent",
   "script": "scripts/e2e/plan/marketplace-agent-flow.mjs",
   "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/bundleHermes.integration.test.ts",
-  "commit": "72f055981add25cd842f7410de24b7e3658bade9",
+  "commit": "81acf4edb29b3ed3953cd5638604a00725bcdd1f",
   "dirty": true,
-  "passedAt": "2026-10-21T14:38:09.821Z",
+  "passedAt": "2026-10-21T17:03:26.273Z",
   "result": "pass",
   "steps": [
     "install agent 1.0.0 through the real handlers and real hermes",
@@ -12,20 +12,17 @@
     "update 1.1.0 replaced the config (force-config), memories untouched",
     "test agent: hermetic dry run ok in a throwaway HERMES_HOME",
     "server revoke + reconcile: agent tombstoned, memory untouched, re-enable refused",
-    "uninstall with deleteAgentData removed the profile",
-    "simulated kill after the first member of a bundle (state left exactly as on disk)",
-    "recover() on restart: lockfile restored, no skill, no profile",
-    "retry installed the whole bundle (skill for the user, agent profile with its own skill)",
-    "uninstallBundle removed exactly its members"
+    "uninstall with deleteAgentData removed the profile"
   ],
   "harness": [
-    "GET /v1/marketplace/capabilities is overridden on the desktop side (installer fetch option): AGENT_BUNDLE_INSTALLABLE is still false (Task 15 flips it)",
-    "the skill the agent depends on is seeded into the database; the agent and the bundle go through the real handlers",
-    "the kill is simulated at a seam (state left as on disk); recovery runs in a new installer instance on the same home"
+    "capabilities are the server's real answer: agent and bundle are operational and the compiler self-check passed",
+    "the skill the agent depends on is seeded into the database; the agent and the bundle go through the real handlers, the real compiler and the real hermes CLI in a throwaway root"
   ],
   "notExercised": [
     "a real SIGKILL of the main process",
-    "the workbench window (no UI in this task)",
-    "team assignments and org policy over HTTP (covered by bundleInstaller.test.ts against a fake API)"
+    "the workbench window (no UI in this record)",
+    "the Agent Builder form (save, test, publish)",
+    "the Team Library UI and admin pages for agents",
+    "team assignments over HTTP (bundleInstaller.test.ts against a fake API)"
   ]
 }

@@ -25,32 +25,28 @@ export const OPERATIONAL: Readonly<Record<ListingType, Entry>> = Object.freeze({
     modeReasons: { oauth2: 'OAuth connectors need a token broker that does not exist.' }, evidence: 'docs/audits/marketplace-type-evidence.connector.json' },
   workflow: { supported: true, evidence: 'docs/audits/marketplace-type-evidence/workflow.json' },
   surface: { supported: false, reason: 'Surfaces are not supported: a surface is arbitrary in-gateway code holding account credentials, with no sandbox.', path: 'A declarative webhook-style surface behind the grants model, after a sandbox and a token broker exist.' },
-  agent: { supported: false, reason: 'Agents are not available yet: the install path on the desktop is not wired end to end.', path: 'Agents and bundles arrive with the agents-and-bundles release.' },
-  bundle: { supported: false, reason: 'Bundles are not available yet: the install transaction on the desktop is not delivered.', path: 'Agents and bundles arrive with the agents-and-bundles release.' },
+  // Install and use from the marketplace only: the Agent Builder form, the Team Library UI and the admin pages for agents are not part of this.
+  agent: { supported: true, evidence: 'docs/audits/marketplace-type-evidence/agent.json' },
+  bundle: { supported: true, evidence: 'docs/audits/marketplace-type-evidence/bundle.json' },
 });
 
 /** Types whose support depends on a startup self-check rather than on the static table: agent and bundle need the Python compiler bridge. */
 export const BRIDGE_TYPES: readonly ListingType[] = ['agent', 'bundle'];
-/**
- * Agent and bundle install on the desktop needs an adapter in the installer (agent) and an install transaction (bundle). Neither is wired
- * (agentAdapter.ts is not registered in advancedAdapters; the bundle transaction is not built), so while this is false the compiler self-check
- * can no longer make them look supported in GET /v1/marketplace/capabilities. Publishing and review of agents/bundles are not affected.
- */
-export const AGENT_BUNDLE_INSTALLABLE = false;
 export interface RuntimeSupport { bridge?: boolean }
 export const BRIDGE_UNAVAILABLE_REASON = 'Agents and bundles are unavailable on this server right now: the blueprint compiler did not pass its startup self-check.';
 
 /**
- * `runtime.bridge === true` (the compiler bridge passed its startup self-check) makes agent and bundle supported; anything else
- * leaves them as OPERATIONAL says. A static `supported:true` row is never downgraded here.
+ * Agent and bundle are reported supported only when the compiler bridge passed its startup self-check (`runtime.bridge === true`):
+ * the static row says the install path has end-to-end evidence, the self-check says this server can compile blueprints right now.
+ * Unknown (`undefined`) is treated as not passed. Every other type is exactly what OPERATIONAL says.
  */
 export function typeSupport(runtime: RuntimeSupport = {}): TypeSupport[] {
   return LISTING_TYPES.map((type): TypeSupport => {
     const base = OPERATIONAL[type] ?? { supported: false, reason: 'Unknown type.' };   // a missing row is unsupported, never supported
     const viaBridge = BRIDGE_TYPES.includes(type);
-    const e: Entry = viaBridge && !AGENT_BUNDLE_INSTALLABLE ? base
-      : viaBridge && runtime.bridge === true ? { supported: true }
-      : viaBridge && runtime.bridge === false && base.supported !== true ? { ...base, supported: false, reason: BRIDGE_UNAVAILABLE_REASON } : base;
+    const e: Entry = viaBridge && (runtime.bridge !== true || base.supported !== true)
+      ? { ...base, supported: false, reason: base.supported === true ? BRIDGE_UNAVAILABLE_REASON : base.reason, path: base.path ?? 'Retry when the server reports the blueprint compiler as available.' }
+      : base;
     return {
       type, supported: e.supported === true,
       ...(e.modes ? { modes: { ...e.modes } } : {}),

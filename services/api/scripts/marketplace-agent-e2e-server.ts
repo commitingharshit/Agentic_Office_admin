@@ -8,8 +8,7 @@
 //
 //   node scripts/marketplace-agent-e2e-server.ts --port 0 --state <file>
 //
-// The one stand-in is the capabilities answer: AGENT_BUNDLE_INSTALLABLE is false until Plan 2 Task 15 flips it with this flow's evidence, so the
-// DESKTOP side of the flow overrides GET capabilities through the installer's `fetch` option (see bundleHermes.integration.test.ts).
+// No stand-in for the capabilities answer: it is the server's real one (agent and bundle operational, compiler self-check passed).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createAgentBridge } from '../src/marketplace/agents.ts';
@@ -50,14 +49,14 @@ async function main() {
   };
   const v1 = await publish('1.0.0');
   const v2 = await publish('1.1.0', { modelPolicy: { primary: { provider: 'anthropic', model: 'claude-sonnet-4-5' } } });
-  const rows = (await t.admin.query(`SELECT listing_id, version, sha256 FROM marketplace_versions WHERE listing_id IN ($1,$2) ORDER BY listing_id, version`, [AGENT, SKILL])).rows;
+  const rows = (await t.admin.query(`SELECT id, listing_id, version, sha256 FROM marketplace_versions WHERE listing_id IN ($1,$2) ORDER BY listing_id, version`, [AGENT, SKILL])).rows;
   const skill = rows.find((r: any) => r.listing_id === SKILL), agent1 = rows.find((r: any) => r.listing_id === AGENT && r.version === '1.0.0');
   const b = bundleOf([]);
   b.items = [{ id: SKILL, type: 'skill', version: '1.0.0', sha256: skill.sha256 }, { id: AGENT, type: 'agent', version: '1.0.0', sha256: agent1.sha256 }];
   b.installOrder = [SKILL, AGENT];
   const bundle = await t.call('/v1/marketplace/listings?visibility=private', { user: 'u1', zip: zipOf(pkgOf(b, { id: BUNDLE, permissions: PERMS })) });
   if (bundle.json?.state !== 'published') throw new Error(`the bundle was not published: ${JSON.stringify(bundle.json).slice(0, 800)}`);
-  const state = { url: t.api, token: 'u1', device: 'dev_1', agentId: AGENT, skillId: SKILL, bundleId: BUNDLE, agentV1: v1, agentV2: v2, adminRootToken: 'r'.repeat(30), adminEngToken: 'e'.repeat(30), adminApi: t.adminApi, pid: process.pid };
+  const state = { url: t.api, token: 'u1', device: 'dev_1', agentId: AGENT, skillId: SKILL, bundleId: BUNDLE, agentV1: v1, agentV2: v2, skillVersionId: skill.id, adminRootToken: 'r'.repeat(30), adminEngToken: 'e'.repeat(30), adminApi: t.adminApi, pid: process.pid };
   if (STATE) { mkdirSync(dirname(resolve(STATE)), { recursive: true }); writeFileSync(STATE, JSON.stringify(state)); }
   console.log(`marketplace agent e2e server: ${t.api} (admin ${t.adminApi})`);
   let stopping = false;

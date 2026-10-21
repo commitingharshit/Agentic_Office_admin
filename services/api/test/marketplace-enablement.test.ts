@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { OPERATIONAL, typeSupport, isPublishable, AGENT_BUNDLE_INSTALLABLE } from '../src/marketplace/support.ts';
+import { OPERATIONAL, typeSupport, isPublishable } from '../src/marketplace/support.ts';
 import { LISTING_TYPES, type ListingType } from '../src/marketplace/types.ts';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -104,21 +104,41 @@ describe('operational types are backed by passing end-to-end evidence', () => {
   });
 
   test('the expected set: exactly these advanced types are operational', () => {
-    assert.deepEqual(ADVANCED.filter((t) => OPERATIONAL[t].supported).sort(), ['bridge', 'connector', 'hook', 'memory', 'routine', 'workflow']);
-    assert.deepEqual(ADVANCED.filter((t) => !OPERATIONAL[t].supported).sort(), ['agent', 'bundle', 'surface']);
+    assert.deepEqual(ADVANCED.filter((t) => OPERATIONAL[t].supported).sort(), ['agent', 'bridge', 'bundle', 'connector', 'hook', 'memory', 'routine', 'workflow']);
+    assert.deepEqual(ADVANCED.filter((t) => !OPERATIONAL[t].supported).sort(), ['surface']);
   });
 
-  test('capabilities honesty: hook scripts and oauth2 connectors are not publishable; agent and bundle stay off even when the compiler self-check passes', () => {
+  test('agent and bundle: each has its own evidence, split by what it proves; the capabilities row also needs the compiler self-check', () => {
+    const need: Record<string, RegExp[]> = {
+      agent: [/install agent/, /update 1\.1\.0/, /test agent/, /revoke/, /uninstall/],
+      bundle: [/simulated kill/, /recover\(\)/, /retry installed/, /uninstallBundle/, /policy gate/, /dependency revoked/],
+    };
+    for (const t of ['agent', 'bundle']) {
+      const raw = JSON.parse(readFileSync(join(repo, OPERATIONAL[t as ListingType].evidence!), 'utf8'));
+      assert.equal(raw.type, t, `${t}: the record is for its own type`);
+      const steps: string[] = raw.steps;
+      for (const re of need[t]) assert.ok(steps.some((x) => re.test(x)), `${t}: no evidence step matches ${re}`);
+      const foreign = t === 'agent' ? need.bundle : [/install agent/, /update 1\.1\.0/, /test agent/];
+      for (const re of foreign) assert.ok(!steps.some((x) => re.test(x)), `${t}: carries a step of the other type (${re})`);
+    }
+    for (const t of ['agent', 'bundle']) {
+      for (const runtime of [{}, { bridge: false }]) { const r = typeSupport(runtime).find((x) => x.type === t)!; assert.equal(r.supported, false, `${t} with ${JSON.stringify(runtime)}`); assert.ok(r.reason && r.path); }
+      assert.equal(typeSupport({ bridge: true }).find((x) => x.type === t)!.supported, true);
+    }
+    assert.equal(typeSupport({ bridge: true }).find((x) => x.type === 'surface')!.supported, false);
+  });
+
+  test('capabilities honesty: hook scripts and oauth2 connectors are not publishable; surface stays off whatever the compiler self-check says', () => {
     assert.equal(isPublishable('hook', 'declarative'), true);
     assert.equal(isPublishable('hook', 'script'), false);
     assert.equal(isPublishable('connector', 'api_key'), true);
     assert.equal(isPublishable('connector', 'oauth2'), false);
     assert.equal(isPublishable('surface'), false);
-    assert.equal(AGENT_BUNDLE_INSTALLABLE, false);
     for (const runtime of [{}, { bridge: true }, { bridge: false }]) {
       const rows = typeSupport(runtime);
-      for (const t of ['agent', 'bundle', 'surface']) { const r = rows.find((x) => x.type === t)!; assert.equal(r.supported, false, `${t} with ${JSON.stringify(runtime)}`); assert.ok(r.reason && r.path); }
-      assert.deepEqual(rows.filter((r) => r.supported).map((r) => r.type).sort(), ['bridge', 'connector', 'hook', 'memory', 'routine', 'skill', 'template', 'workflow']);
+      const s = rows.find((x) => x.type === 'surface')!; assert.equal(s.supported, false); assert.ok(s.reason && s.path);
+      const base = ['bridge', 'connector', 'hook', 'memory', 'routine', 'skill', 'template', 'workflow'];
+      assert.deepEqual(rows.filter((r) => r.supported).map((r) => r.type).sort(), (runtime as any).bridge === true ? ['agent', ...base, 'bundle'].sort() : base);
     }
     const hook = typeSupport().find((r) => r.type === 'hook')!;
     assert.deepEqual(hook.modes, { declarative: true, script: false }); assert.ok(hook.modeReasons?.script);

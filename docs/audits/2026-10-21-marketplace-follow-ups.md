@@ -4,7 +4,7 @@ Chosen by the user on 2026-10-21: finish and verify what is usable now, document
 Source of truth for what works today: `marketplace-truth-table.md`, `2026-10-21-marketplace-acceptance.md`, `2026-10-21-marketplace-final-verification.md`.
 
 ## Plan 2 (agents, bundles) — server side done, desktop side not
-- Desktop agent adapter is not registered in `advancedAdapters.ts`; no bundle install transaction; no publish→install e2e. `AGENT_BUNDLE_INSTALLABLE=false` keeps agent and bundle unsupported.
+- Update: the agent adapter is registered, the bundle transaction, policy gate, assignments sync and the publish-to-install flow exist (T10), and agent and bundle are operational for install and use from the marketplace (T15, evidence `marketplace-type-evidence/agent.json`, `bundle.json`). The `AGENT_BUNDLE_INSTALLABLE` hold-back is gone; support still needs the server's compiler self-check.
 - Tasks not started: T8 (fixtures and eval corpora for blueprint/bundle validators), T10 (desktop bundle transaction, policy gate, assignments sync, testAgent), T12 (builder wiring: test agent, dependency graph, save, publish), T13 (Team Library / bundle detail UI), T14 (admin pages patch for agents), T15 (acceptance flows A1 to A8).
 - Open design points: bundle `permissions-union` rejects wildcard scopes; dry run lacks child blueprints and `declared` capabilities; skill trees over about 640 KiB drop out of the dry run; the lockfile `(id, scope)` helpers must replace id-only lookups (~15 places in `marketplaceInstaller.ts`) before agent-scoped skills are recorded.
 

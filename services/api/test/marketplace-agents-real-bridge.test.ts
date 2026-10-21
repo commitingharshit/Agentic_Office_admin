@@ -31,10 +31,10 @@ describe('agent publish flow with the real compiler bridge', { skip: skipReason 
   });
   after(async () => { await t?.stop(); });
 
-  test('the startup self-check passes on the real bridge and scanner; capabilities still hold agents off (desktop install not delivered)', async () => {
+  test('the startup self-check passes on the real bridge and scanner; capabilities then report agent and bundle supported', async () => {
     assert.equal(t.runtime.ok(), true, t.runtime.detail());
     const caps = (await t.call('/v1/marketplace/capabilities')).json.types as any[];
-    assert.equal(caps.find((x) => x.type === 'agent').supported, false);
+    for (const ty of ['agent', 'bundle']) assert.equal(caps.find((x) => x.type === ty).supported, true, ty);
   });
 
   test('admin flow: submit -> real compile + dry run -> approve (another admin) -> publish -> public search with permissions', async () => {

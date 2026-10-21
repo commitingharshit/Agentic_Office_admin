@@ -9,8 +9,10 @@ timestamp: 2026-10-21T00:00:00Z
 Status: **operational types are decided by `OPERATIONAL` in `services/accounts-sync/src/marketplace/support.ts`, each backed by
 an end-to-end evidence record** (see [`docs/audits/marketplace-truth-table.md`](/../docs/audits/marketplace-truth-table.md) and the
 enforcement test `test/marketplace-enablement.test.ts`). Operational: template, skill, routine, memory, hook (declarative mode only),
-bridge, connector (none, api_key, bearer; not oauth2) and workflow. NOT operational: surface (no sandbox), agent and bundle (server side
-exists, the desktop install path is not wired, so `GET /capabilities` reports them unsupported), hook scripts and oauth2 connectors. The
+bridge, connector (none, api_key, bearer; not oauth2), workflow, agent and bundle (install and use from the marketplace only; evidence in
+`docs/audits/marketplace-type-evidence/agent.json` and `bundle.json`; `GET /capabilities` reports them supported only while the blueprint compiler's
+startup self-check passed). NOT operational: surface (no sandbox), hook scripts and oauth2 connectors. For agents and bundles the Agent Builder form is
+not wired to save, test or publish, there is no Team Library UI and there are no admin pages for them. The
 desktop reads `GET /v1/marketplace/capabilities` to decide which Discover categories are available; anything it cannot read or does not
 recognise stays "Not available yet". The admin web pages are a patch ([`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)),
 not committed in the control-plane tree here; until applied the admin API (`/admin/marketplace/*`) is driven by tokens and scripts.
@@ -89,7 +91,7 @@ The local index is `~/.agentic-office/marketplace/installed.lock.json`.
 
 # Not built yet
 
-Agent and bundle installation on the desktop (adapter registration and the bundle transaction), surfaces, hook scripts, oauth2 connectors,
+The Agent Builder save/test/publish wiring, the Team Library and admin pages for agents and bundles, surfaces, hook scripts, oauth2 connectors,
 the Configure/Grant UI for advanced types (in progress as a separate step), admin web pages in the control-plane tree, org visibility,
 payments, and revocation of an advanced item inside an already-running process for every type (bridge, connector, hook and workflow have
 it with e2e evidence; see the truth table).

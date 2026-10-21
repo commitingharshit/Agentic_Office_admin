@@ -1,0 +1,28 @@
+{
+  "type": "bundle",
+  "script": "scripts/e2e/plan/marketplace-agent-flow.mjs",
+  "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/bundleHermes.integration.test.ts",
+  "commit": "81acf4edb29b3ed3953cd5638604a00725bcdd1f",
+  "dirty": true,
+  "passedAt": "2026-10-21T17:03:26.273Z",
+  "result": "pass",
+  "steps": [
+    "simulated kill after the first member of a bundle (state left exactly as on disk)",
+    "recover() on restart: lockfile restored, no skill, no profile",
+    "retry installed the whole bundle (skill for the user, agent profile with its own skill)",
+    "uninstallBundle removed exactly its members",
+    "policy gate: a bundle with a member the organization denies is blocked with the stated reason, nothing installed",
+    "dependency revoked: withdrawing a member disables the bundle and every member through the unified revoke path (anonymous reconcile)"
+  ],
+  "harness": [
+    "capabilities are the server's real answer: agent and bundle are operational and the compiler self-check passed",
+    "the skill the agent depends on is seeded into the database; the agent and the bundle go through the real handlers, the real compiler and the real hermes CLI in a throwaway root",
+    "the kill is simulated at a seam (state left as on disk); recovery runs in a new installer instance on the same home",
+    "the policy gate step serves a deny-type-agent organization policy through the installer fetch option (stand-in for an admin-set policy)"
+  ],
+  "notExercised": [
+    "a real SIGKILL of the main process",
+    "the workbench window (no UI in this record)",
+    "team assignments over HTTP (bundleInstaller.test.ts against a fake API)"
+  ]
+}
