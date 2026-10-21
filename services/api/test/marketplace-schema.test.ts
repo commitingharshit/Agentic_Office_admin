@@ -52,6 +52,18 @@ describe('marketplace schema (pglite)', () => {
     return vid;
   }
 
+  test('a_fork_records_its_upstream_version_and_base_hash_and_survives_the_upstream_version_being_deleted', async () => {
+    const up = await listing(), v = await version(up, '1.0.0');
+    const fid = `acme/fork-${++n}`;
+    await db.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title, forked_from, forked_from_version, forked_base_sha256)
+                    VALUES ($1,'skill','acme','usr_a','private','Fork',$2,$3,$4)`, [fid, up, v, SHA('a')]);
+    await assert.rejects(db.query(`UPDATE marketplace_listings SET forked_base_sha256 = 'nothex' WHERE id = $1`, [fid]), /check/i);
+    await assert.rejects(db.query(`UPDATE marketplace_listings SET forked_from_version = 'ver_nope' WHERE id = $1`, [fid]), /foreign key/i);
+    await db.query(`DELETE FROM marketplace_versions WHERE id = $1`, [v]);
+    const r = (await db.query(`SELECT forked_from, forked_from_version, forked_base_sha256 FROM marketplace_listings WHERE id = $1`, [fid])).rows[0] as any;
+    assert.deepEqual(r, { forked_from: up, forked_from_version: null, forked_base_sha256: SHA('a') });
+  });
+
   test('rejects_second_review_by_same_user', async () => {
     const lid = await listing();
     await db.query(`INSERT INTO marketplace_reviews(id, listing_id, user_id, stars, body) VALUES ($1,$2,'usr_a',5,'great')`, [id('rev'), lid]);

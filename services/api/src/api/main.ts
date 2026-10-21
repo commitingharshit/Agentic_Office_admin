@@ -47,7 +47,7 @@ const sync = app && clerk ? syncHandler({ app, verify: (t) => clerk.verify(t), s
     return (u.external_accounts ?? []).filter((x) => x.provider && x.verification?.status !== 'unverified')
       .map((x) => ({ provider: x.provider!, email: x.email_address ?? null, image: x.image_url || x.avatar_url || (u.has_image ? u.image_url : null) || null }));
   } : undefined }) : undefined;
-const marketplace = sync && app && s3 ? marketplaceHandler({ app, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') }) : undefined;
+const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') }) : undefined;
 const admin = adminHandler(deps);
 
 const bind = env.AO_API_BIND ?? '127.0.0.1';

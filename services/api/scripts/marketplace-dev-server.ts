@@ -177,7 +177,7 @@ async function main() {
   }
 
   const app = h.pool('ao_app');
-  const handler = marketplaceHandler({ app, authenticate, store });
+  const handler = marketplaceHandler({ app, admin: h.pool('ao_admin'), authenticate, store });
   const onReq = async (req: any, res: any) => { if (!(await handler(req, res))) { res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"Not found."}'); } };
   let certDir: string | undefined;
   let server;

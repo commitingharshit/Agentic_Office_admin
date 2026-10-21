@@ -14,6 +14,8 @@ export interface ListParams {
   installed: boolean | null; limit: number; cursor: Cursor | null;
   /** 'relevance' (default: text rank, then recency) or 'updated' (recency only, even when q is set). */
   sort: 'relevance' | 'updated';
+  /** 'mine': only listings the caller owns (published or not); 'team': listings shared with `team`. */
+  scope: 'mine' | 'team' | null; team: string | null;
 }
 interface Cursor { r: string; u: string; id: string }
 
@@ -68,7 +70,13 @@ export function parseListParams(sp: URLSearchParams): ListParams {
   const sort = one('sort') ?? 'relevance';
   if (sort !== 'relevance' && sort !== 'updated') throw new BadQuery('sort must be relevance or updated.');
   const page = one('page');
-  return { q, type, publisher, trust, installed: inst === null ? null : inst === 'true', limit, cursor: page === null ? null : decodeCursor(page), sort };
+  const scope = one('scope');
+  if (scope !== null && scope !== 'mine' && scope !== 'team') throw new BadQuery('scope must be mine or team.');
+  const team = one('team');
+  if (team !== null && !/^team_[a-f0-9]{18}$/.test(team)) throw new BadQuery('team is not a valid team id.');
+  if (scope === 'team' && team === null) throw new BadQuery('scope=team needs a team.');
+  if (scope !== 'team' && team !== null) throw new BadQuery('team is only valid with scope=team.');
+  return { q, type, publisher, trust, installed: inst === null ? null : inst === 'true', limit, cursor: page === null ? null : decodeCursor(page), sort, scope, team };
 }
 
 /** Latest PUBLISHED version of the listing named by SQL expression `listingId`: stable beats pre-release, then highest semver. */
@@ -91,9 +99,11 @@ export function buildListQuery(p: ListParams): { text: string; values: unknown[]
   const $ = (v: unknown) => { values.push(v); return `$${values.length}`; };
   const qp = $(p.q);
   const where = [
-    `EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.listing_id = l.id AND v.state = 'published')`,
+    p.scope === 'mine' ? `l.owner_user_id = current_setting('app.user_id', true)`
+      : `EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.listing_id = l.id AND v.state = 'published')`,
     `(${qp}::text IS NULL OR l.search @@ websearch_to_tsquery('simple', ${qp}::text))`,
   ];
+  if (p.scope === 'team') where.push(`l.visibility = 'team' AND l.team_id = ${$(p.team)}`);
   if (p.type) where.push(`l.type = ${$(p.type)}`);
   if (p.trust) where.push(`l.trust = ${$(p.trust)}`);
   if (p.publisher) where.push(`l.publisher_id = ${$(p.publisher)}`);

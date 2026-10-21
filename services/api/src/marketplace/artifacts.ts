@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { crc32, inflateRawSync } from 'node:zlib';
 import type { S3 } from '../api/s3.ts';
 import { ManifestError, parseManifest, pathProblem } from './manifest.ts';
-import type { UnpackedPackage } from './types.ts';
+import type { ManifestV1, UnpackedPackage } from './types.ts';
 
 export const MANIFEST_NAME = 'agentic.marketplace.json';
 const MiB = 1024 * 1024;
@@ -259,4 +259,57 @@ export function unpack(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: 
     const why = e instanceof ManifestError ? e.message : `${MANIFEST_NAME} is not valid JSON: ${(e as Error).message}`;
     throw new UnpackError('bad-manifest', why, e);
   }
+}
+
+// ---------------------------------------------------------------- writing
+
+/**
+ * A deterministic, stored-only (method 0) zip writer. Why not fflate at runtime: fflate is a devDependency (tests only),
+ * and moving it into dependencies adds a supply-chain package to the server image for ~40 lines we can own. Stored entries
+ * need no compressor, and the output is byte-stable: entries sorted by path, fixed 1980-01-01 timestamps, UTF-8 name flag,
+ * unix mode 0644, no extra fields. Entries are written in the form unpack() accepts.
+ */
+function writeStoredZip(entries: [string, Uint8Array][]): Uint8Array {
+  const te = new TextEncoder();
+  const DATE = 0x0021;                       // 1980-01-01
+  const sorted = [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  if (sorted.length >= 0xffff) throw new UnpackError('too-many-files', 'too many entries to write');
+  const parts: Uint8Array[] = [], central: Uint8Array[] = [];
+  let off = 0;
+  for (const [name, data] of sorted) {
+    const nb = te.encode(name), crc = crc32(data);
+    const lh = new Uint8Array(30 + nb.length), lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x800, true); lv.setUint16(8, 0, true);
+    lv.setUint16(10, 0, true); lv.setUint16(12, DATE, true); lv.setUint32(14, crc, true);
+    lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true); lv.setUint16(26, nb.length, true); lv.setUint16(28, 0, true);
+    lh.set(nb, 30);
+    const cd = new Uint8Array(46 + nb.length), cv = new DataView(cd.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, (3 << 8) | 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0x800, true);
+    cv.setUint16(10, 0, true); cv.setUint16(12, 0, true); cv.setUint16(14, DATE, true); cv.setUint32(16, crc, true);
+    cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true); cv.setUint16(28, nb.length, true);
+    cv.setUint32(38, (0o100644 << 16) >>> 0, true); cv.setUint32(42, off, true);
+    cd.set(nb, 46);
+    parts.push(lh, data); central.push(cd);
+    off += lh.length + data.length;
+  }
+  const cdSize = central.reduce((n, c) => n + c.length, 0);
+  const eocd = new Uint8Array(22), ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, sorted.length, true); ev.setUint16(10, sorted.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, off, true);
+  const out = new Uint8Array(off + cdSize + 22);
+  let p = 0;
+  for (const part of [...parts, ...central, eocd]) { out.set(part, p); p += part.length; }
+  return out;
+}
+
+/**
+ * Rebuilds a package zip with the manifest fields in `patch` replaced (id, version, title ...). The file hashes and
+ * sizes in the new manifest are recomputed from the actual bytes of `pkg.files`, the result is re-parsed with
+ * parseManifest (so a bad patch throws ManifestError), and the zip is deterministic: the same inputs always give the
+ * same bytes. `pkg` is not modified.
+ */
+export function rewriteManifest(pkg: UnpackedPackage, patch: Partial<Omit<ManifestV1, 'schema' | 'files'>>): Uint8Array {
+  const files = [...pkg.files].map(([path, b]) => ({ path, sha256: sha256Hex(b), size: b.length })).sort((a, b) => (a.path < b.path ? -1 : 1));
+  const next = parseManifest({ ...pkg.manifest, ...patch, files });
+  return writeStoredZip([[MANIFEST_NAME, new TextEncoder().encode(JSON.stringify(next, null, 2))], ...pkg.files]);
 }

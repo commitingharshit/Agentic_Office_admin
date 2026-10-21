@@ -95,6 +95,13 @@ CREATE TABLE marketplace_versions (
 CREATE INDEX ix_mkt_versions_listing ON marketplace_versions (listing_id, semver_major DESC, semver_minor DESC, semver_patch DESC);
 CREATE INDEX ix_mkt_versions_sha ON marketplace_versions (sha256);
 
+-- A fork records the upstream version it was taken from and that version's artifact hash, so "compare with
+-- upstream" and "upstream has a newer version" still work after the upstream moves on. (These columns are
+-- added here because marketplace_versions did not exist yet when marketplace_listings was created.)
+ALTER TABLE marketplace_listings
+  ADD COLUMN forked_from_version text REFERENCES marketplace_versions(id) ON DELETE SET NULL,
+  ADD COLUMN forked_base_sha256  text CHECK (forked_base_sha256 IS NULL OR forked_base_sha256 ~ '^[0-9a-f]{64}$');
+
 -- A version that has been published is what people installed and what was scanned: its content never
 -- changes, not even after it is deprecated, quarantined or revoked, and it never goes back to a
 -- pre-publication state. published_at is set the first time the state becomes 'published' and cannot
@@ -477,7 +484,7 @@ BEGIN
         marketplace_versions, marketplace_artifacts, marketplace_dependencies, marketplace_collections,
         marketplace_collection_items, marketplace_security_scans, marketplace_submissions, marketplace_reports,
         marketplace_listing_counters, marketplace_listing_stats TO ao_app;
-  GRANT INSERT (id, type, publisher_id, owner_user_id, visibility, team_id, title, summary, tags, forked_from) ON marketplace_listings TO ao_app;
+  GRANT INSERT (id, type, publisher_id, owner_user_id, visibility, team_id, title, summary, tags, forked_from, forked_from_version, forked_base_sha256) ON marketplace_listings TO ao_app;
   GRANT UPDATE (title, summary, tags, visibility, team_id) ON marketplace_listings TO ao_app;
   GRANT INSERT (id, listing_id, version, semver_major, semver_minor, semver_patch, manifest, sha256, size, compat) ON marketplace_versions TO ao_app;
   GRANT UPDATE (state, manifest, sha256, size, compat) ON marketplace_versions TO ao_app;

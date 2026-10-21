@@ -6,7 +6,7 @@ import type pg from 'pg';
 import { S3 } from '../src/api/s3.ts';
 import { ManifestError } from '../src/marketplace/manifest.ts';
 import {
-  ArtifactCorruptError, MANIFEST_NAME, UnpackError, memoryArtifactStore, openArtifact, putArtifact, sha256Hex, unpack,
+  ArtifactCorruptError, MANIFEST_NAME, UnpackError, memoryArtifactStore, openArtifact, putArtifact, rewriteManifest, sha256Hex, unpack,
 } from '../src/marketplace/artifacts.ts';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
@@ -261,5 +261,37 @@ describe('openArtifact (real Postgres, RLS)', { skip }, () => {
   test('a failed lookup leaves the connection usable (no open transaction)', async () => {
     await openArtifact(app, store, { userId: 'u2' }, 'v_secret');
     const r = await app.query('SELECT 1 AS x'); assert.equal(r.rows[0].x, 1);
+  });
+});
+
+describe('rewriteManifest', () => {
+  const base = () => {
+    const files = new Map<string, Uint8Array>([['SKILL.md', enc('# hi')], ['refs/a.md', enc('a')]]);
+    return { files, manifest: { ...manifest(), files: [...files].map(([path, b]) => ({ path, sha256: sha256Hex(b), size: b.length })) } as any };
+  };
+  test('changes the id and version, keeps every file, and recomputes the file hashes', () => {
+    const p = base();
+    // a stale hash in the input manifest must not survive: the new manifest describes the actual bytes
+    p.manifest.files[0].sha256 = '0'.repeat(64);
+    const out = unpack(rewriteManifest(p, { id: 'u-me/my-fork', version: '1.0.0-fork.1' }));
+    assert.equal(out.manifest.id, 'u-me/my-fork');
+    assert.equal(out.manifest.version, '1.0.0-fork.1');
+    assert.equal(out.manifest.title, 'T');
+    assert.deepEqual([...out.files.keys()].sort(), ['SKILL.md', 'refs/a.md']);
+    for (const f of out.manifest.files) assert.equal(f.sha256, sha256Hex(out.files.get(f.path)!));
+    assert.equal(out.manifest.files.length, 2);
+  });
+  test('is deterministic and does not modify its input', () => {
+    const p = base(); const before = JSON.stringify(p.manifest);
+    const a = rewriteManifest(p, { id: 'u-me/x' }), b = rewriteManifest(p, { id: 'u-me/x' });
+    assert.equal(sha256Hex(a), sha256Hex(b));
+    assert.equal(JSON.stringify(p.manifest), before);
+    assert.equal(p.manifest.id, 'acme/my-skill');
+  });
+  test('output survives the hardened unpacker (UTF-8 names, unix mode) and a bad patch is refused', () => {
+    const p = base(); p.files.set('référence.md', enc('é'));
+    assert.ok(unpack(rewriteManifest(p, {})).files.has('référence.md'));
+    assert.throws(() => rewriteManifest(p, { id: 'Not Valid' }), ManifestError);
+    assert.throws(() => rewriteManifest(p, { version: 'nope' }), ManifestError);
   });
 });

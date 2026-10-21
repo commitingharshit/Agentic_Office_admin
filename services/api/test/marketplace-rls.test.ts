@@ -104,6 +104,16 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
     assert.equal((await asUser('u3', () => app.query('SELECT * FROM marketplace_installed_status()'))).rowCount, 0);
   });
 
+  test('an_owner_can_insert_a_fork_with_its_upstream_columns_but_not_move_them_afterwards', async () => {
+    await asUser('u1', async () => {
+      await app.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title, forked_from, forked_from_version, forked_base_sha256)
+                       VALUES ('pa/fork','skill','pa','u1','private','F','pa/open','v_open','${SHA('a')}')`);
+      const r = await app.query(`SELECT forked_from, forked_from_version FROM marketplace_listings WHERE id = 'pa/fork'`);
+      assert.deepEqual(r.rows[0], { forked_from: 'pa/open', forked_from_version: 'v_open' });
+    });
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_listings SET forked_from_version = NULL WHERE id = 'pa/open'`)), /permission denied/);
+  });
+
   test('ao_admin_can_publish', async () => {
     await admin.query(`UPDATE marketplace_versions SET state = 'published', scan_verdict = 'clean' WHERE id = 'v_secret'`);
     const r = await admin.query(`SELECT state, scan_verdict, published_at FROM marketplace_versions WHERE id = 'v_secret'`);

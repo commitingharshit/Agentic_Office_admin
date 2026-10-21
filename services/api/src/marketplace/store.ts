@@ -14,10 +14,13 @@ export const REPORT_REASONS = ['malware', 'copyright', 'broken', 'misleading', '
 /** Distinct, so the handler can answer 404/400 without sniffing messages. */
 export class StoreError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
+  /** A stable machine-readable reason (e.g. `version_not_greater`), sent as `code`; `extra` is merged into the body. */
+  readonly code?: string;
+  readonly extra?: Record<string, unknown>;
+  constructor(status: number, message: string, code?: string, extra?: Record<string, unknown>) { super(message); this.status = status; this.code = code; this.extra = extra; }
 }
 
-const newId = (p: string) => `${p}_${Date.now().toString(36)}${randomBytes(8).toString('hex')}`;
+export const newId = (p: string) => `${p}_${Date.now().toString(36)}${randomBytes(8).toString('hex')}`;
 
 /** Runs fn as ao_app in a transaction with app.user_id = userId ('' = anonymous: sees public things only). */
 export async function withUser<T>(pool: pg.Pool, userId: string, fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
@@ -58,7 +61,7 @@ export async function listListings(c: pg.PoolClient, p: ListParams) {
 }
 
 /** A listing is shown when RLS lets the caller see it and it has a published/deprecated version (the owner always sees their own). */
-const SHOWN = `(EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.listing_id = l.id AND v.state IN ('published','deprecated')) OR l.owner_user_id = current_setting('app.user_id', true))`;
+export const SHOWN = `(EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.listing_id = l.id AND v.state IN ('published','deprecated')) OR l.owner_user_id = current_setting('app.user_id', true))`;
 
 export async function listingVisible(c: pg.PoolClient, id: string): Promise<boolean> {
   return (await c.query(`SELECT 1 FROM marketplace_listings l WHERE l.id = $1 AND ${SHOWN}`, [id])).rowCount === 1;
@@ -66,7 +69,7 @@ export async function listingVisible(c: pg.PoolClient, id: string): Promise<bool
 
 export async function getListing(c: pg.PoolClient, id: string) {
   const r = (await c.query(`
-    SELECT l.id, l.type, l.title, l.summary, l.tags, l.publisher_id, l.trust, l.visibility, l.created_at, l.updated_at,
+    SELECT l.id, l.type, l.title, l.summary, l.tags, l.publisher_id, l.trust, l.visibility, l.created_at, l.updated_at, l.team_id, l.forked_from, l.forked_from_version, l.forked_base_sha256,
            p.display_name AS publisher_name, p.verified AS publisher_verified,
            lv.id AS lv_id, lv.id AS latest_version_id, ${PREVIEW_COUNT} AS previews, ${CAPABILITIES} AS capabilities, lv.version AS latest_version, lv.scan_verdict, lv.published_at, lv.manifest, lv.sha256, lv.size,
            s.rating_avg, s.rating_count, s.favorite_count, s.install_count,
@@ -80,8 +83,12 @@ export async function getListing(c: pg.PoolClient, id: string) {
      WHERE l.id = $1 AND ${SHOWN}`, [id])).rows[0];
   if (!r) return undefined;
   const m = r.manifest ?? {};
+  const upstream = r.forked_from ? await upstreamOf(c, r) : null;
   return {
     ...cardOf(r),
+    teamId: r.team_id ?? null,
+    forkedFrom: upstream ? r.forked_from as string : null,
+    upstream,
     tags: r.tags, createdAt: r.created_at, updatedAt: r.updated_at,
     publisherInfo: { id: r.publisher_id, displayName: r.publisher_name, verified: r.publisher_verified },
     manifest: r.lv_id ? {
@@ -92,6 +99,16 @@ export async function getListing(c: pg.PoolClient, id: string) {
     } : null,
     security: { scanVerdict: r.lv_id ? r.scan_verdict : null },
   };
+}
+
+/** What a fork needs to know about its upstream, from versions the CALLER can see only (RLS): undefined latest = no signal. */
+async function upstreamOf(c: pg.PoolClient, r: any): Promise<{ listingId: string; latestVersion: string; newerThanBase: boolean } | null> {
+  const up = (await c.query(`SELECT lv.version, lv.sha256 FROM marketplace_listings u JOIN LATERAL ${latestPublished('u.id')} lv ON true WHERE u.id = $1`, [r.forked_from])).rows[0];
+  if (!up) return null;
+  const base = r.forked_from_version ? (await c.query(`SELECT version FROM marketplace_versions WHERE id = $1`, [r.forked_from_version])).rows[0]?.version as string | undefined : undefined;
+  // the recorded base version may no longer be visible (withdrawn): fall back to comparing artifact hashes
+  const newer = base ? compareSemver(up.version, base) > 0 : up.sha256 !== r.forked_base_sha256;
+  return { listingId: r.forked_from as string, latestVersion: up.version as string, newerThanBase: newer };
 }
 
 export async function listVersions(c: pg.PoolClient, id: string) {
@@ -119,6 +136,11 @@ export async function versionAccess(c: pg.PoolClient, versionId: string, signedI
   // RLS hides pulled versions from everyone but the owner; an installer is still told it is gone.
   const s = (await c.query(`SELECT 1 FROM marketplace_installed_status() WHERE version_id = $1 AND state IN ('revoked','quarantined')`, [versionId])).rowCount;
   return s ? 'gone' : 'missing';
+}
+
+/** True when the version may be downloaded for installation: published or deprecated (RLS already decided that the caller sees it). */
+export async function versionInstallable(c: pg.PoolClient, versionId: string): Promise<boolean> {
+  return (await c.query(`SELECT 1 FROM marketplace_versions WHERE id = $1 AND state IN ('published','deprecated')`, [versionId])).rowCount === 1;
 }
 
 export const REVIEWS_PAGE = 50;
@@ -190,8 +212,9 @@ export const MAX_UPDATES = 500;
 
 async function applyInstall(c: pg.PoolClient, uid: string, deviceId: string, it: InstallItem) {
   const ex = (await c.query(`SELECT id, version_id, state FROM marketplace_installs WHERE user_id = $1 AND device_id = $2 AND listing_id = $3`, [uid, deviceId, it.listingId])).rows[0];
+  // a version that is not published (draft, submitted, rejected ...) is never installable, not even by its owner
   if (it.versionId && it.versionId !== ex?.version_id
-      && !(await c.query(`SELECT 1 FROM marketplace_versions WHERE id = $1 AND listing_id = $2`, [it.versionId, it.listingId])).rowCount) {
+      && !(await c.query(`SELECT 1 FROM marketplace_versions WHERE id = $1 AND listing_id = $2 AND state IN ('published','deprecated')`, [it.versionId, it.listingId])).rowCount) {
     throw new StoreError(404, `Version ${it.versionId} not found for ${it.listingId}.`);
   }
   if (ex) {
@@ -248,4 +271,34 @@ export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: stri
     return [];
   });
   return { results, updates };
+}
+
+// ---------------------------------------------------------------- my creations and teams
+
+/** Listings the caller owns, each with the version they uploaded last (any state). */
+export async function listMine(c: pg.PoolClient) {
+  const rows = (await c.query(`
+    SELECT l.id, l.type, l.title, l.summary, l.visibility, l.team_id, l.trust, l.forked_from, l.created_at, l.updated_at,
+           lv.id AS vid, lv.version, lv.state, lv.scan_verdict, lv.created_at AS vcreated,
+           (SELECT count(*) FROM marketplace_versions x WHERE x.listing_id = l.id) AS versions
+      FROM marketplace_listings l
+      LEFT JOIN LATERAL (SELECT v.id, v.version, v.state, v.scan_verdict, v.created_at FROM marketplace_versions v WHERE v.listing_id = l.id ORDER BY v.created_at DESC, v.id DESC LIMIT 1) lv ON true
+     WHERE l.owner_user_id = current_setting('app.user_id', true)
+     ORDER BY l.updated_at DESC, l.id LIMIT 200`)).rows;
+  return rows.map((r) => ({
+    id: r.id as string, type: r.type as string, title: r.title as string, summary: r.summary as string, visibility: r.visibility as string,
+    teamId: (r.team_id ?? null) as string | null, trust: r.trust as string, forkedFrom: (r.forked_from ?? null) as string | null,
+    createdAt: r.created_at, updatedAt: r.updated_at, versionCount: Number(r.versions),
+    latestVersion: r.vid ? { id: r.vid as string, version: r.version as string, state: r.state as string, scanVerdict: r.scan_verdict as string, installable: r.state === 'published', createdAt: r.vcreated } : null,
+  }));
+}
+
+/** The caller's role in a team, or undefined when they are not a member (own membership rows only: RLS). */
+export async function teamRole(c: pg.PoolClient, teamId: string): Promise<string | undefined> {
+  return (await c.query(`SELECT role FROM marketplace_team_members WHERE team_id = $1`, [teamId])).rows[0]?.role;
+}
+
+export async function listMyTeams(c: pg.PoolClient) {
+  return (await c.query(`SELECT t.id, t.name, m.role, t.created_at FROM marketplace_team_members m JOIN marketplace_teams t ON t.id = m.team_id ORDER BY t.created_at, t.id LIMIT 200`))
+    .rows.map((r) => ({ id: r.id as string, name: r.name as string, role: r.role as string, createdAt: r.created_at }));
 }

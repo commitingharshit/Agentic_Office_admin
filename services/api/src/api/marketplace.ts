@@ -5,6 +5,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
 import { ArtifactCorruptError, extractOne, openArtifact, UnpackError, type ArtifactStore } from '../marketplace/artifacts.ts';
+import * as creator from '../marketplace/creator.ts';
 import { ByteLru } from '../marketplace/lru.ts';
 import { createLimiter, type Limiter } from '../marketplace/ratelimit.ts';
 import { BadQuery, parseListParams } from '../marketplace/search.ts';
@@ -22,6 +23,11 @@ export interface MarketplaceDeps {
   readLimiter?: Limiter;
   /** Preview/doc entries (shared; visibility is still checked per request). */
   cache?: ByteLru;
+  /** The ao_admin pool: used ONLY to register artifacts, create publishers/teams/members and finalize a creator's version
+   *  (publish privately / reject). Without it the create, fork and team routes answer 503. */
+  admin?: pg.Pool;
+  /** Largest accepted package upload; defaults to 64 MiB. */
+  maxUploadBytes?: number;
 }
 
 const MAX_PREVIEW = 2 * 1024 * 1024, MAX_DOC = 256 * 1024;
@@ -29,6 +35,9 @@ const MAX_PREVIEW = 2 * 1024 * 1024, MAX_DOC = 256 * 1024;
 const LISTING_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 const OPAQUE_ID = /^[A-Za-z0-9_.:-]{1,120}$/;
 const MAX_BODY = 64 * 1024;
+const MAX_UPLOAD = 64 * 1024 * 1024;
+const TEAM_ID = /^team_[a-f0-9]{18}$/;
+const ZIP_TYPES = ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'];
 const bad = (m: string) => new HttpError(400, m);
 const notFound = () => new HttpError(404, 'Not found.');
 
@@ -50,6 +59,22 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
 }
 const object = (v: unknown, what: string) => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad(`${what} must be an object.`); return v as Record<string, unknown>; };
 
+/** A package upload: a zip body (never JSON), read with a hard cap. An empty body is a 400, an oversized one a 413. */
+async function zipBody(req: IncomingMessage, max: number): Promise<Uint8Array> {
+  const ct = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+  if (!ZIP_TYPES.includes(ct)) throw new HttpError(400, 'Send the package as application/zip.');
+  if (Number(req.headers['content-length'] ?? 0) > max) throw new HttpError(413, `The package is over the ${max} byte limit.`);
+  const chunks: Buffer[] = [];
+  let n = 0;
+  for await (const c of req) {
+    n += (c as Buffer).length;
+    if (n > max) throw new HttpError(413, `The package is over the ${max} byte limit.`);
+    chunks.push(c as Buffer);
+  }
+  if (!n) throw new HttpError(400, 'The body is empty.');
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
 /** image/png | jpeg | gif | webp by magic bytes; undefined for anything else. */
 export function imageType(b: Uint8Array): string | undefined {
   if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return 'image/png';
@@ -63,6 +88,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
   const limiter = deps.limiter ?? createLimiter();
   const readLimiter = deps.readLimiter ?? createLimiter({ limit: 300 });
   const cache = deps.cache ?? new ByteLru();
+  const maxUpload = deps.maxUploadBytes ?? MAX_UPLOAD;
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -93,19 +119,71 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       const key = uid || `ip:${req.socket?.remoteAddress ?? '?'}`;
       if (!lim.allow(key)) throw new HttpError(429, 'Too many requests. Try again in a minute.', { retryAfter: lim.retryAfter(key) });
       const q = <T>(fn: (c: pg.PoolClient) => Promise<T>) => store.withUser(deps.app, uid, fn);
+      const needAuth = () => { if (!signedIn) throw new HttpError(401, 'Sign in first.'); };
+      const cdeps = (): creator.CreatorDeps => {
+        if (!deps.admin) throw new HttpError(503, 'Creating and sharing is not configured on this server.');
+        return { app: deps.app, admin: deps.admin, store: deps.store };
+      };
 
       // ── catalog
       if (rest === 'listings' && m === 'GET') {
         const p = parseListParams(url.searchParams);
         if (p.installed !== null && !signedIn) throw new HttpError(401, 'Sign in to filter by installed.');
-        try { return send(200, await q((c) => store.listListings(c, p))), true; }
+        if (p.scope !== null) needAuth();
+        try {
+          return send(200, await q(async (c) => {
+            if (p.scope === 'team' && !(await store.teamRole(c, p.team!))) throw new store.StoreError(403, 'You are not a member of that team.', 'not_team_member');
+            return store.listListings(c, p);
+          })), true;
+        }
         catch (e: any) {
           // belt and braces: a data exception (SQLSTATE class 22) from a query that used the cursor is the caller's bad cursor
           if (p.cursor && typeof e?.code === 'string' && e.code.startsWith('22')) throw bad('invalid page cursor');
           throw e;
         }
       }
-      const lm = /^listings\/([^/]+\/[^/]+)(?:\/(favorite|review|reviews|versions))?$/.exec(rest);
+      // ── creating: a package upload becomes a private (or team) listing
+      if (rest === 'listings' && m === 'POST') {
+        const cd = cdeps();
+        const visibility = url.searchParams.get('visibility') ?? 'private';
+        if (visibility === 'public' || visibility === 'org') throw new store.StoreError(403, 'Public and organization visibility are granted by review.', 'public_requires_review');
+        if (visibility !== 'private' && visibility !== 'team') throw bad('visibility must be private or team.');
+        const team = url.searchParams.get('team');
+        if (team !== null && !TEAM_ID.test(team)) throw bad('team is not a valid team id.');
+        const bytes = await zipBody(req, maxUpload);
+        return send(201, await creator.createListing(cd, uid, bytes, { visibility, team })), true;
+      }
+      if (rest === 'me/listings' && m === 'GET') { needAuth(); return send(200, { items: await q((c) => store.listMine(c)) }), true; }
+      if (rest === 'me/teams' && m === 'GET') { needAuth(); return send(200, { items: await q((c) => store.listMyTeams(c)) }), true; }
+      if (rest === 'teams' && m === 'POST') {
+        const cd = cdeps();
+        const d = await body(req);
+        const name = text(d.name, 'name', 80)?.trim();
+        if (!name) throw bad('name is required.');
+        return send(201, await creator.createTeam(cd, uid, name)), true;
+      }
+      const tm = /^teams\/([^/]+)(?:\/(members)(?:\/([^/]+))?)?$/.exec(rest);
+      if (tm) {
+        const [, tid, members, member] = tm;
+        if (!TEAM_ID.test(tid)) throw notFound();
+        if (!members && m === 'GET') { needAuth(); return send(200, await creator.getTeam(cdeps(), uid, tid)), true; }
+        if (members && !member && m === 'POST') {
+          const cd = cdeps();
+          const d = await body(req);
+          const userId = text(d.userId, 'userId', 120);
+          if (!userId || !OPAQUE_ID.test(userId)) throw bad('userId is required.');
+          const r = await creator.addMember(cd, uid, tid, userId);
+          return send(r.created ? 201 : 200, { userId: r.userId, role: r.role }), true;
+        }
+        if (members && member && m === 'DELETE') {
+          const cd = cdeps();
+          if (!OPAQUE_ID.test(member)) throw notFound();
+          await creator.removeMember(cd, uid, tid, member);
+          return send(200, { removed: member }), true;
+        }
+      }
+
+      const lm = /^listings\/([^/]+\/[^/]+)(?:\/(favorite|review|reviews|versions|visibility|fork|compare))?$/.exec(rest);
       if (lm) {
         const [, id, sub] = lm;
         if (!LISTING_ID.test(id)) throw notFound();
@@ -113,6 +191,29 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
           const l = await q((c) => store.getListing(c, id));
           if (!l) throw notFound();
           return send(200, l), true;
+        }
+        if (sub === 'versions' && m === 'POST') {
+          const cd = cdeps();
+          await creator.checkCanAddVersion(cd, uid, id);   // 404 / 403 before a byte of the body is read
+          const bytes = await zipBody(req, maxUpload);
+          return send(201, await creator.addVersion(cd, uid, id, bytes)), true;
+        }
+        if (sub === 'visibility' && m === 'PUT') {
+          const cd = cdeps();
+          const d = await body(req);
+          const team = text(d.team, 'team', 40);
+          if (team !== null && !TEAM_ID.test(team)) throw bad('team is not a valid team id.');
+          return send(200, await creator.setVisibility(cd, uid, id, typeof d.visibility === 'string' ? d.visibility : '', team)), true;
+        }
+        if (sub === 'fork' && m === 'POST') {
+          const cd = cdeps();
+          const d = await body(req);
+          return send(201, await creator.forkListing(cd, uid, id, text(d.slug, 'slug', 64))), true;
+        }
+        if (sub === 'compare' && m === 'GET') {
+          const cd = cdeps();
+          const opt = (k: string) => { const v = url.searchParams.get(k); if (v === null || v === '') return null; if (!OPAQUE_ID.test(v)) throw notFound(); return v; };
+          return send(200, await creator.compareVersions(cd, uid, id, opt('base'), opt('head'))), true;
         }
         if (sub === 'versions' && m === 'GET') {
           return send(200, await q(async (c) => {
@@ -155,6 +256,8 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         const access = await q((c) => store.versionAccess(c, vid, signedIn));
         if (access === 'missing') throw notFound();
         if (access === 'gone') throw new HttpError(410, 'This version was withdrawn and can no longer be downloaded.');
+        // a draft, submitted or rejected version (a creator's own upload) is visible to its owner but is not installable
+        if (!(await q((c) => store.versionInstallable(c, vid)))) throw new store.StoreError(409, 'This version is not published and cannot be installed.', 'not_installable');
         const a = await openArtifact(deps.app, deps.store, { userId: uid }, vid);
         if (!a) throw notFound();
         res.writeHead(200, { 'content-type': 'application/zip', 'content-length': a.bytes.length, 'x-content-sha256': a.sha256, 'cache-control': 'private, no-store' });
@@ -249,13 +352,15 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       }
       throw notFound();
     } catch (e) {
-      let status = 500, message = 'Server error.', extra: Record<string, string> = {};
+      let status = 500, message = 'Server error.', extra: Record<string, string> = {}, fields: Record<string, unknown> = {};
       if (e instanceof HttpError) { status = e.status; message = e.message; if (status === 429) extra = { 'retry-after': String(e.extra?.retryAfter ?? 60) }; }
       else if (e instanceof BadQuery) { status = 400; message = e.message; }
-      else if (e instanceof store.StoreError) { status = e.status; message = e.message; }
+      else if (e instanceof store.StoreError) { status = e.status; message = e.message; fields = { ...(e.code ? { code: e.code } : {}), ...e.extra }; }
       else console.error(e instanceof ArtifactCorruptError ? `marketplace: ${e.message}` : e);
+      // an upload refused for size may still be arriving: do not keep the connection waiting for the rest of it
+      if (status === 413) extra = { ...extra, connection: 'close' };
       if (res.headersSent) { res.end(); return true; }
-      send(status, { error: message }, extra);
+      send(status, { error: message, ...fields }, extra);
       return true;
     }
   };
