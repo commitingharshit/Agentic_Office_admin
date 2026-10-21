@@ -129,6 +129,32 @@ services:
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
       CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-}
       AO_APP_PASSWORD: ${AO_APP_PASSWORD}
+      # Our own sign-in (services/control-plane). AUTH_ISSUER is its public base URL; the keys are fetched over the compose network.
+      # Announcement email (off unless both are set): Resend's API key and the verified sender address.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      AO_MAIL_FROM: ${AO_MAIL_FROM:-}
+      # Keycloak (the identity service). Empty = not in use yet. KEYCLOAK_ISSUER is the realm URL exactly as it appears in tokens (the public one);
+      # KEYCLOAK_JWKS_URL and KEYCLOAK_ADMIN_URL can be internal addresses on the compose network.
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-}
+      KEYCLOAK_CLIENT_IDS: ${KEYCLOAK_CLIENT_IDS:-agentic-office-desktop,ao-admin-console}
+      KEYCLOAK_ADMIN_URL: ${KEYCLOAK_ADMIN_URL:-}
+      KEYCLOAK_API_SECRET: ${KEYCLOAK_API_SECRET:-}
+      AUTH_ISSUER: ${AUTH_ISSUER:-}
+      AUTH_JWKS_URL: ${AUTH_JWKS_URL:-}
+      # Payments (off unless AO_PAYMENTS is set and the provider settings exist). The provider is experimental; see okf/services/accounts-sync.md.
+      AO_BILLING_PASSWORD: ${AO_BILLING_PASSWORD:-}
+      AO_PAYMENTS: ${AO_PAYMENTS:-}
+      YOUPI_API_URL: ${YOUPI_API_URL:-}
+      YOUPI_MERCHANT_ID: ${YOUPI_MERCHANT_ID:-}
+      YOUPI_WEBHOOK_SECRET: ${YOUPI_WEBHOOK_SECRET:-}
+      AO_CHECKOUT_RETURN_URL: ${AO_CHECKOUT_RETURN_URL:-}
+      # Browsers allowed to call /v1 from another origin: empty = any (bearer token, no cookies); or comma-separated exact origins.
+      AO_CORS_ORIGINS: ${AO_CORS_ORIGINS:-}
+      # Managed inference: credits per 1,000 tokens per model, and the provider behind it.
+      AO_PRICING: ${AO_PRICING:-}
+      AO_UPSTREAM_URL: ${AO_UPSTREAM_URL:-}
+      AO_UPSTREAM_KEY: ${AO_UPSTREAM_KEY:-}
     volumes:
       - ${AO_SERVER_DIR:-..}/src:/srv/src:ro
       - ${AO_SERVER_DIR:-..}/node_modules:/srv/node_modules:ro

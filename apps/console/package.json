@@ -1,0 +1,28 @@
+{
+  "name": "@agentic-office/control-plane",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sign-in (Better Auth, OAuth 2.1 provider for the desktop app) and the admin console. Shares the accounts-sync Postgres.",
+  "scripts": {
+    "dev": "next dev -p 8791",
+    "build": "next build",
+    "start": "next start -p 8791",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "1.7.12",
+    "better-auth": "1.7.12",
+    "next": "16.4.2",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "8.23.1",
+    "@types/react": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}

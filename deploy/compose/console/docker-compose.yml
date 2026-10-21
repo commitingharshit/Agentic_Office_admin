@@ -1,0 +1,40 @@
+# The control plane (sign-in + admin console) beside the accounts-sync data plane: it joins that stack's network to
+# reach Postgres (as the least-privilege ao_auth role) and the admin API. Start the data stack first.
+#   cp .env.example .env   # fill in
+#   DATA_NETWORK=<data project>_default docker compose -p ao-control-plane-web up -d --build
+# The sign-in pages are meant to be reachable by the public (through a tunnel); the admin console answers only on the
+# hostnames in ADMIN_HOSTS, so it does not exist on the public name even for an admin.
+name: ${WEB_PROJECT:-agentic-office-web}
+
+services:
+  control-plane:
+    build: { context: .., dockerfile: Dockerfile }
+    restart: unless-stopped
+    environment:
+      AUTH_BASE_URL: ${AUTH_BASE_URL:?public base URL, e.g. https://auth.example.com}
+      AUTH_SECRET: ${AUTH_SECRET:?32+ random characters}
+      AUTH_DATABASE_URL: postgres://ao_auth:${AO_AUTH_PASSWORD:?set in .env}@${PG_HOST:-postgres}:5432/agentic_office
+      AO_ADMIN_API_URL: ${AO_ADMIN_API_URL:-http://api:8787}
+      AO_ADMIN_API_TOKEN: ${AO_ADMIN_API_TOKEN:?a token from AO_ADMIN_TOKENS on the API}
+      ADMIN_HOSTS: ${ADMIN_HOSTS:-127.0.0.1,localhost}
+      ADMIN_REQUIRE_MFA: ${ADMIN_REQUIRE_MFA:-true}
+      AUTH_IP_HEADER: ${AUTH_IP_HEADER:-cf-connecting-ip}
+      # Keycloak sign-in for the admin console (empty = the console keeps its own sign-in).
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-}
+      KEYCLOAK_CONSOLE_SECRET: ${KEYCLOAK_CONSOLE_SECRET:-}
+      KEYCLOAK_ADMIN_OTP: ${KEYCLOAK_ADMIN_OTP:-}
+      AO_SYNC_API_URL: ${AO_SYNC_API_URL:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-common}
+    ports:
+      - "${BIND_IP:?set in .env}:${WEB_PORT:-8791}:8791"
+    networks: [data]
+
+networks:
+  data:
+    external: true
+    name: ${DATA_NETWORK:?the data stack's network, e.g. agentic-office-data_default}

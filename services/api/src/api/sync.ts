@@ -7,11 +7,38 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
 import { AuthError, type ClerkClaims } from '../auth/clerk.ts';
+import type { IdClaims } from '../auth/jwks.ts';
+import * as billing from './billing.ts';
+import type { KeycloakAdmin } from './keycloak-admin.ts';
+import { HttpError } from './errors.ts';
+import * as ops from './ops.ts';
+import type { PaymentsService } from './payments/service.ts';
+import * as telemetry from './telemetry.ts';
+import { cost as priceCost, outputLimit, UsageMeter, usageOf, worstCase, type Pricing, type StreamUpstream, type Upstream } from './inference.ts';
+import { RateLimiter } from './ratelimit.ts';
 import type { S3 } from './s3.ts';
 
 export interface SyncDeps {
   app: pg.Pool;
-  verify(token: string): Promise<ClerkClaims>;
+  /** Managed inference: the models on offer (credits per 1,000 tokens) and where a call goes. Off without both. */
+  pricing?: Pricing;
+  upstream?: Upstream;
+  /** The same provider, streaming. Without it a stream request is refused. */
+  streamUpstream?: StreamUpstream;
+  /** Sign-in exchanges allowed per client address per minute (default 30). */
+  exchangeLimit?: number;
+  /** Clerk session tokens (until Clerk is retired): absent when only our own sign-in is configured. */
+  verify?(token: string): Promise<ClerkClaims>;
+  /** Our own sign-in service (Better Auth): verifies the ID token the desktop app receives after the browser sign-in. */
+  verifyIdToken?(token: string): Promise<IdClaims>;
+  /** Plans bought with money: orders, the provider's webhook, reconciliation. Absent (and every payment route says so) unless payments are switched on. */
+  payments?: PaymentsService;
+  /** Keycloak's admin REST API. When set, a person's plan and role are mirrored into their Keycloak attributes (ao_plan, ao_role), which the token mappers turn into claims. The database stays the authority: nothing here ever trusts a claim for access. */
+  keycloakAdmin?: KeycloakAdmin;
+  /** Keycloak, the identity service: its issuer (as it appears in tokens) and a verifier for the ID tokens it signs. Checked first when a token's issuer matches. */
+  keycloak?: { issuer: string; verify(token: string): Promise<IdClaims> };
+  /** The OAuth endpoints the desktop app signs in through; handed out by GET /v1/auth/config. */
+  oauth?: { issuer: string; authorization_endpoint: string; token_endpoint: string; client_id: string };
   s3?: S3;
   /** Clerk publishable key, handed to the desktop app's sign-in page (it is public). */
   publishableKey?: string;
@@ -22,11 +49,7 @@ export interface SyncDeps {
   maxBlobBytes?: number;
 }
 
-export class HttpError extends Error {
-  readonly status: number;
-  readonly extra?: Record<string, unknown>;
-  constructor(status: number, message: string, extra?: Record<string, unknown>) { super(message); this.status = status; this.extra = extra; }
-}
+export { HttpError };
 
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
 const HASH = /^[a-f0-9]{64}$/;
@@ -114,11 +137,36 @@ export function syncHandler(deps: SyncDeps) {
     return row.user_id;
   }
 
-  async function user(req: IncomingMessage): Promise<{ uid: string; claims: ClerkClaims }> {
+  // Brute-force guards: wrong coupon codes per user, sign-in exchanges per address, model calls per user.
+  const badCodes = new RateLimiter(8, 15 * 60_000);
+  const exchanges = new RateLimiter(deps.exchangeLimit ?? 30, 60_000);
+  const modelCalls = new RateLimiter(60, 60_000);
+  const webhooks = new RateLimiter(120, 60_000);
+  // The plan sets the per-minute allowance; one limiter per distinct allowance, keyed by user. `modelCalls` stays as the flat abuse ceiling.
+  const planCalls = new Map<number, RateLimiter>();
+  const planLimiter = (perMinute: number) => { let l = planCalls.get(perMinute); if (!l) planCalls.set(perMinute, l = new RateLimiter(perMinute, 60_000)); return l; };
+  const checkouts = new RateLimiter(10, 60_000);
+  const telemetryCalls = new RateLimiter(30, 60_000);
+  const tooMany = (l: RateLimiter, key: string) => new HttpError(429, 'Too many attempts. Try again later.', { retry_after: l.retryAfter(key) });
+
+  /** An API key (aok_…) → its owner. Keys may only call managed inference (checked by the router). */
+  async function keyUser(tok: string): Promise<string> {
+    const h = billing.hashKey(tok);
+    const row = await asUser(deps, null, async (c) => (await c.query(
+      `SELECT k.id, k.user_id, u.status FROM api_keys k JOIN users u ON u.id = k.user_id WHERE k.key_hash = $1 AND k.revoked_at IS NULL`, [h])).rows[0]);
+    if (!row) throw new HttpError(401, 'That API key is not valid.');
+    if (row.status !== 'active') throw new HttpError(403, row.status === 'disabled' ? 'This account is disabled. Contact the administrator.' : 'This account was deleted.');
+    await asUser(deps, row.user_id, (c) => c.query('UPDATE api_keys SET last_used_at = now() WHERE id = $1', [row.id]));
+    return row.user_id;
+  }
+
+  async function user(req: IncomingMessage): Promise<{ uid: string; claims: ClerkClaims; viaKey?: boolean }> {
     const tok = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1];
     if (!tok) throw new HttpError(401, 'Sign in first.');
+    if (tok.startsWith('aok_')) return { uid: await keyUser(tok), claims: { sub: '', iss: 'ao-key', exp: 0 }, viaKey: true };
     if (tok.startsWith('aod_')) return { uid: await deviceUser(tok), claims: { sub: '', iss: 'ao-device', exp: 0 } };
     let claims: ClerkClaims;
+    if (!deps.verify) throw new HttpError(401, 'Sign in again.');
     try { claims = await deps.verify(tok); } catch (e) { throw new HttpError(401, e instanceof AuthError ? e.message : 'Sign in again.'); }
     const k = known.get(claims.sub);
     if (k && Date.now() - k.at < 60_000) return { uid: k.id, claims };
@@ -142,9 +190,13 @@ export function syncHandler(deps: SyncDeps) {
     });
   }
 
-  /** Desktop sign-in: a Clerk session token (from the browser) → a device token for this app. */
+  /** Desktop sign-in: what the browser produced (our ID token, or a Clerk session token) → a device token for this app. */
   async function exchange(req: IncomingMessage) {
     const d = await json(req, 20_000);
+    // The address the proxy in front of us saw (Tailscale sets x-forwarded-for); recorded for the person's sign-in history, never used to decide access.
+    const ip = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress || null;
+    if (d.id_token !== undefined) return exchangeIdToken(d, ip);
+    if (!deps.verify) throw new HttpError(400, 'Send the id_token from the sign-in page.');
     let claims: ClerkClaims;
     try { claims = await deps.verify(String(d.clerk_token ?? '')); } catch (e) { throw new HttpError(401, e instanceof AuthError ? e.message : 'The sign-in did not verify. Try again.'); }
     const ids = deps.clerkIdentities ? await deps.clerkIdentities(claims.sub).catch(() => []) : [];
@@ -155,14 +207,99 @@ export function syncHandler(deps: SyncDeps) {
     // The profile photo (Google / Microsoft, through Clerk): https only, so the app can show it.
     const photo = [claims.picture, claims.image_url, ...ids.map((i) => i.image)].find((u) => typeof u === 'string' && /^https:\/\/[^\s"'<>]{1,2000}$/.test(u));
     if (photo) await asUser(deps, uid, (c) => c.query('UPDATE users SET avatar_url = $2 WHERE id = $1', [uid, photo]));
+    return mintDeviceToken(uid, d);
+  }
+
+  async function mintDeviceToken(uid: string, d: Record<string, unknown>) {
     const token = `aod_${randomBytes(32).toString('base64url')}`;
     return asUser(deps, uid, async (c) => {
       const t = (await c.query(`INSERT INTO device_tokens(id, user_id, token_hash, device_name, platform, expires_at)
         VALUES ($1,$2,$3,$4,$5, now() + interval '90 days') RETURNING expires_at`,
         [`dtk_${ulidish()}`, uid, sha(token), str(d.device_name, 200), str(d.platform, 40)])).rows[0];
+      // A person can be signed in on many devices, but not on an unbounded number: past 25 the oldest sign-ins end.
+      const ended = await c.query(`UPDATE device_tokens SET revoked_at = now() WHERE id IN (SELECT id FROM device_tokens WHERE revoked_at IS NULL AND expires_at > now() ORDER BY created_at DESC OFFSET 25)`);
+      if (ended.rowCount) devices.clear();   // a token ended here must stop working now, not when the minute-long cache lapses
       const u = (await c.query('SELECT id, email, display_name, avatar_url, role FROM users WHERE id = $1', [uid])).rows[0];
-      return { token, expires_at: t.expires_at, user: u };
+      return { token, expires_at: t.expires_at, user: u, entitlements: await billing.entitlements(c) };
     });
+  }
+
+  /** The ID token from Keycloak. Its subject is Keycloak's id for the person, so it is mapped to ours: the identity we already know, else
+   *  the one existing account with the same VERIFIED email (linked once, so people keep their data), else a new account. An unverified
+   *  email never links to an existing account: anyone can type an address into a sign-up form. */
+  async function exchangeKeycloak(d: Record<string, unknown>, kc: NonNullable<SyncDeps['keycloak']>, ip: string | null) {
+    let claims: IdClaims;
+    try { claims = await kc.verify(String(d.id_token ?? '')); } catch (e) { throw new HttpError(401, e instanceof AuthError ? e.message : 'The sign-in did not verify. Try again.'); }
+    if (typeof d.nonce !== 'string' || !d.nonce || claims.nonce !== d.nonce) throw new HttpError(401, 'The sign-in did not verify. Try again.');
+    const email = typeof claims.email === 'string' && claims.email ? claims.email.toLowerCase().slice(0, 320) : null;
+    const verified = claims.email_verified === true;
+    const name = str(claims.name, 200);
+    const who = await asUser(deps, null, async (c) => {
+      // Two sign-ins for the same Keycloak person at once (two windows, a double click) take turns: the second finds the first's account instead of making another.
+      await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`keycloak:${claims.sub}`]);
+      const known = (await c.query(`SELECT u.id, u.status FROM oauth_accounts o JOIN users u ON u.id = o.user_id
+        WHERE o.provider = 'keycloak' AND o.subject = $1 AND o.purpose = 'sign_in' AND o.revoked_at IS NULL`, [claims.sub])).rows[0];
+      if (known) return known as { id: string; status: string };
+      const link = async (uid: string) => {
+        await c.query(`SELECT set_config('app.user_id', $1, true)`, [uid]);
+        await c.query(`INSERT INTO oauth_accounts(id, user_id, provider, subject, email) VALUES ($1,$2,'keycloak',$3,$4) ON CONFLICT DO NOTHING`, [`oa_${ulidish()}`, uid, claims.sub, email]);
+      };
+      if (email) {
+        const same = (await c.query(`SELECT id, status FROM users WHERE lower(email) = $1 AND status <> 'deleted'`, [email])).rows[0];
+        if (same) {
+          if (!verified) throw new HttpError(409, 'An account with this email already exists. Sign in the way you did before, or verify your email address first.');
+          await link(same.id);
+          await c.query('UPDATE users SET email_verified = true WHERE id = $1', [same.id]);
+          return same as { id: string; status: string };
+        }
+      }
+      const uid = `usr_${ulidish()}`;
+      await c.query(`INSERT INTO users(id, email, display_name, email_verified, last_active_at) VALUES ($1,$2,$3,$4, now())`, [uid, email, name, verified]);
+      await link(uid);
+      return { id: uid, status: 'active' };
+    });
+    if (who.status !== 'active') throw new HttpError(403, who.status === 'disabled' ? 'This account is disabled. Contact the administrator.' : 'This account was deleted.');
+    await asUser(deps, who.id, (c) => c.query(`UPDATE users SET last_active_at = now(), display_name = coalesce(display_name, $2), email_verified = email_verified OR $3 WHERE id = $1`, [who.id, name, verified]));
+    if (typeof claims.picture === 'string' && /^https:\/\/[^\s"'<>]{1,2000}$/.test(claims.picture)) await asUser(deps, who.id, (c) => c.query('UPDATE users SET avatar_url = $2 WHERE id = $1', [who.id, claims.picture]));
+    const minted = await mintDeviceToken(who.id, d);
+    // The sign-in is on record, and the person's plan and role are handed to Keycloak so the next token carries them (best effort: signing in never waits on it).
+    const aud = Array.isArray(claims.aud) ? claims.aud[0] : claims.aud;
+    await asUser(deps, who.id, (c) => c.query(`INSERT INTO sign_in_events(user_id, provider, client, device_name, platform, ip) VALUES ($1,'keycloak',$2,$3,$4,$5)`,
+      [who.id, typeof aud === 'string' ? aud.slice(0, 80) : null, str(d.device_name, 200), str(d.platform, 40), ip?.slice(0, 64) ?? null])).catch(() => undefined);
+    void syncKeycloakAttributes(who.id, claims.sub, minted.entitlements.plan.id, minted.user.role, claims as unknown as Record<string, unknown>);
+    return minted;
+  }
+
+  /** Put the plan and role where Keycloak can put them in tokens. Skipped when the token already says the same thing. */
+  async function syncKeycloakAttributes(uid: string, sub: string, plan: string, role: string, tokenClaims?: Record<string, unknown>): Promise<void> {
+    if (!deps.keycloakAdmin) return;
+    if (tokenClaims && tokenClaims.ao_plan === plan && tokenClaims.ao_role === role) return;
+    try { await deps.keycloakAdmin.setAttributes(sub, { ao_plan: plan, ao_role: role }); } catch (e) { console.warn(`[sync] could not mirror plan/role to Keycloak for ${uid}: ${(e as Error).message}`); }
+  }
+  const mirrorAfterChange = async (uid: string) => {
+    if (!deps.keycloakAdmin) return;
+    const r = await asUser(deps, uid, async (c) => ({ sub: (await c.query(`SELECT subject FROM oauth_accounts WHERE provider = 'keycloak' AND purpose = 'sign_in' AND revoked_at IS NULL LIMIT 1`)).rows[0]?.subject as string | undefined,
+      ent: await billing.entitlements(c), role: (await c.query('SELECT role FROM users WHERE id = $1', [uid])).rows[0]?.role as string }));
+    if (r.sub) await syncKeycloakAttributes(uid, r.sub, r.ent.plan.id, r.role);
+  };
+
+  /** The issuer a token claims, read without trusting it, only to choose which verifier to run (the verifier then checks it for real). */
+  const issuerOf = (jwt: unknown): string | undefined => { try { return JSON.parse(Buffer.from(String(jwt).split('.')[1], 'base64url').toString('utf8')).iss; } catch { return undefined; } };
+
+  /** The ID token from our sign-in service. Its subject is already our user id; it must carry the nonce this device chose. */
+  async function exchangeIdToken(d: Record<string, unknown>, ipOf: string | null = null) {
+    if (deps.keycloak && issuerOf(d.id_token) === deps.keycloak.issuer) return exchangeKeycloak(d, deps.keycloak, ipOf);
+    if (!deps.verifyIdToken) throw new HttpError(503, 'Sign-in is not configured on this server yet.');
+    let claims: IdClaims;
+    try { claims = await deps.verifyIdToken(String(d.id_token ?? '')); } catch (e) { throw new HttpError(401, e instanceof AuthError ? e.message : 'The sign-in did not verify. Try again.'); }
+    // Bound to the browser sign-in this device started: a token taken from elsewhere does not carry its nonce.
+    if (typeof d.nonce !== 'string' || !d.nonce || claims.nonce !== d.nonce) throw new HttpError(401, 'The sign-in did not verify. Try again.');
+    const row = await asUser(deps, null, async (c) => (await c.query('SELECT id, status FROM users WHERE id = $1', [claims.sub])).rows[0]);
+    if (!row) throw new HttpError(401, 'The sign-in did not verify. Try again.');
+    if (row.status !== 'active') throw new HttpError(403, row.status === 'disabled' ? 'This account is disabled. Contact the administrator.' : 'This account was deleted.');
+    await asUser(deps, row.id, (c) => c.query(`UPDATE users SET last_active_at = now(), email = coalesce($2, email), display_name = coalesce($3, display_name) WHERE id = $1`, [row.id, str(claims.email, 320), str(claims.name, 200)]));
+    if (typeof claims.picture === 'string' && /^https:\/\/[^\s"'<>]{1,2000}$/.test(claims.picture)) await asUser(deps, row.id, (c) => c.query('UPDATE users SET avatar_url = $2 WHERE id = $1', [row.id, claims.picture]));
+    return mintDeviceToken(row.id, d);
   }
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
@@ -176,9 +313,23 @@ export function syncHandler(deps: SyncDeps) {
       const m = req.method ?? 'GET';
       const [, , a, b, c] = url.pathname.split('/');   // '', 'v1', a, b, c
       // ── sign-in (no token yet)
-      if (a === 'auth' && b === 'config' && m === 'GET') return send(200, { publishableKey: deps.publishableKey ?? null }), true;
-      if (a === 'auth' && b === 'exchange' && m === 'POST') return send(200, await exchange(req)), true;
-      const { uid, claims } = await user(req);
+      if (a === 'auth' && b === 'config' && m === 'GET') return send(200, { publishableKey: deps.publishableKey ?? null, oauth: deps.oauth ?? null }), true;
+      if (a === 'auth' && b === 'exchange' && m === 'POST') {
+        const from = req.socket.remoteAddress ?? '?';
+        if (!exchanges.take(from)) throw tooMany(exchanges, from);
+        return send(200, await exchange(req)), true;
+      }
+      // The payment provider's notice: no sign-in (it is not a person), only its signature. Raw bytes in, answer out.
+      if (a === 'payments' && b === 'webhooks' && c && m === 'POST') {
+        if (!deps.payments || deps.payments.provider.id !== c) throw new HttpError(404, 'Not found.');
+        const from = req.socket.remoteAddress ?? '?';
+        if (!webhooks.take(from)) throw tooMany(webhooks, from);
+        const raw = await readBody(req, 100_000);
+        const r = await deps.payments.handleWebhook(raw, req.headers);
+        return send(r.status, r.body), true;
+      }
+      const { uid, claims, viaKey } = await user(req);
+      if (viaKey && a !== 'inference') throw new HttpError(403, 'An API key can only call managed inference.');
       const q = <T>(fn: (c: pg.PoolClient) => Promise<T>) => asUser(deps, uid, fn);
       if (a === 'auth' && b === 'signout' && m === 'POST') {
         const tok = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1] ?? '';
@@ -192,7 +343,150 @@ export function syncHandler(deps: SyncDeps) {
         const me = await q(async (cl) => (await cl.query('SELECT id, email, display_name, role, created_at FROM users WHERE id = $1', [uid])).rows[0]);
         return send(200, { user: me, admin: claims.role === 'admin' || me?.role === 'admin' }), true;
       }
-      if (a === 'me' && m === 'GET') {
+      // ── plan, credits, coupons, usage, devices, API keys (src/api/billing.ts; money moves in SQL)
+      const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1] ?? '';
+      if (a === 'me' && b === 'entitlements' && m === 'GET') return send(200, await q(billing.entitlements)), true;
+      if (a === 'me' && b === 'devices' && !c && m === 'GET') return send(200, { devices: await q((cl) => billing.listDevices(cl, bearer.startsWith('aod_') ? sha(bearer) : null)) }), true;
+      if (a === 'me' && b === 'devices' && c && m === 'DELETE') {
+        if (!(await q((cl) => billing.revokeDevice(cl, id(c, 'device id'))))) throw new HttpError(404, 'No such device.');
+        devices.clear();   // a revoked token must stop working now, not when the minute-long cache lapses
+        return send(200, { ok: true }), true;
+      }
+      // ── what the app needs from operations: flags, announcements, support (src/api/ops.ts)
+      if (a === 'config' && b === 'client' && m === 'GET') { const f = await q((cl) => ops.flagsFor(cl, uid)); return send(200, { plan: f.plan, flags: f.flags }), true; }
+      if (a === 'announcements' && !b && m === 'GET') return send(200, await q((cl) => ops.liveAnnouncements(cl, uid))), true;
+      if (a === 'announcements' && b && c === 'read' && m === 'POST') return send(200, await q((cl) => ops.markRead(cl, uid, b))), true;
+      if (a === 'support' && b === 'tickets' && !c && m === 'GET') return send(200, await q(ops.myTickets)), true;
+      if (a === 'support' && b === 'tickets' && !c && m === 'POST') { const d = await json(req, 8_000); return send(201, await q((cl) => ops.openTicket(cl, uid, d))), true; }
+      if (a === 'support' && b === 'tickets' && c && m === 'POST') { const d = await json(req, 8_000); return send(200, await q((cl) => ops.userReply(cl, uid, c, d))), true; }
+      // ── opt-in usage sharing and run telemetry (src/api/telemetry.ts: nothing is stored while sharing is off; free text is refused)
+      if (a === 'me' && b === 'usage-consent' && m === 'GET') return send(200, await q(telemetry.getConsent)), true;
+      if (a === 'me' && b === 'usage-consent' && m === 'PUT') { const d = await json(req, 1_000); return send(200, await q((cl) => telemetry.setConsent(cl, uid, d))), true; }
+      if (a === 'telemetry' && b === 'runs' && m === 'POST') {
+        if (!telemetryCalls.take(uid)) throw tooMany(telemetryCalls, uid);
+        const d = await json(req, 2_000_000);
+        return send(200, await q((cl) => telemetry.ingestRuns(cl, uid, d))), true;
+      }
+      if (a === 'plans' && !b && m === 'GET') return send(200, { plans: await q(billing.listPlans), payments_enabled: !!deps.payments, payments_experimental: !!deps.payments?.provider.experimental }), true;
+      // ── buying a plan. The price comes from the database; the app can only name a plan. Nothing here activates a plan: only a settled order does.
+      if (a === 'billing' && b === 'checkout' && m === 'POST') {
+        if (!deps.payments) throw new HttpError(503, 'Payments are not switched on.');
+        if (!checkouts.take(uid)) throw tooMany(checkouts, uid);
+        const d = await json(req, 2_000);
+        return send(200, await deps.payments.createCheckout(uid, id(d.plan_id, 'plan_id'))), true;
+      }
+      if (a === 'billing' && b === 'orders' && !c && m === 'GET') { if (!deps.payments) throw new HttpError(503, 'Payments are not switched on.'); return send(200, await deps.payments.listOrders(uid)), true; }
+      if (a === 'billing' && b === 'orders' && c && m === 'GET') { if (!deps.payments) throw new HttpError(503, 'Payments are not switched on.'); return send(200, await deps.payments.getOrder(uid, id(c, 'order id'))), true; }
+      if (a === 'billing' && b === 'orders' && c && url.pathname.endsWith('/cancel') && m === 'POST') { if (!deps.payments) throw new HttpError(503, 'Payments are not switched on.'); return send(200, await deps.payments.cancel(uid, id(c, 'order id'))), true; }
+      if (a === 'credits' && b === 'balance' && m === 'GET') return send(200, await q(billing.balance)), true;
+      if (a === 'usage' && !b && m === 'GET') return send(200, await q((cl) => billing.usage(cl, Number(url.searchParams.get('limit')) || 50))), true;
+      if (a === 'coupons' && b === 'redeem' && m === 'POST') {
+        const d = await json(req, 2_000);
+        if (!badCodes.peek(uid)) throw tooMany(badCodes, uid);
+        try { const redeemed = await q((cl) => billing.redeem(cl, d.code)); void mirrorAfterChange(uid).catch(() => undefined); return send(200, redeemed), true; }
+        catch (e) { const mapped = billing.mapBillingError(e); if (mapped && mapped.status !== 409) badCodes.take(uid); throw mapped ? new HttpError(mapped.status, mapped.message) : e; }
+      }
+      if (a === 'api-keys' && !b && m === 'GET') return send(200, { keys: await q(billing.listApiKeys) }), true;
+      if (a === 'api-keys' && !b && m === 'POST') {
+        const d = await json(req, 2_000);
+        const made = await q((cl) => billing.createApiKey(cl, uid, d.name, ulidish));
+        if (!made) throw new HttpError(409, 'You have reached the limit of 10 API keys. Revoke one first.');
+        return send(201, made), true;
+      }
+      if (a === 'api-keys' && b && m === 'DELETE') {
+        if (!(await q((cl) => billing.revokeApiKey(cl, id(b, 'key id'))))) throw new HttpError(404, 'No such key.');
+        return send(200, { ok: true }), true;
+      }
+
+      // ── managed inference: hold the worst case, call the model, charge the real use, give back the rest
+      if (a === 'inference' && b === 'models' && !c && m === 'GET') {
+        if (!deps.pricing) throw new HttpError(503, 'Managed inference is not configured.');
+        return send(200, { object: 'list', data: Object.keys(deps.pricing).map((id) => ({ id, object: 'model', owned_by: 'agentic-office' })) }), true;
+      }
+      // /responses is ours; /chat/completions is the path OpenAI-compatible clients (Hermes) append to a base URL.
+      if (a === 'inference' && ((b === 'responses' && !c) || (b === 'chat' && c === 'completions')) && m === 'POST') {
+        if (!deps.pricing || !deps.upstream) throw new HttpError(503, 'Managed inference is not configured.');
+        if (!modelCalls.take(uid)) throw tooMany(modelCalls, uid);
+        const flagState = await q((cl) => ops.flagsFor(cl, uid));
+        if (ops.killed(flagState.raw, 'killswitch.managed_inference', uid, flagState.plan)) throw new HttpError(503, 'Managed inference is paused. Try again later, or use your own API key.');
+        const ent = await q(billing.entitlements);
+        if (!ent.managed_inference) throw new HttpError(403, 'Your plan does not include managed inference.');
+        const planRate = planLimiter(ent.limits.requests_per_minute);
+        if (!planRate.take(uid)) throw new HttpError(429, 'Your plan allows ' + ent.limits.requests_per_minute + ' requests a minute. Try again shortly.', { retry_after: planRate.retryAfter(uid) });
+        const d = await json(req, 1_000_000);
+        const model = String(d.model ?? '');
+        const price = Object.hasOwn(deps.pricing, model) ? deps.pricing[model] : undefined;
+        if (!price) throw new HttpError(400, 'That model is not available.', { models: Object.keys(deps.pricing) });
+        const allowed = ent.limits.allowed_models;
+        if (allowed && !allowed.includes(model)) throw new HttpError(403, 'Your plan does not include that model.', { models: Object.keys(deps.pricing).filter((id) => allowed.includes(id)) });
+        const wantStream = d.stream === true;
+        if (wantStream && !deps.streamUpstream) throw new HttpError(400, 'Streaming is not available on this server. Send "stream": false.');
+        if (!Array.isArray(d.messages) || !d.messages.length) throw new HttpError(400, 'messages is required.');
+        const limit = outputLimit(d);
+        const body: Record<string, unknown> = { ...d, max_tokens: limit, stream: wantStream };
+        delete body.max_completion_tokens;
+        delete body.stream_options;   // ours to set: usage is how a stream is charged
+        const reqId = /^[A-Za-z0-9_-]{8,80}$/.test(String(req.headers['idempotency-key'] ?? '')) ? String(req.headers['idempotency-key']) : `req_${ulidish()}`;
+        const hold = worstCase(price, body);
+        let rid: number, status: string;
+        try {
+          ({ rid, status } = await q(async (cl) => {
+            // Counted under the same per-user lock the reservation takes, so simultaneous calls cannot all see room.
+            await cl.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [uid]);
+            // Runs in flight = open, unexpired holds. A retry of the same request id is not a new run.
+            const busy = Number((await cl.query(`SELECT count(*) FROM credit_reservations WHERE status = 'open' AND expires_at > now() AND request_id <> $1`, [reqId])).rows[0].count);
+            if (busy >= ent.limits.max_concurrent_runs) throw new HttpError(429, 'Your plan allows ' + ent.limits.max_concurrent_runs + ' run' + (ent.limits.max_concurrent_runs === 1 ? '' : 's') + ' at a time. Wait for one to finish.');
+            const r = Number((await cl.query('SELECT ao_credit_reserve($1,$2,$3)', [hold, reqId, ent.limits.max_job_seconds])).rows[0].ao_credit_reserve);
+            return { rid: r, status: (await cl.query('SELECT status FROM credit_reservations WHERE id = $1', [r])).rows[0].status as string };
+          }));
+        } catch (e) { const mapped = billing.mapBillingError(e); throw mapped ? new HttpError(mapped.status, mapped.message, { needed: hold }) : e; }
+        if (status !== 'open') throw new HttpError(409, 'That request was already processed.');
+        if (wantStream) {
+          const ac = new AbortController();
+          let first;
+          try { first = await deps.streamUpstream!(model, body, ac.signal); }
+          catch { await q((cl) => cl.query('SELECT ao_credit_release($1)', [rid])); throw new HttpError(502, 'The model did not answer. You were not charged.'); }
+          if (first.status < 200 || first.status >= 300 || !first.body) {
+            await q((cl) => cl.query('SELECT ao_credit_release($1)', [rid]));
+            throw new HttpError(first.status >= 500 || first.status === 429 ? 502 : 400, 'The model refused the request. You were not charged.');
+          }
+          res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', 'x-ao-request-id': reqId });
+          res.on('close', () => { if (!res.writableEnded) ac.abort(); });   // the person stopped listening: stop paying for it
+          const meter = new UsageMeter();
+          const dec = new TextDecoder();
+          try {
+            const reader = first.body.getReader();
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              meter.feed(dec.decode(value, { stream: true }));
+              if (!res.destroyed) res.write(value);
+            }
+          } catch { /* cut short by either side: charge what was used */ }
+          if (!res.writableEnded) res.end();
+          // What the provider reported, else what we saw go by: never more than was held, never nothing for text already sent.
+          const used = meter.usage ?? meter.estimate(body);
+          const chargedStream = Math.min(priceCost(price, used.in, used.out), hold);
+          await q((cl) => cl.query('SELECT ao_credit_settle($1,$2,$3,$4,$5)', [rid, chargedStream, model, used.in, used.out])).catch((e) => console.error('settle after stream failed', e));
+          return true;
+        }
+        let out;
+        try { out = await deps.upstream(model, body); }
+        catch { await q((cl) => cl.query('SELECT ao_credit_release($1)', [rid])); throw new HttpError(502, 'The model did not answer. You were not charged.'); }
+        const used = out.status >= 200 && out.status < 300 ? usageOf(out.body) : undefined;
+        if (!used) {
+          // A failed call, or an answer that does not say what it used, costs the user nothing.
+          await q((cl) => cl.query('SELECT ao_credit_release($1)', [rid]));
+          if (out.status >= 200 && out.status < 300) throw new HttpError(502, 'The model answered without usage. You were not charged.');
+          throw new HttpError(out.status >= 500 || out.status === 429 ? 502 : 400, 'The model refused the request. You were not charged.');
+        }
+        const charged = priceCost(price, used.in, used.out);
+        await q((cl) => cl.query('SELECT ao_credit_settle($1,$2,$3,$4,$5)', [rid, charged, model, used.in, used.out]));
+        const left = await q(billing.balance);
+        return send(200, { ...out.body, ao: { request_id: reqId, charged: Math.min(charged, hold), balance: left.total } }), true;
+      }
+
+      if (a === 'me' && !b && m === 'GET') {
         return send(200, await q(async (cl) => ({
           user: (await cl.query('SELECT id, email, display_name, avatar_url, role, created_at, last_active_at FROM users WHERE id = $1', [uid])).rows[0],
           devices: (await cl.query('SELECT id, name, platform, app_version, last_seen FROM devices ORDER BY last_seen DESC')).rows,

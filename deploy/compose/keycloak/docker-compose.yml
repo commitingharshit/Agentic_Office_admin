@@ -1,0 +1,58 @@
+# Keycloak: the identity service for Agentic Office (sign-in for the desktop app and the admin console, Google and other providers, SSO).
+# Own compose project, own database in the shared Postgres; reached over the data stack's network (DATA_NETWORK, default ao-live_default).
+# The sign-in endpoints (/realms/agentic-office/*) are published to the internet in production, through a path allow-list in front.
+# Keycloak's own administration (the master realm and /admin) is never public: only reachable over the tailnet.
+name: ao-keycloak
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.0
+    restart: unless-stopped
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-kcadmin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      # The public address people's browsers use (it is the token issuer). Behind Tailscale Serve/Funnel the proxy sets the forwarded headers.
+      KC_HOSTNAME: ${KC_HOSTNAME}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      # Values the realm file refers to as ${NAME}; they never live in the repo.
+      AO_ADMIN_CONSOLE_SECRET: ${AO_ADMIN_CONSOLE_SECRET}
+      AO_API_CLIENT_SECRET: ${AO_API_CLIENT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-unset}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-unset}
+      AO_PUBLIC_URL: ${AO_PUBLIC_URL}
+      # KC_THEME_CACHE=false reads theme files from disk on every request (for working on the look); leave it unset in production.
+      KC_SPI_THEME__CACHE_THEMES: ${KC_THEME_CACHE:-true}
+      KC_SPI_THEME__CACHE_TEMPLATES: ${KC_THEME_CACHE:-true}
+      KC_SPI_THEME__STATIC_MAX_AGE: ${KC_THEME_MAX_AGE:-2592000}
+    volumes:
+      - ../realm:/opt/keycloak/data/import:ro
+      - ../theme/agentic-office:/opt/keycloak/themes/agentic-office:ro
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${KC_PORT:-8180}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: x\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [data]
+  # The only door to the internet: a path allow-list in front of Keycloak (see gate.conf). Point Tailscale Funnel (or any proxy) at this port, not at 8180.
+  gate:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [keycloak]
+    volumes:
+      - ./gate.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${GATE_PORT:-8181}:8081"
+    networks: [data]
+networks:
+  data:
+    name: ${DATA_NETWORK:-ao-live_default}
+    external: true

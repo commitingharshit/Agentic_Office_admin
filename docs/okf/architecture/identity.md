@@ -1,13 +1,15 @@
 ---
 type: Architecture
 title: Identity
-description: Every user table, token type, migration and client-side credential store in the repo, and where each piece of sign-in code lives after the W4 reorganisation.
+description: Every user table, token type, migration and client-side credential store in the repo, and where each piece of sign-in code lives (Clerk, and our own Better Auth sign-in service that is replacing it).
 resource: services/accounts-sync/src/auth/
 tags: [identity, auth, accounts, collab, clerk, sync]
 timestamp: 2026-10-17T00:00:00Z
 ---
 
 Two account stores exist today. Phase 2 of the reorganisation merges the second into the first.
+
+Sign-in itself is moving from Clerk to our own service ([Control plane](control-plane.md), `services/control-plane`): the server advertises which one it uses in `GET /v1/auth/config` (`oauth` for ours, `publishableKey` for Clerk) and the desktop follows it, so both work during the cutover.
 
 ## Account stores
 
@@ -25,7 +27,10 @@ Postgres roles: `ao_app` (row-level security, `own_rows`/`own_user` policies), `
 | Token | Issued by | Verified by | Lifetime | Stored by the client |
 |---|---|---|---|---|
 | Clerk session JWT | Clerk (Google/Microsoft/GitHub/email) | `services/accounts-sync/src/auth/clerk.ts` (JWKS from the publishable key, `azp` pinned) and, separately, `services/collab/src/accounts/clerk.ts` | Clerk's session | not kept: exchanged at once |
-| Device token `aod_…` (row `dtk_<ulid>`) | accounts-sync `POST /v1/auth/exchange` | `src/api/sync.ts` (hash lookup in `device_tokens`) | 90 days, sliding on use | VS Code SecretStorage (docx extension `account/account.ts`) |
+| ID token (EdDSA JWT) from the sign-in service | `services/control-plane` (Better Auth OAuth provider: authorization code + PKCE, loopback redirect) | `services/accounts-sync/src/auth/jwks.ts` (issuer's JWKS; audience `agentic-office-desktop`; the nonce this device chose) | 10 min; used once, at the exchange | not kept |
+| Browser session cookie (`auth_sessions`) | the sign-in service | the sign-in service and the admin console | Better Auth's session | the browser only |
+| API key `aok_…` (row `key_<ulid>`, hash only) | accounts-sync `POST /v1/api-keys`, shown once | `src/api/sync.ts` `keyUser`; allowed on `/v1/inference/*` only | until revoked (max 10 live per user) | wherever the user put it |
+| Device token `aod_…` (row `dtk_<ulid>`) | accounts-sync `POST /v1/auth/exchange` (from a Clerk token or our ID token) | `src/api/sync.ts` (hash lookup in `device_tokens`) | 90 days, sliding on use | VS Code SecretStorage (docx extension `account/account.ts`) |
 | Admin bearer token | `AO_ADMIN_TOKENS` env (`name:token`) | `src/api/admin.ts` | until rotated | admin's own |
 | Collab access token `a.…` | collab server (auth code + PKCE to a loopback redirect) | collab | 15 min | memory |
 | Collab refresh token | collab server | collab (`refresh_tokens`, rotating, reuse detection by family) | 60 days | VS Code SecretStorage per server (`account/collabSignIn.ts`) |
@@ -36,11 +41,11 @@ Postgres roles: `ao_app` (row-level security, `own_rows`/`own_user` policies), `
 
 ## Where sign-in code lives
 
-- **Server:** `services/accounts-sync/src/auth/` (the Clerk verifier). Collab's account module
+- **Server:** `services/accounts-sync/src/auth/` (`clerk.ts`, and `jwks.ts` for our own ID tokens); `services/control-plane/src/lib/auth.ts` (the sign-in service, as the least-privilege `ao_auth` role; only `users` is shared with accounts-sync, its other tables are `auth_*` from migration 0006 and `oauth*`/`jwks` from 0009). Collab's account module
   (`services/collab/src/accounts/`) keeps its own verifier and tokens until phase 2; its README
   says so.
 - **Client:** one module in the docx extension, `apps/editors/docx/extension/src/account/`:
-  `account.ts` (desktop sign-in → device token, per-user data root `~/.agentic-office/users/<id>/`)
+  `account.ts` (desktop sign-in → device token, per-user data root `~/.agentic-office/users/<id>/`), `oauth.ts` (the browser PKCE flow against our sign-in service; tested with a fake service) and `clerkPages.ts` (the Clerk path)
   and `collabSignIn.ts` (collab server sign-in). The xlsx, pptx and pdf extensions have no
   sign-in of their own, so nothing is shared with them yet and it stays in the extension rather
   than in `packages/`.

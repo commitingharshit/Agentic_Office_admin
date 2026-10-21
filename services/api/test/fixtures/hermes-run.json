@@ -1,0 +1,25 @@
+{
+  "run_id": "run_01M5DR6DCVZ9H5DK0AG78F0A3H",
+  "state": "succeeded",
+  "started_at": "2026-10-20T22:51:28.027Z",
+  "agent_id": "primary",
+  "session_id": "ses_t",
+  "ended_at": "2026-10-20T22:51:28.028Z",
+  "tokens_in": 0,
+  "tokens_out": 0,
+  "tool_calls": 1,
+  "steps": [
+    {
+      "step_id": "s0",
+      "kind": "tool",
+      "state": "succeeded",
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "retries": 0,
+      "tool_name": "docx.insert_table"
+    }
+  ],
+  "client_version": "1.2.3",
+  "model": "m-small",
+  "mode": "managed"
+}

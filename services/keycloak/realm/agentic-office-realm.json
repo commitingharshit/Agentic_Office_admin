@@ -1,0 +1,103 @@
+{
+  "realm": "agentic-office",
+  "displayName": "Agentic Office",
+  "loginTheme": "agentic-office",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "failureFactor": 10,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "passwordPolicy": "length(10) and notUsername",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "eventsEnabled": true,
+  "eventsExpiration": 7776000,
+  "eventsListeners": ["jboss-logging"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "roles": {
+    "realm": [
+      { "name": "ao-admin", "description": "May use the Agentic Office admin console" },
+      { "name": "ao-superadmin", "description": "Admin console: everything" },
+      { "name": "ao-engineer", "description": "Admin console: engineer" },
+      { "name": "ao-support", "description": "Admin console: support" },
+      { "name": "ao-finance", "description": "Admin console: finance" },
+      { "name": "ao-analyst", "description": "Admin console: analyst" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "agentic-office-desktop",
+      "name": "Agentic Office desktop app",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://127.0.0.1/*"],
+      "webOrigins": [],
+      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "+" },
+      "defaultClientScopes": ["openid", "profile", "email"],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "ao-admin-console",
+      "name": "Agentic Office admin console",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${AO_ADMIN_CONSOLE_SECRET}",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["${AO_PUBLIC_URL}/admin/callback", "http://localhost:*/admin/callback"],
+      "webOrigins": [],
+      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "${AO_PUBLIC_URL}/*" },
+      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+    },
+    {
+      "clientId": "ao-api",
+      "name": "Agentic Office API (reads Keycloak data for the admin console)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${AO_API_CLIENT_SECRET}",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [],
+      "defaultClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-ao-api",
+      "enabled": true,
+      "serviceAccountClientId": "ao-api",
+      "clientRoles": { "realm-management": ["view-users", "manage-users", "view-events", "view-realm"] }
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "providerId": "google",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": { "clientId": "${GOOGLE_CLIENT_ID}", "clientSecret": "${GOOGLE_CLIENT_SECRET}", "syncMode": "IMPORT", "defaultScope": "openid profile email" }
+    }
+  ]
+}
