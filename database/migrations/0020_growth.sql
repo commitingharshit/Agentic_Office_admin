@@ -154,9 +154,15 @@ ALTER TABLE promo_events FORCE ROW LEVEL SECURITY;
 -- The app may add events for the signed-in person (or unlinked ones) and never reads them back.
 CREATE POLICY add_own ON promo_events FOR INSERT
   WITH CHECK (user_id IS NULL OR user_id = current_setting('app.user_id', true));
+-- ON CONFLICT also checks the new row against a SELECT policy. The app can read only event_id (column grant below), so this
+-- reveals no more than whether an event id was already recorded.
+CREATE POLICY dedupe_own ON promo_events FOR SELECT
+  USING (user_id IS NULL OR user_id = current_setting('app.user_id', true));
 
 GRANT SELECT ON placements, campaigns, campaign_targets, creatives, creative_media TO ao_app;
 GRANT INSERT ON promo_events TO ao_app;
+-- ON CONFLICT (event_id) needs to read the one column it checks; nothing else of anyone's events is readable by the app.
+GRANT SELECT (event_id) ON promo_events TO ao_app;
 GRANT SELECT, INSERT, UPDATE ON promo_exposure, user_promo_prefs TO ao_app;
 GRANT SELECT ON placements, campaigns, campaign_targets, creatives, creative_media, media_jobs, promo_events, promo_exposure, user_promo_prefs TO ao_readonly;
 GRANT SELECT, INSERT, UPDATE, DELETE ON campaigns, campaign_targets, creatives, creative_media, media_jobs TO ao_admin;

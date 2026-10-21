@@ -14,6 +14,7 @@ import { HttpError } from './errors.ts';
 import * as ops from './ops.ts';
 import type { PaymentsService } from './payments/service.ts';
 import * as telemetry from './telemetry.ts';
+import * as growth from '../growth/engine.ts';
 import { cost as priceCost, outputLimit, UsageMeter, usageOf, worstCase, type Pricing, type StreamUpstream, type Upstream } from './inference.ts';
 import { RateLimiter } from './ratelimit.ts';
 import type { S3 } from './s3.ts';
@@ -40,6 +41,8 @@ export interface SyncDeps {
   /** The OAuth endpoints the desktop app signs in through; handed out by GET /v1/auth/config. */
   oauth?: { issuer: string; authorization_endpoint: string; token_endpoint: string; client_id: string };
   s3?: S3;
+  /** Signs the app's links to promotion media (src/growth/engine.ts mediaLink). Without one, links last for this process only. */
+  mediaKey?: Buffer;
   /** Clerk publishable key, handed to the desktop app's sign-in page (it is public). */
   publishableKey?: string;
   /** Every way a Clerk user can sign in (oauth_google, oauth_microsoft, …), from Clerk's Backend API.
@@ -147,6 +150,8 @@ export function syncHandler(deps: SyncDeps) {
   const planLimiter = (perMinute: number) => { let l = planCalls.get(perMinute); if (!l) planCalls.set(perMinute, l = new RateLimiter(perMinute, 60_000)); return l; };
   const checkouts = new RateLimiter(10, 60_000);
   const telemetryCalls = new RateLimiter(30, 60_000);
+  const promoCalls = new RateLimiter(120, 60_000);
+  const mediaKey = deps.mediaKey ?? growth.mediaKey();
   const tooMany = (l: RateLimiter, key: string) => new HttpError(429, 'Too many attempts. Try again later.', { retry_after: l.retryAfter(key) });
 
   /** An API key (aok_…) → its owner. Keys may only call managed inference (checked by the router). */
@@ -328,6 +333,20 @@ export function syncHandler(deps: SyncDeps) {
         const r = await deps.payments.handleWebhook(raw, req.headers);
         return send(r.status, r.body), true;
       }
+      // Promotion media: a signed, expiring link (no sign-in header, so it works as a <video src>); the signature names the file.
+      if (a === 'promotions' && b === 'media' && c && m === 'GET') {
+        const id = Number(c), e = Number(url.searchParams.get('e')), sig = url.searchParams.get('s') ?? '';
+        if (!growth.verifyMedia(mediaKey, id, e, sig)) throw new HttpError(403, 'This media link is not valid or has expired.');
+        if (!deps.s3) throw new HttpError(503, 'Media storage is not configured.');
+        const f = await asUser(deps, null, async (cl) => (await cl.query("SELECT s3_key, mime FROM creative_media WHERE id = $1 AND role <> 'source'", [id])).rows[0]);
+        if (!f) throw new HttpError(404, 'Not found.');
+        const r = await deps.s3.request('GET', growth.MEDIA_BUCKET, f.s3_key);
+        if (!r.ok) throw new HttpError(404, 'Not found.');
+        const bytes = Buffer.from(await r.arrayBuffer());
+        res.writeHead(200, { 'content-type': f.mime, 'content-length': bytes.length, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff' });
+        res.end(bytes);
+        return true;
+      }
       const { uid, claims, viaKey } = await user(req);
       if (viaKey && a !== 'inference') throw new HttpError(403, 'An API key can only call managed inference.');
       const q = <T>(fn: (c: pg.PoolClient) => Promise<T>) => asUser(deps, uid, fn);
@@ -354,6 +373,18 @@ export function syncHandler(deps: SyncDeps) {
       }
       // ── what the app needs from operations: flags, announcements, support (src/api/ops.ts)
       if (a === 'config' && b === 'client' && m === 'GET') { const f = await q((cl) => ops.flagsFor(cl, uid)); return send(200, { plan: f.plan, flags: f.flags }), true; }
+      // ── promotions (src/growth/engine.ts): what this person may see on a placement, what they did, and their own choices
+      if (a === 'promotions' && b === 'eligible' && m === 'GET') {
+        if (!promoCalls.take(uid)) throw tooMany(promoCalls, uid);
+        return send(200, await q((cl) => growth.eligible(cl, uid, url.searchParams, (id) => growth.mediaLink(mediaKey, id)))), true;
+      }
+      if (a === 'promotions' && b === 'events' && m === 'POST') {
+        if (!promoCalls.take(uid)) throw tooMany(promoCalls, uid);
+        const d = await json(req, 50_000);
+        return send(200, await q((cl) => growth.recordEvents(cl, uid, d))), true;
+      }
+      if (a === 'promotions' && b === 'prefs' && m === 'GET') return send(200, await q((cl) => growth.getPrefs(cl, uid))), true;
+      if (a === 'promotions' && b === 'prefs' && m === 'PUT') { const d = await json(req, 1_000); return send(200, await q((cl) => growth.setPrefs(cl, uid, d))), true; }
       if (a === 'announcements' && !b && m === 'GET') return send(200, await q((cl) => ops.liveAnnouncements(cl, uid))), true;
       if (a === 'announcements' && b && c === 'read' && m === 'POST') return send(200, await q((cl) => ops.markRead(cl, uid, b))), true;
       if (a === 'support' && b === 'tickets' && !c && m === 'GET') return send(200, await q(ops.myTickets)), true;
