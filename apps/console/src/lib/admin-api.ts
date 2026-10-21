@@ -7,7 +7,7 @@ export class AdminApiError extends Error {
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
 
-export async function adminApi<T = any>(path: string, o: { acting?: string; method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }): Promise<T> {
+export async function adminApi<T = any>(path: string, o: { acting?: string; method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown }): Promise<T> {
   const token = process.env.AO_ADMIN_API_TOKEN;
   if (!base() || !token) throw new AdminApiError(503, 'The admin API is not configured (AO_ADMIN_API_URL, AO_ADMIN_API_TOKEN).');
   const r = await fetch(`${base()}${path}`, {
@@ -29,4 +29,17 @@ export type Loaded<T> = { ok: true; data: T } | { ok: false; error: string };
 export async function load<T = any>(path: string, acting: string): Promise<Loaded<T>> {
   try { return { ok: true, data: await adminApi<T>(path, { acting }) }; }
   catch (e) { return { ok: false, error: e instanceof Error ? e.message : 'Unknown error.' }; }
+}
+
+/** A file upload (raw bytes with their type), e.g. a promotion's image or clip. Same token and acting admin as adminApi. */
+export async function adminUpload<T = any>(path: string, o: { acting: string; type: string; bytes: ArrayBuffer }): Promise<T> {
+  const token = process.env.AO_ADMIN_API_TOKEN;
+  if (!base() || !token) throw new AdminApiError(503, 'The admin API is not configured (AO_ADMIN_API_URL, AO_ADMIN_API_TOKEN).');
+  const r = await fetch(`${base()}${path}`, {
+    method: 'POST', body: o.bytes, cache: 'no-store', signal: AbortSignal.timeout(120_000),
+    headers: { authorization: `Bearer ${token}`, 'content-type': o.type, 'x-ao-acting-admin': o.acting },
+  });
+  const data: any = await r.json().catch(() => ({}));
+  if (!r.ok) throw new AdminApiError(r.status, data?.error ?? `The admin API answered ${r.status}.`);
+  return data as T;
 }
