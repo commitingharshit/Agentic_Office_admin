@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { parseManifest, pathProblem } from '../manifest.ts';
 import { createTemplateValidator } from './template.ts';
+import { createSkillValidator } from './skill.ts';
 import type { ListingType, UnpackedPackage, ValidationCheck, ValidationReport } from '../types.ts';
 
 export type Validator = (pkg: UnpackedPackage) => Promise<ValidationCheck[]> | ValidationCheck[];
@@ -58,3 +59,5 @@ export async function validateArtifact(type: ListingType, pkg: UnpackedPackage):
 
 // template.ts must not import this module (no cycle); the registry wires it here. officecli is injected, none by default.
 registerValidator('template', createTemplateValidator());
+// skill: the security scan is injected (createSkillsGuardScanner) and REQUIRED; none by default, so reports stay unverified.
+registerValidator('skill', createSkillValidator());
