@@ -214,6 +214,7 @@
    "pdf_stamp": "edit",
    "pdf_stats": "admin",
    "pdf_subtree": "read",
+   "pdf_verify": "verify",
    "pdf_watermark": "edit"
   },
   "pptx": {
