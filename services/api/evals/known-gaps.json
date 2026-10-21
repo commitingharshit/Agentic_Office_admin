@@ -3,5 +3,6 @@
   "template-validator": [],
   "template-differential": [],
   "blueprint-validator": [],
-  "bundle-validator": []
+  "bundle-validator": [],
+  "advanced-gate": []
 }

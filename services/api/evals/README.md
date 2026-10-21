@@ -11,6 +11,7 @@ caught, or start blocking things that used to pass?". They are **regression gate
 | `run-template-differential.ts` | the template corpus + `FUZZ_MUTATIONS` (default 500) seeded mutations of the real templates (`FUZZ_SEED`, default 1) | validator verdict vs OfficeCLI `validate` + `view issues` (skipped when `officecli` is missing) |
 | `run-blueprint-validator.ts` | `blueprint-corpus.ts`: 18 benign agents (incl. the M&A Analyst and Legal Research fixtures from `test/fixtures/agents/`, test fixtures only, never listings) + 54 hostile ones (escalation, injection, supply-chain, cycle, dependency, config-smuggling, dos, secrets) | `createAgentValidator` with a fake caller-scoped catalog, the REAL Python compiler bridge (with dry run over real skill trees) and the REAL Skills Guard persona scanner when `vendor/hermes-agent/venv` exists (`HERMES_PYTHON` overrides). Cases marked `needsPython` are **skipped, not passed** without it |
 | `run-bundle-validator.ts` | `bundle-corpus.ts`: 11 benign + 35 hostile bundles (swapped hash, range pins, nesting, visibility, closure, order, compat, permission union, forbidden files, smuggling, DoS) | `createBundleValidator` with a fake caller-scoped catalog |
+| `run-advanced-gate.ts` | `corpora/{hook,bridge,connector,routine,memory,workflow}.ts`, normalised by `advanced-gate.ts` (hook 4+28, bridge 1+99, connector 1+75, routine 6+63, memory 6+38, workflow 6+35 benign+malicious) | `unpack()` then the REAL `validateArtifact(type, pkg)` for each advanced type. Gates: 100% recall on malicious (known gaps excepted), 0 benign false positives, a size floor per type (hook 14, bridge 12, connector 11, routine 15, memory 10, workflow 13), a missing or empty corpus fails, a validator crash is never counted as detection, a rejection by a different check than the recorded `catches` fails. Script-mode hooks are off (no per-host-class results; reported as not run, never as passed). `test/marketplace-advanced-gate.test.ts` holds the meta-tests that prove the runner cannot pass vacuously. Hermes-side handler corpora: `cd vendor/hermes-agent && python -m pytest tests/hermes_cli/marketplace_ext -q` |
 
 Positive class = malicious; "detected" = the package was rejected (at unpack or by any failed validation check).
 
@@ -18,7 +19,8 @@ Positive class = malicious; "detected" = the package was rejected (at unpack or 
 
 ```
 cd services/accounts-sync
-npm run eval              # both
+npm run eval              # all (scan gate, templates, blueprints, bundles, advanced types)
+npm run eval:advanced     # the six advanced-type hostile corpora
 npm run eval:scan-gate    # needs python3 and vendor/hermes-agent in the checkout
 npm run eval:templates    # pure Node
 npm run eval:differential # needs the officecli binary (slow: ~2 officecli calls per case; FUZZ_MUTATIONS=50 for a quick pass)
