@@ -33,9 +33,9 @@ export interface PipelineResult {
   startedAt: string; finishedAt: string;
 }
 
-// Placeholders for the Hermes task-eval types; Task 6 owns their real shape.
-export interface SkillTask { id: string; [k: string]: unknown }
-export interface TaskRun { [k: string]: unknown }
+// The task-eval shapes live with the stage that owns them (stages/skill/taskSchema.ts).
+import type { SkillTask, TaskRun } from './stages/skill/taskSchema.ts';
+export type { SkillTask, TaskRun };
 
 /** Injected; every member optional so absence yields 'skipped' (tool-missing), not a crash. */
 export interface PipelineTools {
@@ -46,7 +46,7 @@ export interface PipelineTools {
   visual?: { compare(ref: Uint8Array, rendered: Uint8Array, o: { clip: boolean; dino: boolean }): Promise<{ pixel: Measured; ssim: Measured; clip?: Measured; dino?: Measured }>;
              layout(file: Uint8Array, fmt: string): Promise<{ rule: string; blocking: boolean; slide: number; message: string }[]> };
   scanner?: SkillScanner;
-  hermes?: { runTask(skill: UnpackedPackage, task: SkillTask): Promise<TaskRun> };
+  hermes?: { runTask(skill: UnpackedPackage, task: SkillTask, signal?: AbortSignal): Promise<TaskRun> };
 }
 export interface EvidenceSink { addBlob(mime: BlobMime, bytes: Uint8Array): Promise<NonNullable<Evidence['blob']>> }
 export interface StageContext { pkg: UnpackedPackage; tools: PipelineTools; evidence: EvidenceSink; signal: AbortSignal; previous?: PipelineResult }

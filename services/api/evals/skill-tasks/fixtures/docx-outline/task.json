@@ -1,0 +1,16 @@
+{
+  "skillDir": "scripts/dev-seed/docx-outline",
+  "permissions": [{ "capability": "exec.script", "scope": "scripts/*", "reason": "Runs the bundled read-only outline script." }],
+  "task": {
+    "id": "outline-of-sample",
+    "prompt": "Print the heading outline of in/sample.docx and save it as out/outline.txt.",
+    "timeoutSec": 60,
+    "inputs": ["sample.docx"],
+    "expected": ["expected.txt"],
+    "checks": [
+      { "kind": "functional", "file": "out/outline.txt", "assert": { "textContains": ["H1 Introduction", "H2 Background", "H3 Sampling", "H1: 2"], "textExcludes": ["Body text that is not a heading"] } },
+      { "kind": "diff", "file": "out/outline.txt", "expected": "expected.txt", "maxDifferingLines": 0 }
+    ]
+  },
+  "script": [{ "argv": ["/usr/bin/python3", "skill/scripts/outline.py", "in/sample.docx"], "stdoutTo": "out/outline.txt" }]
+}
