@@ -163,3 +163,29 @@ describe('the enforcement itself fails on bad evidence (mutation checks)', () =>
     assert.equal(normaliseEvidence(null).ok, false);
   });
 });
+
+// Revocation gate (Plan 3 Task 14): a type may be operational only when the table in docs/audits/marketplace-revocation-behaviour.json says how a
+// server-side revoke reaches it ("revokes" + the proving test file) or documents why it cannot be revoked. A missing row fails the gate.
+describe('revocation behaviour of every operational type', () => {
+  const table = (() => { try { return JSON.parse(readFileSync(join(repo, 'docs/audits/marketplace-revocation-behaviour.json'), 'utf8')) as Record<string, any>; } catch { return {} as Record<string, any>; } })();
+  const operational = LISTING_TYPES.filter((t) => OPERATIONAL[t]?.supported === true);
+  test('every supported type has a revocation entry', () => {
+    for (const t of operational) assert.ok(table[t], `${t} is operational but has no revocation behaviour entry`);
+  });
+  test('each entry either revokes (mechanism + existing proof file) or says why it cannot be revoked', () => {
+    for (const t of operational) {
+      const e = table[t]; if (!e) continue;
+      if (e.behaviour === 'revokes') {
+        assert.ok(typeof e.mechanism === 'string' && e.mechanism.length > 20, `${t}: mechanism`);
+        assert.ok(typeof e.proof === 'string' && existsSync(join(repo, e.proof)), `${t}: proof file ${e.proof} must exist`);
+      } else {
+        assert.equal(e.behaviour, 'cannot-be-revoked', `${t}: behaviour must be revokes or cannot-be-revoked`);
+        assert.ok(typeof e.why === 'string' && e.why.length > 20, `${t}: cannot-be-revoked needs a why`);
+      }
+    }
+  });
+  test('the gate catches a missing row', () => {
+    const without = { ...table }; delete without.hook;
+    assert.ok(operational.includes('hook') && !without.hook);
+  });
+});
