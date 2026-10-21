@@ -782,6 +782,12 @@ describe('marketplace supply-chain regression suite (real Postgres, real handler
       // the manifest inside the artifact matches what the listing advertised (the advertised permissions cannot understate the package)
       assert.deepEqual(detail.manifest.permissions, next.permissions);
       assert.equal(detail.manifest.sha256, sha256Hex((await api(`/versions/${v2.json.versionId}/artifact`, { as: 'u1' })).bytes));
+      // the version list itself carries permissions and what each version adds over the previous one (no artifact download needed)
+      const vs = (await api(`/listings/${L}/versions`, { as: 'u1' })).json.versions;
+      const vOf = (id: string) => vs.find((v: any) => v.id === id);
+      assert.deepEqual(vOf(v1.json.versionId).permissions, []); assert.deepEqual(vOf(v1.json.versionId).addedPermissions, []);
+      assert.deepEqual(vOf(v2.json.versionId).permissions, [P_NET, P_EXEC]);
+      assert.deepEqual(vOf(v2.json.versionId).addedPermissions.map((p: any) => p.capability).sort(), ['exec.script', 'network']);
       // and the update is announced as a newer version to an installer, never silently applied
       await sync('u1', 'd1', [installItem(L, v1.json.versionId)]);
       const upd = (await sync('u1', 'd1')).json.updates.find((u: any) => u.listingId === L);
@@ -794,8 +800,6 @@ describe('marketplace supply-chain regression suite (real Postgres, real handler
       assert.equal(r.status, 201); assert.equal(r.json.state, 'rejected');
       assert.ok(r.json.validation.checks.some((c: any) => c.name === 'permissions-declared' && !c.ok));
     });
-
-    test.todo('GET /listings/:id/versions carries no permissions or added_permissions per version (Plan 4 Task 8 asked for it as a RED fix). Today a client diffs the installed manifest against the new artifact\'s manifest, which the test above proves is exact. Adding the field is a src/marketplace/store.ts change outside this task\'s test-only ownership.');
   });
 
   // ───────────────────────────────────────────────────────────── 9. typosquats

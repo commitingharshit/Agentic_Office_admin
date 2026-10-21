@@ -111,15 +111,26 @@ async function upstreamOf(c: pg.PoolClient, r: any): Promise<{ listingId: string
   return { listingId: r.forked_from as string, latestVersion: up.version as string, newerThanBase: newer };
 }
 
+const permKey = (p: { capability?: string; scope?: string }) => `${p.capability}\u0000${p.scope ?? ''}`;
+const permsOf = (manifest: any): Array<Record<string, unknown>> => (Array.isArray(manifest?.permissions) ? manifest.permissions.filter((p: any) => p && typeof p === 'object' && typeof p.capability === 'string') : []);
+
 export async function listVersions(c: pg.PoolClient, id: string) {
-  return (await c.query(`
-    SELECT v.id, v.version, v.state, v.scan_verdict, v.published_at, v.created_at, v.sha256, v.size
+  const rows = (await c.query(`
+    SELECT v.id, v.version, v.state, v.scan_verdict, v.published_at, v.created_at, v.sha256, v.size, v.manifest
       FROM marketplace_versions v
      WHERE v.listing_id = $1   -- RLS: published/deprecated for everyone, every state for the owner
      ORDER BY v.semver_major DESC, v.semver_minor DESC, v.semver_patch DESC, v.created_at DESC, v.id
-     LIMIT 200`, [id])).rows.map((v) => ({
-    id: v.id, version: v.version, state: v.state, scanVerdict: v.scan_verdict, publishedAt: v.published_at, createdAt: v.created_at, sha256: v.sha256, size: Number(v.size),
-  }));
+     LIMIT 200`, [id])).rows;
+  // Newest first. addedPermissions = what this version asks for that the next-older visible version did not, so a client can
+  // show "this update adds ..." without downloading both artifacts (the client still recomputes it from the real manifests).
+  return rows.map((v, i) => {
+    const permissions = permsOf(v.manifest);
+    const prev = new Set((rows[i + 1] ? permsOf(rows[i + 1].manifest) : []).map(permKey));
+    return {
+      id: v.id, version: v.version, state: v.state, scanVerdict: v.scan_verdict, publishedAt: v.published_at, createdAt: v.created_at, sha256: v.sha256, size: Number(v.size),
+      permissions, addedPermissions: permissions.filter((p) => !prev.has(permKey(p as any))),
+    };
+  });
 }
 
 /** What a preview/doc request needs from a version, read as the caller (RLS decides whether the row exists). */

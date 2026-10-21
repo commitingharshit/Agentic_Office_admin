@@ -122,7 +122,7 @@ export async function openArtifact(db: Queryable, store: ArtifactStore, actor: {
 
 // ---------------------------------------------------------------- unpacking
 
-export type UnpackCode = 'zip-slip' | 'symlink' | 'too-large' | 'too-many-files' | 'missing-manifest' | 'bad-path' | 'bad-zip' | 'duplicate' | 'bad-manifest';
+export type UnpackCode = 'zip-slip' | 'symlink' | 'special-file' | 'too-large' | 'too-many-files' | 'missing-manifest' | 'bad-path' | 'bad-zip' | 'duplicate' | 'bad-manifest';
 export class UnpackError extends Error {
   readonly code: UnpackCode;
   constructor(code: UnpackCode, message: string, cause?: unknown) { super(message, cause === undefined ? undefined : { cause }); this.name = 'UnpackError'; this.code = code; }
@@ -201,7 +201,7 @@ export function readZipFiles(bytes: Uint8Array, opts: { maxTotal?: number; maxFi
   const out = new Map<string, Uint8Array>();
   // Every declared size is summed BEFORE anything is inflated, so an over-budget archive is refused without work.
   let total = 0;
-  for (const e of entries) { if (!e.name.endsWith('/')) total += e.declared; }
+  for (const e of entries) { checkFileType(e); if (!e.name.endsWith('/')) total += e.declared; }
   if (total > maxTotal) throw new UnpackError('too-large', `archive declares ${total} bytes uncompressed, over the ${maxTotal} limit`);
   for (const e of entries) {
     if (e.name.endsWith('/')) continue;
@@ -221,12 +221,19 @@ export function extractOne(bytes: Uint8Array, path: string, opts: { maxBytes: nu
   checkEntryPath(path);
   const e = readCentralDirectory(bytes).find((x) => x.name === path);
   if (!e) return undefined;
-  if ((e.mode & S_IFMT) === S_IFLNK) throw new UnpackError('symlink', `symlink entry in archive: ${JSON.stringify(path)}`);
+  checkFileType(e);
   if (e.declared > opts.maxBytes) throw new UnpackError('too-large', `entry ${JSON.stringify(path)} is ${e.declared} bytes, over the ${opts.maxBytes} limit`);
   return extract(bytes, e);
 }
 
-const S_IFMT = 0o170000, S_IFLNK = 0o120000;
+const S_IFMT = 0o170000, S_IFLNK = 0o120000, S_IFREG = 0o100000, S_IFDIR = 0o040000;
+
+/** Only unset, regular-file and directory modes are accepted: symlinks, devices, FIFOs and sockets are never part of a package. */
+function checkFileType(e: CdEntry): void {
+  const t = e.mode & S_IFMT;
+  if (t === S_IFLNK) throw new UnpackError('symlink', `symlink entry in archive: ${JSON.stringify(e.name)}`);
+  if (t !== 0 && t !== S_IFREG && t !== S_IFDIR) throw new UnpackError('special-file', `special file entry in archive (file type ${t.toString(8)}): ${JSON.stringify(e.name)}`);
+}
 
 /**
  * Collision key for entry names. A case-insensitive, normalisation-insensitive file system (APFS, NTFS) treats names that
@@ -267,7 +274,7 @@ export function unpack(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: 
     const isDir = e.name.endsWith('/');
     const rel = isDir ? e.name.slice(0, -1) : e.name;
     checkEntryPath(rel);
-    if ((e.mode & S_IFMT) === S_IFLNK) throw new UnpackError('symlink', `symlink entry in archive: ${JSON.stringify(e.name)}`);
+    checkFileType(e);
     const key = foldName(rel);
     if (seen.has(key)) throw new UnpackError('duplicate', `duplicate entry (or case/Unicode collision): ${JSON.stringify(e.name)}`);
     seen.add(key);

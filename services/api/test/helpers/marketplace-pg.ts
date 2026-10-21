@@ -50,7 +50,7 @@ export async function startMarketplacePg(): Promise<MarketplacePg> {
   await su.query(`CREATE DATABASE mkt OWNER ao_owner`);
   const owner = await connect('ao_owner');
   await owner.query(`
-    CREATE TABLE users (id text PRIMARY KEY, email text);
+    CREATE TABLE users (id text PRIMARY KEY, email text, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);
     ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
     CREATE POLICY own_rows ON devices USING (user_id = current_setting('app.user_id', true));
