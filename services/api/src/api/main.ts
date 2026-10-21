@@ -71,7 +71,7 @@ const kcClient = kcClients[0];
 const keycloak = kcIssuer ? { issuer: kcIssuer, verify: (() => { const v = new JwksVerifier({ issuer: kcIssuer, audience: kcClients, jwksUrl: env.KEYCLOAK_JWKS_URL || `${kcIssuer}/protocol/openid-connect/certs`, algs: ['RS256', 'ES256'] }); return (t: string) => v.verify(t); })() } : undefined;
 const kcOauth = kcIssuer ? { issuer: kcIssuer, authorization_endpoint: `${kcIssuer}/protocol/openid-connect/auth`, token_endpoint: `${kcIssuer}/protocol/openid-connect/token`, client_id: kcClient } : undefined;
 const app = (clerk || idVerifier || keycloak) && env.AO_APP_PASSWORD ? pool('ao_app', env.AO_APP_PASSWORD) : undefined;
-const sync = app ? syncHandler({ app, verify: clerk ? (t) => clerk.verify(t) : undefined, verifyIdToken: idVerifier ? (t) => idVerifier.verify(t) : undefined, keycloak, keycloakAdmin: deps.keycloak, payments, oauth: kcOauth ?? oauth, s3, pricing, upstream, streamUpstream, publishableKey: env.CLERK_PUBLISHABLE_KEY,
+const sync = app ? syncHandler({ app, verify: clerk ? (t) => clerk.verify(t) : undefined, verifyIdToken: idVerifier ? (t) => idVerifier.verify(t) : undefined, keycloak, keycloakAdmin: deps.keycloak, payments, oauth: kcOauth ?? oauth, s3, mediaKey: env.AO_MEDIA_SIGNING_KEY ? Buffer.from(env.AO_MEDIA_SIGNING_KEY) : undefined, pricing, upstream, streamUpstream, publishableKey: env.CLERK_PUBLISHABLE_KEY,
   clerkIdentities: env.CLERK_SECRET_KEY ? async (sub) => {
     const r = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(sub)}`, { headers: { authorization: `Bearer ${env.CLERK_SECRET_KEY}` }, signal: AbortSignal.timeout(5000) });
     if (!r.ok) return [];
