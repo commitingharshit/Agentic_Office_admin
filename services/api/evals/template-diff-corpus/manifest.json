@@ -1,0 +1,5503 @@
+{
+ "seed": 1,
+ "mutations": 500,
+ "note": "Regenerate with FUZZ_SEED/FUZZ_MUTATIONS; mutations are pure functions of the seed and the committed templates.",
+ "items": [
+  {
+   "id": "t01-pptx-board-update",
+   "source": "corpus",
+   "op": "real-template",
+   "format": "pptx",
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "t02-pptx-investor-pitch",
+   "source": "corpus",
+   "op": "real-template",
+   "format": "pptx",
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "t03-docx-board-memo",
+   "source": "corpus",
+   "op": "real-template",
+   "format": "docx",
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "t04-xlsx-budget-tracker",
+   "source": "corpus",
+   "op": "real-template",
+   "format": "xlsx",
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "x01-macro-vba",
+   "source": "corpus",
+   "op": "macro",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x02-macro-content-type",
+   "source": "corpus",
+   "op": "macro",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x03-external-http-link",
+   "source": "corpus",
+   "op": "external-link",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x04-external-unc",
+   "source": "corpus",
+   "op": "external-link",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x05-external-scheme-relative",
+   "source": "corpus",
+   "op": "external-link",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x06-external-file-uri",
+   "source": "corpus",
+   "op": "external-link",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x07-dde-docx-field",
+   "source": "corpus",
+   "op": "dde",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "x08-dde-xlsx-formula",
+   "source": "corpus",
+   "op": "dde",
+   "format": "xlsx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x10-truncated",
+   "source": "corpus",
+   "op": "malformed",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "x11-no-content-types",
+   "source": "corpus",
+   "op": "malformed",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "x12-override-missing-part",
+   "source": "corpus",
+   "op": "malformed",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x13-svg-preview",
+   "source": "corpus",
+   "op": "disguised-file",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x14-html-as-pptx",
+   "source": "corpus",
+   "op": "disguised-file",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "x15-elf-in-embeddings",
+   "source": "corpus",
+   "op": "executable",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x16-case-variant-attributes",
+   "source": "corpus",
+   "op": "evasion",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x17-utf16-rels",
+   "source": "corpus",
+   "op": "evasion",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "x18-nested-workbook-bomb",
+   "source": "corpus",
+   "op": "bomb",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h01-doctype-unlisted-part",
+   "source": "corpus",
+   "op": "xml-all-parts",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h02-malformed-unlisted-part",
+   "source": "corpus",
+   "op": "xml-all-parts",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h03-stylesheet-pi-first-bytes",
+   "source": "corpus",
+   "op": "processing-instruction",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h04-pi-in-slide",
+   "source": "corpus",
+   "op": "processing-instruction",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h05-dde-glossary",
+   "source": "corpus",
+   "op": "dde",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h06-field-zero-width",
+   "source": "corpus",
+   "op": "dde",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h07-field-deleted-instr",
+   "source": "corpus",
+   "op": "dde",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h08-field-macrobutton",
+   "source": "corpus",
+   "op": "dde",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h09-field-hyperlink-http",
+   "source": "corpus",
+   "op": "external-link",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h10-xlsx-table-formula",
+   "source": "corpus",
+   "op": "dde",
+   "format": "xlsx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h11-xlsx-validation-dde",
+   "source": "corpus",
+   "op": "dde",
+   "format": "xlsx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h12-script-element",
+   "source": "corpus",
+   "op": "svg-script",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h13-svgblip",
+   "source": "corpus",
+   "op": "svg-script",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h14-svg-as-png",
+   "source": "corpus",
+   "op": "svg-script",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h15-svg-content-type",
+   "source": "corpus",
+   "op": "svg-script",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h16-vml-remote-href",
+   "source": "corpus",
+   "op": "external-link",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h17-rel-attached-template-internal",
+   "source": "corpus",
+   "op": "rel-kind",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h18-rel-customui",
+   "source": "corpus",
+   "op": "rel-kind",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "h19-rel-kind-query",
+   "source": "corpus",
+   "op": "rel-kind",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h20-xlsx-connections",
+   "source": "corpus",
+   "op": "remote-data",
+   "format": "xlsx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h21-webextension-part",
+   "source": "corpus",
+   "op": "remote-data",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h22-html-part",
+   "source": "corpus",
+   "op": "disguised-file",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h23-trailing-dot-exe",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h24-percent-traversal-name",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h25-fullwidth-slash-name",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h26-bidi-name",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h27-percent-twin",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h28-ads-colon",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h29-target-above-root",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h30-target-double-encoded",
+   "source": "corpus",
+   "op": "name-trick",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h31-deep-nesting",
+   "source": "corpus",
+   "op": "budget",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h32-nested-workbook-doctype",
+   "source": "corpus",
+   "op": "budget",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h33-override-retypes-rels",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "h34-duplicate-override",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "h35-main-part-retyped",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "h36-duplicate-relationship-id",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "h37-bad-xml-encoding",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "h38-rels-unknown-child",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "docx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "h39-rels-namespace-typo",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "pptx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "h40-types-namespace-typo",
+   "source": "corpus",
+   "op": "opc-structure",
+   "format": "xlsx",
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "b06-hyperlink-field-https-link-path",
+   "source": "corpus",
+   "op": "real-template",
+   "format": "docx",
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m000-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "b7e731928b220bc94d9b1edb5a06a711f7ac7dd2178bd6932b7f0d44afcb7959",
+   "size": 41605,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m001-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "39829a313579c3052faa62aeb2bbda81e9733b347c9516f00174aba25749bab1",
+   "size": 45372,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m002-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "ba6556075807c82cd960109bb299e328af248d6d17f1fc9a6264da65a2e3d635",
+   "size": 11232,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m003-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "a89b0660219ec427e6bd37913501369a4f25a0f52064583718c1d8c7d00c0dc3",
+   "size": 41226,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m004-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "999c46d61a5bf1b7cf1ef75ea8716c643e9168d7687024227b011cb95ac18e69",
+   "size": 45919,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m005-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "3fd0923877d087c40b481779790f46a2605206f1774e97e4950f8004bfbdc51f",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m006-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "4ffa8876188c2ed48c26a0a5633520690de7acf62fcb2929b070f3efd2acda5d",
+   "size": 17951,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m007-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "5323a0416a1067ac2fdfb53ac34463c6ae9dee1b79df2c2321a5601ea5339c94",
+   "size": 46876,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m008-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "87655e293a0419fa00bfc1511882ce4bfe5eb237e5f60c5dff2d6ed81ddefa6e",
+   "size": 11231,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m009-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "7936d284fba39ec4a1a3a75d1b286ff7e97f71afa133e12d25ef769691da4d83",
+   "size": 41289,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m010-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "92f5037c6b0c12a81b1d60a332264a5029a2a287741421d035d7d53432b5bbcf",
+   "size": 46997,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m011-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "7621914f1a61e8f8dbacf2729311f93873e6bc9d9d044048cf522c1106898266",
+   "size": 11234,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m012-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "29be4fedae9b8127aa35a7e1f96c7d2be8a50841f2400a47224d7b64e60861be",
+   "size": 14193,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m013-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "7bf808d00765322ce175bc39259a7715183edfbdc9cece40ae6c75698b01d5aa",
+   "size": 45164,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m014-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "dc13e4f4712ffbbe60e69cc8f5306aa0ff88afeb7563c3f7c73ab23b6f7df8aa",
+   "size": 11239,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m015-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "d8a3c089e8a4c83a84c304bf2fead8a976a1c47eb60fd90266ddb3cbbe08b6f1",
+   "size": 41606,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m016-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "9972bb015ee55293781b9e2c5871feee1e23c40974adf1a84b4ba2ff0ce4f087",
+   "size": 46005,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m017-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "ca0868eadcc5e50db5c742eee493ee085754a565790f8c790d66fdb16060da36",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m018-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "2af82acc6c0a1d50ea7405c33f1dfe50b27b71232cddf4a54529d4bf94f0fb36",
+   "size": 40755,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m019-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "1f8baa53970dc4a9fdd793bbee1ce6e8d8ea4d20a9116ddebce3e8188b9eb5e5",
+   "size": 46532,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m020-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "31dabfa7ae0147c4c1189e8369a64e64fd9c97c673069505efbcb23bbf3c55ab",
+   "size": 11237,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m021-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "f1e490f4fa40a8ea518708e86564b88cc53f4ae84dba4abe9d693b444dadab74",
+   "size": 41617,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m022-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "f7bc19526802c1b695ef82b3b90eda4ac6b30c8fb3666497ff7a222fe7186750",
+   "size": 35030,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m023-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "d213d04cb6a0a401bafdbfa0cf2bbd469a4621f9b26224d6f190a0db5f417545",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m024-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "f61b56fb356929c8dff151e2718a0ac234a77dceca8de3a100bdb2697bb91206",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m025-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "89d4bc96471231e386c922053b5d72302057801ef5b65d09f3467d12717ea29a",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m026-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "419dcf7c25740d467383b841e9c60bfacfe4e2c20d73c5a0666adcb6a96a3edc",
+   "size": 11055,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m027-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "3a5702891ea48d088efd3793bc7127ad65f282d48c85dfb29661f861391a089d",
+   "size": 40987,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m028-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "390a0da2ba672e8258eea6263f1f031109bfeb1c402c0ddee6c0e05b23486aa0",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m029-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "9a1d22c6bf52505388b8e2e7702cb7b89959e96f97cbbdb108384ade67fd8b65",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m030-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "ccb91412e071c008f3e0b5eb14c72e47ec61ff07a9cae1c397b4559adcc8fb5f",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m031-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "59604869433722f464415a627684ccd8531c557d9956cd84a4beb6c584243633",
+   "size": 46643,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m032-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "442158dca45635efaee6ed8308c7ad8262b4708a97752344a2576c487ff69a4d",
+   "size": 5523,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m033-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "4eea410652d5f0793425513eb4395d21bf541d4bfbda758bca8103cad000d2a1",
+   "size": 29017,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m034-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "862a5203f2fd553e42821a45252adf388954e957a541b9ff3093e39fc2acc889",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m035-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "c96f5494d85964a9f5792646dcfcac600ba29d2d57419324b5be563f54d1db25",
+   "size": 10975,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m036-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "657d4bcfadac148ac8c24de85b517cb79bab617a843e8c8b0f87cc9383fdf993",
+   "size": 41049,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m037-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "410b243d9752d55a2555b1ade70fb398b6d24004d97e72c57b0c66c74ffa4a8c",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m038-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "042e8e3add48f8d32bfbda6fc0ece77fc3f97cdc6d529673e9d5c57223a79345",
+   "size": 10925,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m039-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "54c1c7c283c78c238ca65acb86cb2e1c4def24e2e77a176b9e4ff8a29e72f15c",
+   "size": 41604,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m040-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "6e96a15bee0508d5486186ace4d0c98877d3471a8444db59a0774b546c904c83",
+   "size": 38771,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m041-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "fad3dd48f71999281684fb07efe58210b357a8b29c21e816e8a8e605cf4d8343",
+   "size": 11122,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m042-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "8d17d08ecd65e32b7edcfbb563a6d76ab0bcac0bf4b6bbac3583de9d8213a370",
+   "size": 28069,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m043-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "4bb8b63e9542b36f8c8da3d622f54e316e92fc6c758333c3a781cb9d060f9980",
+   "size": 46992,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m044-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "be1805121ea0e22786eaadc69878644fac73eb356cb5dba5ebb28d226af284c2",
+   "size": 11233,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m045-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "7d614a46347e973690dbe4c7b5943aef790957d9f12ac1bf2f7aaec24e8ab085",
+   "size": 11338,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m046-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "31a576c3980aab08f24debcf52c4510fecbf0aa0af94c3871450e6dc8b4a2d4d",
+   "size": 46992,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m047-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "3dc99f12e1570d0ef38c9402e3cb25cc8ec6a82227b520bbbd0ad760c47bd2be",
+   "size": 6879,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m048-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "f9c022b2ddacb29d3bb0a30be77215c22b62deea90c81b67386788a2687e9561",
+   "size": 41239,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m049-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "ebc1820d45575a66b4bc64a40559f1137f58bb5c3605f7a61ee05ea78b165d37",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m050-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "1ebed17e9d2c2ceec610d826790f197d2a7a333070a7c355b79e335412b1d8fb",
+   "size": 11245,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m051-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "346fa3839a66b23aaeee59dcfd085e501d75c070ce78c5e454de29e43467ccdb",
+   "size": 39997,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m052-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "cbb90d6e7244828518fa02ad1ced4b188e540fbb1732b650d1d3b9256f81fd09",
+   "size": 45010,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m053-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "34aa31498ddf46ab5de647711b05bd6771b724d44b3cc901d2ba20432a0ae925",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m054-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "0f887a78ebec45ef2b9727849d2da0e2a0edb4fa03ed683ffa51bc817dc64f41",
+   "size": 40688,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m055-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "78eefb289766b2c94790f7a2c9d26a9f41716bfed1081bbae331e6fa501b288d",
+   "size": 42162,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m056-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "d54baf5272855528f343677343c89fc0d5ea399a36cdf4ffc1ff0c5f968ed897",
+   "size": 10919,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m057-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "f300ac6138475e9aa06c4130c7af7ca38be8e89e04710559dc6d29e9b856aec6",
+   "size": 41274,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m058-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "5dae5aeeee060a2ce326491f99f1f226ec5d6491350271ff71639d70847913bb",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m059-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "cb7e2279470631aec0f9155f15a39242c2b251032237d29a12308f321e561f9e",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m060-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "ef71433e1759ff1678a623d2f9496a77f874464641d9dc066adba7c69c0dd243",
+   "size": 41597,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m061-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "04bb16bad58204f3b56be475f6372a744ed6d214712c923ada8639924abe4424",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m062-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "ab9a6c368b841189d3d65e9decda231907400c84e261d735ff0802a2ecaee052",
+   "size": 9983,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m063-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "5dbe0c041300420adca2881f1ab27915f6d843daa1826f6e318f7a46324503be",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m064-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "8e7d4fcb3e7bf389568938ec3e9c3217480e7274e476627f576d07f24804929a",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m065-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "4efec41f100f8d581f447ed116aa0ed96a13453c41cba4ae73b65a84ab07daf4",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m066-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "eb4e93b99f6823cde0d8bed0a59adcd72c52fc43d405e67b18d30b05ff19a709",
+   "size": 41097,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m067-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "ead3ee7a41e01120e28b9dcc3d3bf9e9e865b511632a0acba129bf9bed04728a",
+   "size": 46786,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m068-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "57c97e65ae9bdd91ee4b896b8576a56dc6e0ca6ee16a0f896acb415907e5b900",
+   "size": 11245,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m069-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "b72ad4e4a1f0fdebe374af77f470577c2847a9ae3e41bdbb8e2239eff336ede9",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m070-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "862a5203f2fd553e42821a45252adf388954e957a541b9ff3093e39fc2acc889",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m071-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "d54baf5272855528f343677343c89fc0d5ea399a36cdf4ffc1ff0c5f968ed897",
+   "size": 10919,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m072-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "c2720fc95d3ff483a68577265be6e438e4f8bf9c247eb00587f1145a01281327",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m073-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "2fa4d0a9f96a676a8e6ea2b5be754df29558a8f2ccdfa6dfec791fd8da905e4f",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m074-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "efe693af285a746f5a0d27cb13f0775e4e1041a8f59fde0b328747918e53ad6f",
+   "size": 11229,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m075-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "d49333ae46326fb6513241ec5e9645e517249c1cf9f5294ef95b5424352381e8",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m076-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "5e2358167b0ac533b9982ab3f78ae7871baa626b485b303e692467501bf47735",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m077-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "4290cf9774004f966de0df1d06377a92d5caa1378767d0097ef2bb677309ccf3",
+   "size": 11238,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m078-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "ffdd809da865bb3b03062bc9298a981a5026aa9886dc8d1103bb1982b9467023",
+   "size": 41153,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m079-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "0f58abb2de1fd3e8f7fa99bdbf088551e5f99146ce1bf5c87a3abddac5260975",
+   "size": 46995,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m080-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "82a9abbaedae3de18d4a3e75093f943f8b915145dfb2e5d404eb805b676c6930",
+   "size": 11234,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m081-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "20d57a4f16475253d94d0fc9483b2bdcfc915545590f50b7e4d29fc8876002b7",
+   "size": 37699,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m082-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "f0dfe6ca07ec5eebfa17fa354039e4936e998b700025b69d9e4a8793f023f129",
+   "size": 46711,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m083-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "4f741d76c1756869b570f873df7108343bfa6f28c2549a12851bdcaea5abd0be",
+   "size": 4544,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m084-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "f1ad459232a6f6771823645aca54d5410d503a5e8ebc12343d3f07aa8280794e",
+   "size": 41601,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m085-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "0667135bdd437ac5bc23ee071e451fe9c9c7f79f88b1ee5da245b3d8a455e128",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m086-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "b2df2c3dfe313ed56a5bb5626c506292189870af2d9081fc15cec7e88689b77e",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m087-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "0b83c7e7b7d13972ebab5abd6a6dc0106b88043b3f8fa62303d66c7017194cc4",
+   "size": 41605,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m088-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "d43765447e6516ede637819121c3a354a6dc4351fab87d4c0838a019ca90f67c",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m089-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "294a7192f46b4c60159b6386a19162bc8fde8c3b2b38a99b515e8ce4c6dc8a79",
+   "size": 11235,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m090-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "5b6b961588f0981c5e3d444479d213659570834e6ecb57722081f32b910ac035",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m091-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "4e2f380d330c64722c4af1424418fe9d04835c2c08d1e3f36c1974781bfda584",
+   "size": 46989,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m092-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "b490f144aecf1e6ff39d67b33249e67045399b9d4e07e566df35a9d4dbe8eaf3",
+   "size": 11239,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m093-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "85e805e6ba252838a463e48b55c524ff72eab65e4eb8c834c477d3551935df82",
+   "size": 40514,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m094-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "943cd633832e33035b12f38eb8e1f845aba7cd717d925a3f9f15a9c37a175458",
+   "size": 46998,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m095-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "98dbe2e6d914a086678d3e97643177d8a5fbdc608a6130934601f291b0b78554",
+   "size": 11238,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m096-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "49b059b912fd3a2086951ad7b1fa4531f090afcf12c7aded76004b9b2ccb137b",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m097-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "862a5203f2fd553e42821a45252adf388954e957a541b9ff3093e39fc2acc889",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m098-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "a417b1eb89a7982e0d9cdbf985d3a928c6510ead0353d86461bbbd3c262b8ca3",
+   "size": 7215,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m099-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "0f887a78ebec45ef2b9727849d2da0e2a0edb4fa03ed683ffa51bc817dc64f41",
+   "size": 40688,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m100-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "58c3b710da9392bfaebcca00999bf81f20230e3486ecb9b0ec6b8bb3f4bc3f6b",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m101-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "517389c59d93f65df4cb5546e3e7cc43e8827f8403bc87ca1728677183871c0d",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m102-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "fcfef2268543ce81512ad29b6f4e7a1d5005f4e95fe717e33b6cbf3a06b92536",
+   "size": 41605,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m103-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "fdb247339f9d848ae800a690c16900675b3518ccb7a88aebe0e9b2d5e878e1b4",
+   "size": 46990,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m104-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "83776f565c418d47383a8162add7a0d84adb3e4e5517c34da6c01a5e414c14d1",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m105-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "2dbc8f20273c74f3bd0cdd3eeaf8c3de640a8fb1ec35dae227755a625c9cea52",
+   "size": 18598,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m106-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "636b61c64e7b52d900f7c2e95924305e0e0567b514909891715af1328d7b112a",
+   "size": 46266,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m107-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "d213d04cb6a0a401bafdbfa0cf2bbd469a4621f9b26224d6f190a0db5f417545",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m108-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "8544fbf8649d2e53964b7d36bc506e047625c83980e014d955401fc404b1e3d6",
+   "size": 41433,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m109-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "a925c285238a3baf0ad7e6ad64ded07da06eea9224afb291bc90e2512248111b",
+   "size": 45750,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m110-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "57c97e65ae9bdd91ee4b896b8576a56dc6e0ca6ee16a0f896acb415907e5b900",
+   "size": 11245,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m111-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "cf4c48e54a3e7d4a0bd0c1e4e134e104306198e373502704c1a562236cc5d68c",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m112-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "292dff905d2734af7250f5fa3deab1249fed935de60505bdef520942f45688c8",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m113-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "f27a12b1065abdd73db4942876c705455470ab7fc0c8cb73926ef7e21e35ab3f",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m114-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "bfc7303233e32af28691cf212e39034616b54f89741f66189c54c2d0bad1b2e1",
+   "size": 41271,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m115-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "3aa99133e6181528e5f6dc8e6a41c60565145e8b0031650c28f225a77cfb120b",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m116-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "384c156840ae122a47eeda59dbaf78c01ae086ad7ee19ca9cc95ee2933489acd",
+   "size": 9718,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m117-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "3ea24501bcdbe93108981801a669c3e62a28a52fe7ba48601860aaf5d9874d03",
+   "size": 41604,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m118-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "9a4f86af1c5b21c590732612e2e637aaa4af2d76fa6ffc3aa1f9018cee945a77",
+   "size": 31567,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m119-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "206be0c30d39c40fabde56f96941c3cc41494edcd91eb134fd0bddb60146e34d",
+   "size": 2007,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m120-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "4429e0522c1ba75a8ac193f3b9dc7e72cb6966bd89b14e01dba5a6a5664aff4e",
+   "size": 41603,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m121-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "8f38c6fcf26dc748de6373a0559deff725aa30d4dfc2b6b3d42913613862f155",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m122-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "1ebed17e9d2c2ceec610d826790f197d2a7a333070a7c355b79e335412b1d8fb",
+   "size": 11245,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m123-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "8f7968f4887c5239ffa55a1dae3ffb32cc2652b47d6e6d0b92fbb29d20068330",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m124-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "487468a09bfc7d23a68eaf5dbaf64bd5d376d1ddf0806f89d8309363a10db05a",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m125-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "96bf02a8f88f9f0f57bc2bb735d563d639bc65b00977f2c79ca968a872dce722",
+   "size": 11235,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m126-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "1150793b07ecffcd4c43141492242597b88c7c3f591f910582b8a459fd26b35c",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m127-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "31c5d9ed012f86c14532bcb6d5710b91af57da3f82260230465938e646e8a507",
+   "size": 46876,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m128-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "ce7be1ced50866dc969c01162a5690921b50c47990077df0c8c5cf58e07434ca",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m129-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "f300ac6138475e9aa06c4130c7af7ca38be8e89e04710559dc6d29e9b856aec6",
+   "size": 41274,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m130-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "9a8bab6e16e65716005d0ef82176e65520edea08b54c1a90dfb14114bbe20fc2",
+   "size": 46992,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m131-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "437eea8c337f0f59c1374b61f2024e6381bbcbad9efb8405c619c66b218be316",
+   "size": 11094,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m132-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "b4a25d8d4608c066f3a72c4c1982b717b6c5738216f3a5606bb23cabdcde02a1",
+   "size": 41601,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m133-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "b5cc9ddbfe86478c13734aafd79fc504013ebd86603faaedb1576d405375fedd",
+   "size": 46990,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m134-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "570b1f96662f14947345318edc947992ab22ef4c2b0f6dae4e09213a0d5d40bc",
+   "size": 8291,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m135-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "a89b0660219ec427e6bd37913501369a4f25a0f52064583718c1d8c7d00c0dc3",
+   "size": 41226,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m136-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "e79085dab9695277aaf0e07384d6fae3981ba16aa0c9ecc49cfa22c01ce5cf36",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m137-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "55c407889973be8b87df16f6ac469ddad99bde915cfb0ce9f5d0c4e9a469fae1",
+   "size": 11239,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m138-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "93706b6034043d7c103df4c126106db3ca542a7e6877febfe2a9dd0b511d246c",
+   "size": 41603,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m139-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "42f26eed1dc61f941d34e49938022f83a74bcc72b9d2d7cf85c252cb091cbf63",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m140-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "fe02e3c6a17270f7f9384fbd9f924ca36de6337bbc444e2465a07a70631549c5",
+   "size": 7841,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m141-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "346fa3839a66b23aaeee59dcfd085e501d75c070ce78c5e454de29e43467ccdb",
+   "size": 39997,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m142-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "041bb0c6badb6c15b28a189916d296e8ef2dc9dbc4323d4daa4509c7b79a0a57",
+   "size": 32714,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m143-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "111529a6a211ac2db5351d0d03e071bd0720298827fbb0dc06b8823017ec25e2",
+   "size": 7511,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m144-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "a235919a539d2802a724489fe074c60333be3db88ca52c17a82ec0dccd0bfa35",
+   "size": 41601,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m145-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "201dce9888939684ba879808ddd4bf089b8ac392a341ab11dff31302d6ff6e49",
+   "size": 47007,
+   "validator": "reject",
+   "officecli": "error"
+  },
+  {
+   "id": "m146-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "517389c59d93f65df4cb5546e3e7cc43e8827f8403bc87ca1728677183871c0d",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m147-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "366b1cf940bfe25c17fe36883492ae3e10ec9a1173650096106c629c3fc54a84",
+   "size": 41602,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m148-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "86558bb7c2e85f5f2163563ab09fac22389d7fc5ba2fda6df6a7c3d03d17ef58",
+   "size": 46988,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m149-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "419dcf7c25740d467383b841e9c60bfacfe4e2c20d73c5a0666adcb6a96a3edc",
+   "size": 11055,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m150-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "a2b42980fe44bc25d360834bbc0adae8040eb200f8c04698b11d520838f1b99a",
+   "size": 41598,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m151-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "58c3b710da9392bfaebcca00999bf81f20230e3486ecb9b0ec6b8bb3f4bc3f6b",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m152-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "1f09ac5e9cc93df3ea57676cb3f0bc3f23b0313b53eeadc6599c4be5f5c21be6",
+   "size": 11231,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m153-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "f61b56fb356929c8dff151e2718a0ac234a77dceca8de3a100bdb2697bb91206",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m154-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "e7c63c37b90ed8ff0a177a109856779390923476617373062557e06b548f303f",
+   "size": 45756,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m155-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "9a25f532609696a16aece182f13c6ee0dafcd7e8b00b6ea7f1c733a95020bddc",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m156-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "2a900638b443a925572106190d7a9173a5efd1d6788bce48b45d51ecc9b26447",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m157-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "5f07b9860614a6d1d2bb7d1344608bea31184b8c12eaf4af8e0e6cb3bb6224a2",
+   "size": 45496,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m158-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "f5fe195b27a70ce1af52cbe1ae341146a5a211138f6d8b18ae173e1e5eb165d9",
+   "size": 11235,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m159-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "20d2411873ac0acdf32a75f9f9fd7cf2d70a4939cf33647462fad9bc7aa9677c",
+   "size": 39708,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m160-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "cbb90d6e7244828518fa02ad1ced4b188e540fbb1732b650d1d3b9256f81fd09",
+   "size": 45010,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m161-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "7164e88df37068cbb589f0edd8775c8ad999cdf468ec2db1aacd275261298c00",
+   "size": 9718,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m162-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "756a8011d3566166f0b9fcb67f023a2c3e204bb173067ad36c03054b6f638a40",
+   "size": 41603,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m163-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "875a969330be2820e3b78b92098d15c9f53b01af8f4b71c43c9c771f318dad76",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m164-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "fb982dd19f6e8ed0e460c0337ba0471e77f1acec5565fcdfa0671633c22ccce2",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m165-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "65a885c97f02b82bb5421f68c5c77c04ec1c6a51ad317a8eb630c67673d90d4b",
+   "size": 41239,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m166-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "85ce14047953f0d5276b63bac35a9295a208e8356623570bcca56224e3c6a8bd",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m167-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "485082b864281968948e6586b54bce42d3e3a1ac3be8c86e778e532e980136b2",
+   "size": 11237,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m168-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "2a900638b443a925572106190d7a9173a5efd1d6788bce48b45d51ecc9b26447",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m169-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "b5cc9ddbfe86478c13734aafd79fc504013ebd86603faaedb1576d405375fedd",
+   "size": 46990,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m170-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "5e28688347f7d84e68dfa1d07afd2e0be4facee37db6fe56fe6c5aff524c0d18",
+   "size": 11232,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m171-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "3a5702891ea48d088efd3793bc7127ad65f282d48c85dfb29661f861391a089d",
+   "size": 40987,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m172-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "a3255eb59adc08d5d94f1c1c31c62803fb316ff27860db06165766ea1d5cfbc8",
+   "size": 46992,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m173-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "505a5d0e4a50eca11aa802e4c422b9a5c821907fb04c2a31882ac3ec1d395f9f",
+   "size": 9535,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m174-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "cbf52d229a16c984670daf56bdf60b05564de815373ae394035c3405c527be2c",
+   "size": 40574,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m175-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "5d11db13d929f6320c02908b1842778893b36390e659285ecdee3c20f307d3a9",
+   "size": 46993,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m176-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "34aa31498ddf46ab5de647711b05bd6771b724d44b3cc901d2ba20432a0ae925",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m177-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "58c78ddbc0f3222fefc69baaa49232cd471c3b7ce7ca9142588df4b4f5acb5dd",
+   "size": 41107,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m178-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "9b442dc390042cb9454e640d7b8a17d5f61846b7d727824be06c4613707d5d74",
+   "size": 47007,
+   "validator": "reject",
+   "officecli": "error"
+  },
+  {
+   "id": "m179-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "5dd6668a949f98f4b9b07afe6f6154fd0e52e11f1f8546ded7bc94e9be81848c",
+   "size": 11234,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m180-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "675a76b9a74a7f81bd0ab6da5100da4edf3111f7232c31fd73d72749d0c40bc7",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m181-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "0fae994890a7792aac2944e7f86949c52d66d09c3cb9a61a8008cd812d51c674",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m182-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "dc52261b020f180955ed853549c3c938c288d2ea5eac2dca210fe4419e076a74",
+   "size": 11111,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m183-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "4257a63ad58a1fc62b91ac90c0ca15542ee7a1417e7d19462d54181e3cca55ac",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m184-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "3d7aba8fdc27a33c42226e10520126573a74be240f30a19a286106f784530783",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m185-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "91e2ec26403cad15e2e43c6b19baaa88a9bdbec1684eaba82e849a5b9330c467",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m186-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "60cc42f04f8e9a9bfc35dea7d88b3407486003f76f6b133148fd7784c05c422e",
+   "size": 23782,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m187-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "30ca6c2f4e695191a94b87ff5a0548104135ab9ea521e866ffde217cb6e39de7",
+   "size": 46995,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m188-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "2820e9daec60e623b91006445d3c97386b9e2e188f132e2831ecf7ed6d423d06",
+   "size": 11229,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m189-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "9bed58fc8192b7a4e0b16e378130e3bbfaf484769d671cd11d8dd26f1a9d276c",
+   "size": 41605,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m190-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "358b8cbc763b7d0742f0db03f855ad51791dd1c5cb9c7ba5a7dba5aeaec3bf66",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m191-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "aa12c6388e212b7138fe75fc68b22669b4bce6d9f5bfd901a81caafcbbbd8e48",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m192-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "d8f7f0240d4952088391a98729c70950ba090de11eef9659c3d9531125201bbc",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m193-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "e88ed5cbd3eac09c334f4c534855ac26d297e24607bdac8ce158c9d4ff6a99e4",
+   "size": 47006,
+   "validator": "reject",
+   "officecli": "error"
+  },
+  {
+   "id": "m194-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "521911b28801b1d91c7c7fee75f024c7365bdd9547aca2c652ffb74c3b7e7ecc",
+   "size": 7908,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m195-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "c47cc5ede232e01bfd711ed09b7a43fde2ca480f59596610089038fbda74b4c0",
+   "size": 41239,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m196-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "6a29fbbb527d4bc3d1ca53291cc9a9df88c762321c56cf467319e285f92846a0",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m197-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "b729d8f161f09aa444c0c62b7b04b668b0f8e554acbf7a96a3ad42004dbcc24f",
+   "size": 11231,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m198-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "4ef8f39766d78eb0b9cca43866e661a9fff3202e6d30f30f84323672ef325cfe",
+   "size": 29192,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m199-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "a5a641b6ae69983fcb8a500f874a4b553fbfa8dfe57dff8cf487af5fa17b99ba",
+   "size": 46636,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m200-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "7aa34e4de9b844989bf76800c4f04bb66b6cdb26eb57b45e63fa98519afb5a89",
+   "size": 11161,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m201-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "0668248898f9f8a5bcd67e3b5ace77af5c4d54a4d5443cf3dc973afb392f77a7",
+   "size": 41605,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m202-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "cbb90d6e7244828518fa02ad1ced4b188e540fbb1732b650d1d3b9256f81fd09",
+   "size": 45010,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m203-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "463cf55aabd423b8f76997b2b79d89c3bcb9ba86e7988d941f7b9a17d5e16cb2",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m204-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "a2b42980fe44bc25d360834bbc0adae8040eb200f8c04698b11d520838f1b99a",
+   "size": 41598,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m205-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "5687072e56bbbce14b20ab780e6a94ee099fafe419134fbf471a163beb4f3dd3",
+   "size": 22738,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m206-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "aa12c6388e212b7138fe75fc68b22669b4bce6d9f5bfd901a81caafcbbbd8e48",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m207-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "4331993f661c95631449ae4116d06a3fb87c631135c0ef5477b40dfd12b0a72b",
+   "size": 41605,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m208-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "83c14f5217efe855ab520882023121a7acd80aa139f0c3da76ca42ec705975e0",
+   "size": 45524,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m209-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "24943446b2ed47fef74dae72eef36610db7f8d70ca5692cc2dc2a34cc45e418f",
+   "size": 11233,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m210-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "575f9a1b0140fbe6438e591ac330353d6ddab065a1db9976f56e13a83d4b2c10",
+   "size": 41598,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m211-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "27e2dfcbc270bbedb1faebfb5239b302b002bc5a5dc456aee6e17a42302acac6",
+   "size": 46993,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m212-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "042e8e3add48f8d32bfbda6fc0ece77fc3f97cdc6d529673e9d5c57223a79345",
+   "size": 10925,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m213-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "511963aaba8ff76a486e9b1dd80c09db24fb4f042ec0dcd47c8347a404c2e34f",
+   "size": 41599,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m214-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "451abf7acf575fe59b293d14d8f9cc552c5843c0247c8b53a14d4764c3948ee2",
+   "size": 46643,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m215-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "421039462ee5a8ad2d5c91de47fe59f818d1b9cdf6a93ac0f3b0e1d3376fa25e",
+   "size": 10898,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m216-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "57af7c71524864ecb88fd76d824e8e7d00c24a1f429ff6a97792575c36ec6b3a",
+   "size": 41317,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m217-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "9cd9174615f7021296ca0bab8ff39985f06a6d07dad52359ceadf468ae49eac6",
+   "size": 41137,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m218-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "6d5c59f07af42a38ff73da8ccc08d6c0c2fbd2ab883d9767ee4994e3f8a6fa92",
+   "size": 11233,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m219-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "bc773b42ff5fa62636ecff384f00d3db07a06d73df93bd14cd0107cf85c5f826",
+   "size": 41289,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m220-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "a5127d8ab3607ddaf4aabbc03a5a52c5a8e2ce810c25c2afeddb363c66f69d0f",
+   "size": 31086,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m221-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "0eba522e429f18fc55ad9c004740b1de23f66bb0dd9eb885cee009acfc91a3a3",
+   "size": 9857,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m222-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "5360360682aa1e110b42377908bfa0c919ca143ff33d3fd5e00609b889394c65",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m223-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "1d0c98b45fe879e1cbbc8d618a4b318bb4ae535852823b824c56af45919198c6",
+   "size": 46995,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m224-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "f416937cdbaa62f645ede210a3e7c3fd398f7747e141b47ac7ae1c36fac381c2",
+   "size": 7908,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m225-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "08ba088e292fe093e04773c271a0d7f6dd131e01f39038ff98e6c8c62dae288b",
+   "size": 41598,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m226-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "77420e11b44d2837843d9d97fd5f26298e911c6c8996e1bbb10b71d5d07141e3",
+   "size": 13809,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m227-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "5f1635e8121082c338e2b3a9750f88e521b93138b3f3fe22cc7f37c60d8419d1",
+   "size": 11152,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m228-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "5524e676c9a913cbbe6123af51903fafc470112659db0c505fed677093126be5",
+   "size": 41603,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m229-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "b5cc9ddbfe86478c13734aafd79fc504013ebd86603faaedb1576d405375fedd",
+   "size": 46990,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m230-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "d04ac20b62a4433e541c9f05392840edd5579c9862cb2986c985977476158d9f",
+   "size": 11234,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m231-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "08e1dc0e52815afa0b171488e984752d1ec57476e2d6434a84372579a2e31e47",
+   "size": 12373,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m232-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "595b84c84fcf1b74b71a679a232cfc297c835d5af987f20ad0f3f0d9a984ea37",
+   "size": 46641,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m233-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "6c50c2b5717b65043c467ecc26f01b8b99a4562e4bda91e87763629e5e21a4fb",
+   "size": 11233,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m234-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "3aad3c68fcc90dcc2388c44d0d2c87e76c23902ca2a5b8cfb1f7108b78086058",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m235-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "4c8928edeb11da65c4672ba513f175c6a28be80c3fe9251dbbb18ee9c361f998",
+   "size": 46876,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m236-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "94ad8cfd3ec5355e50c3fa07c401203463a9c019f13e133ff090b7991aee14ec",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m237-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "6d0d8ea4105467fad063bde8fa19ad56b7e7ae4d3ddc682117362c6619680ce2",
+   "size": 41601,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m238-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "9e29dbc7d7b572d04df19fc0507b46cbfcd39632071c398d9e129015bb35e41e",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m239-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "c63f01791f0094140555d856fb6d54bb506f74f17a9deb2bad0c88ef86acd4e7",
+   "size": 11229,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m240-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "6f914faec44b0efe4b19032471033d6dc65a5cfb7521b1a48f8c470e9200931d",
+   "size": 41137,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m241-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "70f8930b5101770903d20e787cc93dab56f12356f5fa42be0092a437df4a61af",
+   "size": 4391,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m242-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "8e8f7dfd255b09ad4a967c7e5ffebd1929fa4d0b1d01058d14de6b06270d8ed7",
+   "size": 1235,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m243-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "7c26bb9de3fdd5bc32c145a709d20a2871d5fac79073d158f07af82469db5121",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m244-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "7514198bfd72e43831d23c226e03a42cbcb2009305b375709c3f4bc169a6b887",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m245-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "ae48f2f77df35088356e6eef69d7c1d634c2df0d335808b6b76e97f8b252ba05",
+   "size": 6094,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m246-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "381d9b3946c290d57e50ddfc07fc3af1f0767fc1704e61d1294054cd5bca3af6",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m247-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "0dbce6fd7aa62af094c678a5cf1f619179e0c2c3ca7140d96ca9e943ead79948",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m248-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "38d14feeec180386cae53453f4f45024ed2e5df12a716690e364525778780735",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m249-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "5b220261d6667050af5b0c27b0c7875b0c71e9467caf3c2a1d0efe01cb8ee168",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m250-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "89aef2ba1b5b56e1b8e560e57c8b790b9ae1612e26240eb806682a68b2ab7126",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m251-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "45ae27b4f1863da4963b06490e0351409022fedc5b08ebec0f807535692c2efc",
+   "size": 11247,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m252-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "c13f3834e801adeb44e662a9ddbb98e0f73281d83e23fc0810bf092de9396823",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m253-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "0925a092567bb44d3c768b1e8c02521763feacaaea6c0fb4bfc15f945b0402da",
+   "size": 46993,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m254-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "022d3cda76151a58c814a2d49917e2f1141e09be161136d062632ca53cd0fc85",
+   "size": 10138,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m255-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "933074d0371bb4a4a532856a8f79de6fde2865f861a8d0ea8558b253bba0d9c9",
+   "size": 3107,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m256-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "f0c45c83ba223f8afc86ade86b887237c7f4417092e5bb8888504eca358817fe",
+   "size": 41269,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m257-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "57c97e65ae9bdd91ee4b896b8576a56dc6e0ca6ee16a0f896acb415907e5b900",
+   "size": 11245,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m258-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "c558122d81c29e4ea27b65931a0040adf662115a7c0fb693a3f8d747c08d646c",
+   "size": 41603,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m259-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "90374e48cb6c2e63ac17c68674d9fd4c910c0d592a9088fc2522a91cee1eabc6",
+   "size": 46991,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m260-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "9425d7e8f8381b1a82d7d28f0d1f42b55717aae236457b86d1146738416b5503",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m261-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "00bb200f302d76721add843c09bcb96dd37dab65c8ce13d8f3e9473ef81facbe",
+   "size": 41601,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m262-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "9b84f1e01a6a9526ba8df4e9741d579063acadd85f59ffcca0d4c79c768408b2",
+   "size": 45351,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m263-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "585a9e11ff7328b0c4d55ce36bf451bffcc77c3335d1042a05e357c6a0777a79",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m264-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "b1e6ce62d0e757b815702595b45573cfd64238ef7a9c9bb8bf0016c0d8d41c80",
+   "size": 29166,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m265-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "639de1753471fa29fbc1b79188a273da96f702d577c2c9c0a7d5e09a9fa091c0",
+   "size": 46992,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m266-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "f5dcd90a0b25557c42cf8df4944d08d9c706ba39f87e0da7f80749b720960606",
+   "size": 10946,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m267-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "491d1c5ac470c15ad68f03c91d5706ab6230fb159ad64c0acf32f39f00848105",
+   "size": 41222,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m268-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "6938fa91555ce5a51d6911b760548ac0d03e7c3adf01daa70388f1c95a3838a6",
+   "size": 46997,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m269-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "5a094f9aec84308246528d93df59756b4339a117b4f7159977592b3e25bc01bf",
+   "size": 11164,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m270-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "8d8cbb95fcf22344dc173df0d4da46e53ccae605a558d094ea4e7182ee5740a3",
+   "size": 41604,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m271-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "3d8def3433e0d9db6672eca9bcc7475e30c32e4a78fda0099bb7146061025b6f",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m272-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "a1b3e672ba4e448974351e876417fb270a9593066e973d0acf5d3bf2ced3dc4e",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m273-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "ff74b18c37acb6d52ea10567d5c4544822029be40f206570d6e98b5cdbc73fc6",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m274-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "a28bb853feb082015e00b46b028e05c44376e6e712b170dee623a5f639e11962",
+   "size": 9532,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m275-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "a828b866ff8ac2a23981e5308908e93639fba126c1cf7c7e72fcba3f35f64db8",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m276-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "7b0da6136873401f13b9e4a7a531037470c7a6fa898a30c506463204a9e8be17",
+   "size": 41601,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m277-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "d43765447e6516ede637819121c3a354a6dc4351fab87d4c0838a019ca90f67c",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m278-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "85ff83caef1344ce38a7cd426b789f90a87a69e151dcf871ae0e6382d81fd287",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m279-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "a1776e39aad36deb094feb2412b560f5303610e8e41d13fcf9d73cb209681c91",
+   "size": 6065,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m280-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "1e1a2784ba4bcad0bb4ddd9ae5685504e248b00242ec57f93f9454bd4a78a47a",
+   "size": 46876,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m281-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "c51471698d406997f1882c4ebee51f05245a54c7f8fbefa912e1ad315b0bc819",
+   "size": 11231,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m282-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "915f34cb03daab817fd58c6602018df62f0db031bf76e8a637986c8d04248580",
+   "size": 41606,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m283-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "5d11db13d929f6320c02908b1842778893b36390e659285ecdee3c20f307d3a9",
+   "size": 46993,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m284-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "ae48f2f77df35088356e6eef69d7c1d634c2df0d335808b6b76e97f8b252ba05",
+   "size": 6094,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m285-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "3c5f9eb0c30aa6bdbd67b01a6f98ec2de79bec5be0ed4cbb22ff4e3a86c029e9",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m286-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "58b47364919fe89d9505e5b2f94f3ca2c2fd1be260fa3ed33752ff5b8811b88e",
+   "size": 18143,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m287-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "5934380ff5d0b4bad3b9349dc4d2ba44a634bf8be319f94678b27c1469dd9e6d",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m288-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "ffa954840ba214e2dd2fad2f3c30d826bdf2fc09a6faeb35355a440f1e458dce",
+   "size": 14460,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m289-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "b05909e5cd06c31b76141889720180135aea58eb7b36b8e9b8ab9d7eed6689eb",
+   "size": 46876,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m290-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "2a730739ed7b98362810d63f255b17ebbbf81d6a262b269f48fa0c0abc8bbe4b",
+   "size": 11247,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m291-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "f300ac6138475e9aa06c4130c7af7ca38be8e89e04710559dc6d29e9b856aec6",
+   "size": 41274,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m292-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "f77b9d274b2adee30eff6aec1d4bd48dab0fe9b0781235cc28cd13aef7735a68",
+   "size": 46988,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m293-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "e0b71e1f230626ecae481c9a89d2adc6767964ed13ded202344540d6eb3a30ed",
+   "size": 7715,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m294-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "86d85e0b28b90aad06438d6da46f24120ed5335d1a3ba9d234f45a3acf604754",
+   "size": 34129,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m295-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "ba883a5b94601bcb576779710258c450ff864bc9253fac5fa4f2bd8b01a7fb47",
+   "size": 46993,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m296-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "39b030706b7e1da6c053f62ad34788b58c5685193ea85396b3e4112a8a3c8dec",
+   "size": 11234,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m297-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "964c88dde9806fe19b445d43993edb1b6c571d7f8f180c9946b1e66da89e3860",
+   "size": 41599,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m298-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "2eaf0b9510e48084a3549dad1a3a8870fd830755d9d1295085e4bd9c19178ae6",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m299-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "73bf0c782f42fb96ff52a44c72d627a9678d5d801e919a625968a04d68959021",
+   "size": 3702,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m300-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "c0679479bd840428dd3bdbe4685e72d2bd983677ef7af9a2ddf9b28a044be222",
+   "size": 41599,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m301-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "358b8cbc763b7d0742f0db03f855ad51791dd1c5cb9c7ba5a7dba5aeaec3bf66",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m302-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "a1ba5f355495640e8718c632a842eec1c15cba1bb3ed83c9cdc671efd56302a0",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m303-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "fcfef2268543ce81512ad29b6f4e7a1d5005f4e95fe717e33b6cbf3a06b92536",
+   "size": 41605,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m304-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "8c45517802f56bd7164a56f9a287146c403ce8b21c745f972fc0c86669e36181",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m305-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "4b1e5afd696cb00e587fc8053f6db64cdade7535de5f88747daa15863c1850dd",
+   "size": 9315,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m306-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "59be074a1ce0dd135d0aced86d1455da52f8e64e12c28545a5489d3b05317594",
+   "size": 36055,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m307-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "358b8cbc763b7d0742f0db03f855ad51791dd1c5cb9c7ba5a7dba5aeaec3bf66",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m308-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "419dcf7c25740d467383b841e9c60bfacfe4e2c20d73c5a0666adcb6a96a3edc",
+   "size": 11055,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m309-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "f1e490f4fa40a8ea518708e86564b88cc53f4ae84dba4abe9d693b444dadab74",
+   "size": 41617,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m310-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "3d1e4c0b1bfdd9926f6692bff142f4f908d432cbb2516e0c965461a005a28b92",
+   "size": 46990,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m311-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "e0a607449bace6fe22b340f50bbdaec84454ac835ecaaad9e65989db162e802d",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m312-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "80c3486d71fc64382ffac118342e135968f51f1eb3f9c47137a651930fad7a47",
+   "size": 29192,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m313-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "02b9ab65718ac4480a576e32396ba044d454e6bc2fa128d4f7f404e98c0d3ab6",
+   "size": 46809,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m314-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "fe02e3c6a17270f7f9384fbd9f924ca36de6337bbc444e2465a07a70631549c5",
+   "size": 7841,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m315-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "94287d178e6aa1ef890da0248cfe2c35912df74e2946c56affb4eec271c32bcc",
+   "size": 41601,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m316-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "a11dbadf7bbd2eba15950cccd3587404c854626bb354481007168b89b657d98f",
+   "size": 33868,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m317-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "042e8e3add48f8d32bfbda6fc0ece77fc3f97cdc6d529673e9d5c57223a79345",
+   "size": 10925,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m318-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "3786a2037bb759ff01ff90d3f331112ceec7a2f2e30a0af94030711c804cf885",
+   "size": 41601,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m319-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "cc2be9e3c9d278a54dba4eb00100e1013984c76dc4a7004f294655eba4bc7bdf",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m320-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "421039462ee5a8ad2d5c91de47fe59f818d1b9cdf6a93ac0f3b0e1d3376fa25e",
+   "size": 10898,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m321-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "2feba62e582774220157ff54bcab1970681b3f09f0bb83b4f44e2ab4e3769fc4",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m322-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "d0a01d4c9b6ed1e37b223999f4b7fedcf39f5f101accadedf628f8e19c991c91",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m323-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "7a087be376340bca56cb2b36698ceb27ec0c44115e9efbe2fd7b0daae9009920",
+   "size": 10161,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m324-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "32c575cd751d6661020cf0a8ef16e31082ee8246a173e21530fa38f23f1cd7ef",
+   "size": 41603,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m325-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "07fa4c0733a340ada33d324d6417b946645cc4169feb614fa1fa5835af914141",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m326-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "85d32684a1f415a0ae1aa42ae6f0845439bf32d804ad7a2e29c26054120789f6",
+   "size": 11244,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m327-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "cb23a100e3b6fdd3a7f2d3fc175a7db3e76d36bac0a8e937bf74b6ece36c60aa",
+   "size": 41601,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m328-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "1dde1c756cb68700fd0f81bb4a6a23c4451c5a55a1cdae86f76a35c354555271",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m329-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "1618b32678ef0c5228c74890c4e9f92d1229ba01cb2f33c9b68f63f0ee0b8f10",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m330-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "9e3be9277642da575f5e6f268476c0c95142f7cccb57355908b0bf59cdb16a38",
+   "size": 41606,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m331-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "74e02912fbcf0bf87fd36dfee2da8ef76638f8421bc83d876fed3e135eedb5cd",
+   "size": 46995,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m332-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "0c42dc70991d208622e39f3b7d666321418be3a7f2825036126b9a84d2add731",
+   "size": 11013,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m333-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "f7b13e09fe4c29d1c87a0c19deef75714531b7b9b6dcb91b763de1fca793d18c",
+   "size": 41479,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m334-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "a407704a2ab79d0f1142d08b6fa714307680fd808852bc189084d2d54109dbfb",
+   "size": 46809,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m335-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "c13840ae5bf636368f898effda9e4d1c069fa13cadaa0b6d008df2a1e95dd952",
+   "size": 5639,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m336-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "f7533e87c710523f711068efb67fcad2bf0e533c790fbcade8c27ae1a57c5430",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m337-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "f16d365830e9d665b148b8aa6b9508cb02d2318a8ab2e6128093a82952da497c",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m338-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "7187942d225b68d224f40ad0e38e45c20e63519f184614a6e1467e48baffc69b",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m339-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "39f3e62ee0019de050dd2a23177705eb42696a3839ed35c41fcb7d084b2dc58d",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m340-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "f7f09bccafa6a46c35909dd22b3ed4005ae6f6c701be713dbed82651711985b6",
+   "size": 46995,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m341-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "ca0868eadcc5e50db5c742eee493ee085754a565790f8c790d66fdb16060da36",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m342-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "7c7443600b7d6eeeb6ca5e46c7f6db6225ab1f91760363f693134796bec1aab6",
+   "size": 27939,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m343-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "e0cc83b0a46e97f5d3f5dd8a1fd8d3744d38109352fa58e17a02de6d10cd945f",
+   "size": 46006,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m344-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "521dc081957ee6ffdffac1b6a70082013f7696accaffdeec1db7def6cb3e22f9",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m345-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "e83051a95df8653dc25f8d97a6c949d307f2b38767b3ba900f49cee588d3a6c1",
+   "size": 28136,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m346-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "3cf10f0839d9a856cf0d6dfb93eb3bb2fdec2032b2401cd34a5aeb44fe481e66",
+   "size": 38868,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m347-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "5577dc924cc70e94e48deb3e2af99dbc5d364553c2c0d1aa7a7903acc54fac87",
+   "size": 10206,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m348-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "0f887a78ebec45ef2b9727849d2da0e2a0edb4fa03ed683ffa51bc817dc64f41",
+   "size": 40688,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m349-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "f6f2bcf796539fa30cf42528b19a69d234280898c544a8afb2ce45690e3a630d",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m350-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "627b8101ad81b05b659909bc0537aae2b8f83d80a9bfee3a3e891c388fb5ce8b",
+   "size": 9651,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m351-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "0f887a78ebec45ef2b9727849d2da0e2a0edb4fa03ed683ffa51bc817dc64f41",
+   "size": 40688,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m352-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "0e73b0ee88e5cea9fb2f28e0782fa9d584e811bec4cbe1883aecb9ae7d39720a",
+   "size": 46809,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m353-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "e5bf1f3ae278efce1841cab00bf89e84c13d889bf19df63e1f0fd4b4fc84844e",
+   "size": 11235,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m354-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "64d27301802b04764a8e96f92d612f6992e4a9964442d5385d21c444e6117f61",
+   "size": 41501,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m355-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "3dbb9064e0188831bd33065c431e28b9dd0b97946a6a5c53fa4d7124a453e399",
+   "size": 46809,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m356-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "6dd165192fb26f18f1422c1a1c33283d68e4e5a252bde8056e4fc74745a352bd",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m357-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "09c318819f4c46ed6bea84b5206b0d43fe557b293467b0a8e9808713135e80a3",
+   "size": 41163,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m358-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "42f26eed1dc61f941d34e49938022f83a74bcc72b9d2d7cf85c252cb091cbf63",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m359-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "b2acd28ce25433d64a3d0a826bb46cf50bf13bc9ebe1ceffb38f33a81d4a040a",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m360-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "39808398fef8b7682030c0bc4a23bd17b5d362de4afbb7e0c6b78af50a3df892",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m361-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "8ab6c6d73c15a5b06d081107f219f97364423dab0dab41573fca2e3bd8f684bb",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m362-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "e3ce21cededf334144b66cf29bcb5dd53d7c7a7b1393aa347cd9fdb6223afac4",
+   "size": 11235,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m363-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "57af7c71524864ecb88fd76d824e8e7d00c24a1f429ff6a97792575c36ec6b3a",
+   "size": 41317,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m364-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "d4e173410a8ff53f907947a1868834d2e0175a648a8d42c46ee55adc099702ed",
+   "size": 46989,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m365-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "c8d9b54e474f8a5391661c6f43131068f75586091b0b1ba7010a1ab3176d73d5",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m366-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "b366d8d2fbe44081f8cb64348bb912687f26fef283861e07f59e3f38c7218e29",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m367-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "ed21847239fad7284517b3957ef129e73b95aad876969b5a5b141caf126496ae",
+   "size": 46739,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m368-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "4b89eb03fdacdb22666eb00f13ebfbb4028d19f11ae73b35c981be47e1fc8e1c",
+   "size": 10944,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m369-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "d547b755d94462dc979a6a01285144feb01af737ff0cb6a30a5cb6c775cac212",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m370-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "1f8baa53970dc4a9fdd793bbee1ce6e8d8ea4d20a9116ddebce3e8188b9eb5e5",
+   "size": 46532,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m371-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "45ae27b4f1863da4963b06490e0351409022fedc5b08ebec0f807535692c2efc",
+   "size": 11247,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m372-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "ec601429e376215922d963bfa8ee4407d8c5ae7a39ada6ca454e2f36f6fed98b",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m373-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "2ffcfd11409d7a6343c2eb74ac258e7356d76cdbd3d3224cc3ea0686b3719afe",
+   "size": 13166,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m374-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "08b91a367d9cb0ee8e2bc34d52eae5dc979e9b2540b286f068b069060c3fa84e",
+   "size": 11013,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m375-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "96a3145935ce966c5acce04e1738571b1b8ca01ca09e94d9a76c42fcf3201434",
+   "size": 21064,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m376-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "05852e32a4e3de2763bfe2bf8159f2bb8d56169b85f2f0fd13c25bd4e4401862",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m377-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "5773abf1e7fa6f49eb7630a58b890caaf499fdef1f848f295ae1d87ee9a0d1a0",
+   "size": 11234,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m378-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "56e68c70a45739e93b0a26055495c3f3ef8f8c40158de5eb58429fcebe442ad8",
+   "size": 41601,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m379-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "6c1197f0f2147d2331efe5179e1be227c3efa8a35173154f86c45023215def33",
+   "size": 36172,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m380-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "4049ffe5095f4fa87315b4b9d78d732499a77bd560550cabe5f778ca1f939e2a",
+   "size": 7907,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m381-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "45e7439f249032f1e3670d50dd9e1a6a61fe1b488b964d77e97aac3d0768e95e",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m382-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "545fac8ddf0365275167912bb49730537ea9072d3305ac08537119bff093bfa1",
+   "size": 32165,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m383-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "fce8f64a48eae8a6adbba88d5a8884aa84eb9a596b8960b8c7fe84bc972557b2",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m384-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "953c8f4a92cc28f0811d1dde74d9473e20474766f5dbb8d498ddedd2ff9dadf6",
+   "size": 41601,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m385-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "c3f96df1d1d2317c3f7898a06953b9815ff68e3d82d050de37f310f3207e49c6",
+   "size": 46995,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m386-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "a1fa792bf24a024b2014e9186c3886fd51aad68a1fa84f1423b4ea4167675d53",
+   "size": 10693,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m387-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "20d2411873ac0acdf32a75f9f9fd7cf2d70a4939cf33647462fad9bc7aa9677c",
+   "size": 39708,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m388-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "e6e76223da87fe68b513d77e95e25ffa568bbcb6b2501010a2bba8786ac0f0ad",
+   "size": 46993,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m389-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "d99e496cd353844d01935ca9ff7d0de381526d64041bbf910cd99559f9e9868f",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m390-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "7459ac3311631b174d6e24d0a08253de056b3229481a85628dcd63dcd8da5032",
+   "size": 41601,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m391-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "96dba1edcb0f386d46274dbaa190565c0ba2e1c86c1c9fb17185c778fc4e4a65",
+   "size": 46990,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m392-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "e6762baa6b9f90cc78adc5010b80cb4efdd1a655e5794ae8b346fa8323f8cbde",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m393-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "b19385efd95beccdb56097723865baaf2010006fbe8af2468ca8502b188d49ef",
+   "size": 41606,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m394-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "abec08baf6c1048ea307c5a3d780e0f1bc70a24aa75fa789e864c8b57dadb6a3",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m395-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "5857271280cdad2f5de97ad2283382896e94a4bc909c0bcea966089cf74b46d4",
+   "size": 10820,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m396-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "522e03bfd443fb97cf1d3e5a0793454859c4d2d3552034e2793a397943217109",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m397-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "95f8a76039dffb52e4b589d89c4a48140ad0cf66edd72f8fd4b91951904d6d36",
+   "size": 46998,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m398-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "c203b1d93a5b0e3c2294902f6d5e2ad66e616cd767aeca219d4aa7ed184b249a",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m399-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "cf4c48e54a3e7d4a0bd0c1e4e134e104306198e373502704c1a562236cc5d68c",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m400-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "065cc7a53b228bd21c40b01dc09f2ed7222879622b2399f49562fa6be26199ff",
+   "size": 46994,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m401-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "6d87705b5d0e00b15784b38fc0f296a373bc8241e492a1237e0c2d5effec1f4c",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m402-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "c8f7f08f07b28b58bcc4e6c2339c9f0f21e2c8ae1fbcb9229a79c3c5d7a200b4",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m403-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "1524ecaece39d64c01c7d89d7a4c1fe2ce2ef894f8d1549ee479f06e7f806a51",
+   "size": 2445,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m404-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "56ddda8f41d665a1d4b8b098d6f75d9f43b453674fa8fd84734d69b7e48862f8",
+   "size": 11239,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m405-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "090cc07c5d186955e2b81596a4c9f973a4186d67f3a264c77c2ef715a1e3dcb6",
+   "size": 41604,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m406-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "34fc39bac0ee428fc3b5a55ad3e6a73ec69ff5468ead4be2d357003eb5ae7f43",
+   "size": 21746,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m407-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "cfd4e55f241a4a05b83540d34fa43e7097ba2af9dbfa4de8ae5dad7991f60168",
+   "size": 11236,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m408-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "13265b749f5ef8cc285570bd0e216cfce54c38e76db0ce904e32e5f989ebf4c0",
+   "size": 27412,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m409-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "7f6b0d9be6573ecf83c6fbc7bac53cb06de322aa1cbbe3cd686a136ade532c6d",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m410-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "734bd7c94fdeeeeed00d963c0457243aa07af07df3fa5f556ccabf9c0e90123f",
+   "size": 11235,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m411-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "ab7003ffcf097d0f983250c8cc2f95dccf1bfadd19a101774e0f040d31b76998",
+   "size": 41412,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m412-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "dbc04547c98ff91dc30fe65c22f68161c50181b5a1dfd9cc1e6ebd5606589f35",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m413-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "ba3aded66dfdf498fd49417deb7a028b6c09d4c35e06f2e68574202d5f4bf4b3",
+   "size": 11235,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m414-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "927350483816724bd1517fbea7d48bc69946642a3d21f81386dcb61e884dbebc",
+   "size": 12609,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m415-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "a71f1ff20ebea335812585bbe72bc313bfe16687171c0e653946a74d5100b90a",
+   "size": 46992,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m416-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "c96f5494d85964a9f5792646dcfcac600ba29d2d57419324b5be563f54d1db25",
+   "size": 10975,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m417-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "d7cdd86904f46eccd68f7452f6d74262c3e55895043082875d0b48910d9de2af",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m418-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "043088f3a75e2591a2f00c9c8b1bd018c999dfb0a7530931b7a7d575ee905e55",
+   "size": 46667,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m419-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "a9a718693b69e6584496976992858e2c179d8d6bc85912392d2fe11404da9e6d",
+   "size": 10873,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m420-docx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "docx",
+   "sha256": "a2b42980fe44bc25d360834bbc0adae8040eb200f8c04698b11d520838f1b99a",
+   "size": 41598,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m421-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "6efa905c035f57e0eddfb5a1755ad082eb6666d7034422d8741a8fdac75e6e60",
+   "size": 47003,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m422-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "a8bb3bea6e424f44d3cd46e631a92d19c636e29345375e03461e9ad4ed39ca12",
+   "size": 2464,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m423-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "7547c95d6bb8c9bb0ad632ff20bf512846ed83f4f847818cb8b224e5d28d842e",
+   "size": 41289,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m424-pptx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "pptx",
+   "sha256": "d8ea978303cfa7a8f506e4f282014d0935287864b7b959bb13529232ffb52074",
+   "size": 45829,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m425-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "d254c60ae9179423b092abc022b4a86cdb555543c97d6819db6841a006ce6702",
+   "size": 9318,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m426-docx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "docx",
+   "sha256": "ba5e140a82d9f22ae61a93c3ce427942a031ad61884d4abfa49765daf75c04b9",
+   "size": 41600,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m427-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "44b212c8e40265d0a04a6513ecdf2d2f5b13185e1b8ac41d4bbe0274be186a5c",
+   "size": 46992,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m428-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "9cb6f96767e1efc3de04142a61eff53c82b021471abc2bd73e769903e81e2ded",
+   "size": 7146,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m429-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "9b4cae6842f44a0710e2cad1a9371ef4de5c1e60057028ff2c84106ce0202a9e",
+   "size": 41154,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m430-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "7f6b0d9be6573ecf83c6fbc7bac53cb06de322aa1cbbe3cd686a136ade532c6d",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m431-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "72782ce70192506fa9ed497c831df1ceb08fef82a5f80f828a00bbfc9d52ddcb",
+   "size": 11161,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m432-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "20d57a4f16475253d94d0fc9483b2bdcfc915545590f50b7e4d29fc8876002b7",
+   "size": 37699,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m433-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "dcad872ae071f64a79b19f4b36d43e46d81dd1f414fd7e945d7ff18435cbd2ce",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m434-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "fe02e3c6a17270f7f9384fbd9f924ca36de6337bbc444e2465a07a70631549c5",
+   "size": 7841,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m435-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "460518c0e0db7907e6194efe85be2e4aeb01f142006c8f9c00f96362c55f79dd",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m436-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "bbfbb2cccd4830c5b36dc15ae54bf390a59a820435f352b6edb9f334d3b6996b",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m437-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "ae3b34582d47dcd542b2449c39767b9f737f2d244c8c0bcac0e180fbf2cc20b5",
+   "size": 10986,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m438-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "fcfef2268543ce81512ad29b6f4e7a1d5005f4e95fe717e33b6cbf3a06b92536",
+   "size": 41605,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m439-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "aafbcafe233329d51ba5fc8c73556c9918781aee28e6baebc6f1753a63865b46",
+   "size": 46994,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m440-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "c55ed83e672bc391c2584d86df03e28fa9f68fb5d2af34c646750242474b9f49",
+   "size": 10575,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m441-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "effd43a1b5845966c4e9e66aaab92c2c936bc98b76bd8468d6cd746f58b8c1a0",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m442-pptx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "pptx",
+   "sha256": "728b9de7631cdcd7bca64757badbe2fd48d03e09ca85718dd3e10506f17645a5",
+   "size": 46968,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m443-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "c983eb7bb2b293abd96b1c73f67dc0a1645c38ac943752ad8b9b6889c2e63aa9",
+   "size": 10034,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m444-docx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "docx",
+   "sha256": "261ccad21c0b9d3ac887238f60d6c853df670f135d2b76a354914ef20dc0e379",
+   "size": 41301,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m445-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "de00bb909f1cf9efa2ded4b478165902a437eedec5391e00d85ca0a1a6915335",
+   "size": 46667,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m446-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "5e28688347f7d84e68dfa1d07afd2e0be4facee37db6fe56fe6c5aff524c0d18",
+   "size": 11232,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m447-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "ce6f56351ff220699118587e4146250df7260736d417691f8f879a5e858d3698",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m448-pptx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "pptx",
+   "sha256": "12436207a56b9790d8cb4cdb9aa26132b5f125a9cd443527cffc3c011703ec83",
+   "size": 46876,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m449-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "505a5d0e4a50eca11aa802e4c422b9a5c821907fb04c2a31882ac3ec1d395f9f",
+   "size": 9535,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m450-docx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "docx",
+   "sha256": "1c372f938a1c25b9f39741a03aa3120079df2eeb693c093ab76b75d167bacd0f",
+   "size": 41605,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m451-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "5f9389b057256e4b75a27c31a06dc6beeb39a35f75739c23d93a3e9922052b9a",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m452-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "f0aeeb4a63288a1b884b8cfa325720a43d2a6b41691e388d95f0c8f3d6d3466a",
+   "size": 11235,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m453-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "a188e745864110caf270352862e3d83a387cc18a37e933377e002983e17f378e",
+   "size": 41600,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m454-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "d6d444e248c91f714160b0eafbc3e44479ae1680e126e0b958a635058c568d6a",
+   "size": 12014,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m455-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "d54baf5272855528f343677343c89fc0d5ea399a36cdf4ffc1ff0c5f968ed897",
+   "size": 10919,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m456-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "64248e597bc8b2434694b29200e744566bc3b1b44fe8480fbe1a25c63033532c",
+   "size": 41249,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m457-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "0c87fafeacae1c5a16e8c4540cbbae4e18bd551dd02300d77b1758f90dcdd76b",
+   "size": 46996,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m458-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "f512e1c01cc41aa62c5d1f4667c863a6046cd2cc31bc0ba4eb24bf6df43532ab",
+   "size": 10985,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m459-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "cff81e0f9b5fd70a4902e37541ba25be73ec1c66d4c9c6fb984d99d9fdfa5735",
+   "size": 41411,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m460-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "e05a7e3a13f35958b8f6478bf0a4ead94758c1c90c0158eb651010ffe21dd442",
+   "size": 46424,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m461-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "5857271280cdad2f5de97ad2283382896e94a4bc909c0bcea966089cf74b46d4",
+   "size": 10820,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m462-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "cb0ebd50e1461e6bf21f83e077a10d4c97159b9af4f08a0889a3d28532cd4c78",
+   "size": 40756,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m463-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "843aded70a09b055e6e312b4380526c90fde9c397ce206753c49274409518754",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m464-xlsx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "xlsx",
+   "sha256": "6f8c212ecea9af7dda0a8b8ec50e775c26aafe0d7759a55397ab87ec32f011ee",
+   "size": 10760,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m465-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "8544fbf8649d2e53964b7d36bc506e047625c83980e014d955401fc404b1e3d6",
+   "size": 41433,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m466-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "a284605a61e6460c1398235d771bbdf33f810383c6d9cfa557b65163d2211032",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m467-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "0b44b7fc8d2f8c0acf4b20f654d3da708004fa1d6a044daa3e99218a0db70c65",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m468-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "2d641179a7c5ac3f11ad74b948d79011e58e32bb974c202da54007e82f9e4620",
+   "size": 41599,
+   "validator": "reject",
+   "officecli": "error"
+  },
+  {
+   "id": "m469-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "9b501563be4dd6586fff7a2ee06443c494e9dd117056af5d5d0453b592b45f9b",
+   "size": 46988,
+   "validator": "accept",
+   "officecli": "error"
+  },
+  {
+   "id": "m470-xlsx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "xlsx",
+   "sha256": "c983eb7bb2b293abd96b1c73f67dc0a1645c38ac943752ad8b9b6889c2e63aa9",
+   "size": 10034,
+   "validator": "reject",
+   "officecli": "error"
+  },
+  {
+   "id": "m471-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "13ff66877d79acdd62f69fe72ce5f60bbdb814a8e796311aa75f14156a52c3d7",
+   "size": 41596,
+   "validator": "reject",
+   "officecli": "error"
+  },
+  {
+   "id": "m472-pptx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "pptx",
+   "sha256": "259d2cdac6180c378cc75135b3ebc07111b263f8c55eabc0c65a95be33ce70f5",
+   "size": 46667,
+   "validator": "accept",
+   "officecli": "error"
+  },
+  {
+   "id": "m473-xlsx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "xlsx",
+   "sha256": "eda03f4e67183e1b8a3a70ac0fd96f542b06a5098efc1ee3d83494889256b2a4",
+   "size": 11233,
+   "validator": "reject",
+   "officecli": "error"
+  },
+  {
+   "id": "m474-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "09c1341d28eaf3d7b7db4cddb04582a16d939e3312a06d27d8ecdb740d69c5a5",
+   "size": 37587,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m475-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "4970faeb9d7248d0ed2fea5bc45bf214455fbfa0691cd1fa9da26624de07c0f2",
+   "size": 23956,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m476-xlsx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "xlsx",
+   "sha256": "fe02e3c6a17270f7f9384fbd9f924ca36de6337bbc444e2465a07a70631549c5",
+   "size": 7841,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m477-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "15b0db986c3ce85232119b05a2e2b5cd991a673e62639a25a7e5d36df073a8bf",
+   "size": 41605,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m478-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "5d8d4335a3aa8c5dd682794277c2624b6ac866a1e52d00e911fa0ec0518cee07",
+   "size": 36250,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m479-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "54756f28f63a5674dad2fe02d4cfc8e75a3323c8639d6a3bbc9c193625cff8d8",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m480-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "52240d4b5bbc4b8b00433a35daddeced7f10418a2fbead83278c61c0956fdee8",
+   "size": 32342,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m481-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "0fae994890a7792aac2944e7f86949c52d66d09c3cb9a61a8008cd812d51c674",
+   "size": 46991,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m482-xlsx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "xlsx",
+   "sha256": "87cd8259feafb347bebfa939f5988554896b11f9e14dd7b6314aa261a7d016fb",
+   "size": 11234,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m483-docx-garbage-part",
+   "source": "mutation",
+   "op": "garbage-part",
+   "format": "docx",
+   "sha256": "56c090c0e6b6a5e176b112fbc8bffa29fd5c8fe3e5945429cfbbda43b6215bd4",
+   "size": 41239,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m484-pptx-xml-swap-tag",
+   "source": "mutation",
+   "op": "xml-swap-tag",
+   "format": "pptx",
+   "sha256": "1dd262300c9593de8582cae5aa7f864fdad58cd01c3dcb5972354169f564db4e",
+   "size": 46990,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m485-xlsx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "xlsx",
+   "sha256": "63636f0f675ae8179b4d0f337e75d8b116973fa4519119e92948e186ec7601a4",
+   "size": 7079,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m486-docx-empty-part",
+   "source": "mutation",
+   "op": "empty-part",
+   "format": "docx",
+   "sha256": "91e50d91b73955cbfe4a7547ce19aac746a1d8ecddbb5332c021d88b6b613fd9",
+   "size": 40121,
+   "validator": "accept",
+   "officecli": "ok"
+  },
+  {
+   "id": "m487-pptx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "pptx",
+   "sha256": "80c8c2fd4f2a450dc01389c724b5a1cc4251bcc3eaaf13ad6edf3a8c7ce4c775",
+   "size": 47004,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m488-xlsx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "xlsx",
+   "sha256": "2a730739ed7b98362810d63f255b17ebbbf81d6a262b269f48fa0c0abc8bbe4b",
+   "size": 11247,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m489-docx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "docx",
+   "sha256": "3add0e9ec9482d526bb24f7fe27102af18a907e1a7badfcebce6f320cd46d3c5",
+   "size": 11665,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m490-pptx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "pptx",
+   "sha256": "cd4341fd678dfea2e81c5761886b24f70088ec0eb69cb0ab9a3b2276f9589d70",
+   "size": 46226,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m491-xlsx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "xlsx",
+   "sha256": "23dde1b68135b329d55d95f76d66d897411e4c6d0df52c0f6a78cf1be86a46b2",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m492-docx-drop-part",
+   "source": "mutation",
+   "op": "drop-part",
+   "format": "docx",
+   "sha256": "88881e6c046b426497801d0edd91bf73c7c912c83f5fd26ec3f0fd385333881b",
+   "size": 41056,
+   "validator": "reject",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m493-pptx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "pptx",
+   "sha256": "76221d37ff58cd469feb95bd292548059de680b55f9e7894a4af6a907f1b208f",
+   "size": 46994,
+   "validator": "accept",
+   "officecli": "invalid"
+  },
+  {
+   "id": "m494-xlsx-flip-bytes",
+   "source": "mutation",
+   "op": "flip-bytes",
+   "format": "xlsx",
+   "sha256": "e2f045d2da2fcb1406e060c3531ea8ee1d7e8691bb14eebfd9b78e3bf77b53ea",
+   "size": 10978,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m495-docx-ct-override",
+   "source": "mutation",
+   "op": "ct-override",
+   "format": "docx",
+   "sha256": "f1e490f4fa40a8ea518708e86564b88cc53f4ae84dba4abe9d693b444dadab74",
+   "size": 41617,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m496-pptx-truncate",
+   "source": "mutation",
+   "op": "truncate",
+   "format": "pptx",
+   "sha256": "4472d6a4f7672b6ec976287fc3afda2bc569d9ffd2d97b5d4914b230594a3e6c",
+   "size": 3877,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m497-xlsx-dup-element",
+   "source": "mutation",
+   "op": "dup-element",
+   "format": "xlsx",
+   "sha256": "90320bfadf81a4d7b0dfa0929346802e399255edb6e79c6a2e73435b5c84687d",
+   "size": 11232,
+   "validator": "reject",
+   "officecli": "cannot-open"
+  },
+  {
+   "id": "m498-docx-rels-target",
+   "source": "mutation",
+   "op": "rels-target",
+   "format": "docx",
+   "sha256": "98b0cbad4e94d022283beceaa8dc66fca6589f647540018a85f1f2b5711536ad",
+   "size": 41605,
+   "validator": "reject",
+   "officecli": "ok"
+  },
+  {
+   "id": "m499-pptx-xml-delete-char",
+   "source": "mutation",
+   "op": "xml-delete-char",
+   "format": "pptx",
+   "sha256": "91ddd9d2a90271f83ac922e345269cc85ea0f0ebc620867b1d683e17e025f42b",
+   "size": 46992,
+   "validator": "accept",
+   "officecli": "ok"
+  }
+ ]
+}

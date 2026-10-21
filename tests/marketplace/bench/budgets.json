@@ -1,0 +1,226 @@
+{
+  "schema": "marketplace-bench-budgets/1",
+  "note": "Structural budgets are exact and final (Plan 4 Task 15). Timing and memory budgets are written by `run.mjs --init-budgets` from a real measurement as max(median x 1.5, max), rounded up, and are checked with a noise multiplier (see run.mjs --help). Empty until the first measurement.",
+  "noiseMultiplier": 2,
+  "noiseFloorMs": 20,
+  "structural": {
+    "startup.networkCalls": {
+      "budget": 0,
+      "why": "Brief s14: nothing contacts the marketplace at workbench or main-process startup."
+    },
+    "startup.fsCallsAtConstruction": {
+      "budget": 0,
+      "why": "The install service is built eagerly by the main process; its constructor and the 60 s recovery deferral must do no file work."
+    },
+    "startup.processesSpawned": {
+      "budget": 0,
+      "why": "No Hermes or other child process at startup."
+    },
+    "startup.storeFilesRead": {
+      "budget": 0,
+      "why": "Store contents (SKILL.md, manifests) are read only on install, enable or permission display, never at startup."
+    },
+    "installed.storeFilesRead": {
+      "budget": 0,
+      "why": "installed() is the lightweight index: the lockfile only, no per-item file reads."
+    },
+    "reconcileSchedule.initialDelayMs": {
+      "budget": 30000,
+      "cmp": "gte",
+      "why": "The first background reconcile is armed 30 s after start, never earlier."
+    },
+    "lockfile.readsForInstalled": {
+      "budget": 1,
+      "why": "installed() reads the lockfile exactly once."
+    }
+  },
+  "timing": {
+    "lockfile.parse200.ms": {
+      "budget": 1.52,
+      "unit": "ms",
+      "measured": {
+        "median": 0.514,
+        "max": 1.514,
+        "n": 60,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "lockfile.parse2000.ms": {
+      "budget": 5.85,
+      "unit": "ms",
+      "measured": {
+        "median": 3.895,
+        "max": 5.44,
+        "n": 30,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "installed200.ms": {
+      "budget": 4.14,
+      "unit": "ms",
+      "measured": {
+        "median": 0.488,
+        "max": 4.135,
+        "n": 30,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "reconcile200.offlineSignedIn.ms": {
+      "budget": 3.68,
+      "unit": "ms",
+      "measured": {
+        "median": 2.448,
+        "max": 3.098,
+        "n": 15,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "reconcile200.offlineAnonymous.ms": {
+      "budget": 3.48,
+      "unit": "ms",
+      "measured": {
+        "median": 2.317,
+        "max": 3.086,
+        "n": 15,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "memory.moduleImport.heapMB": {
+      "budget": 1.58,
+      "unit": "MB",
+      "measured": {
+        "median": 1.05,
+        "max": 1.05,
+        "n": 15,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "memory.installed200.heapDeltaMB": {
+      "budget": 0.42,
+      "unit": "MB",
+      "measured": {
+        "median": 0.278,
+        "max": 0.278,
+        "n": 15,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.list24.p50.ms": {
+      "budget": 31.16,
+      "unit": "ms",
+      "measured": {
+        "median": 5.768,
+        "max": 31.16,
+        "n": 120,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.list24.p95.ms": {
+      "budget": 27.28,
+      "unit": "ms",
+      "measured": {
+        "median": 18.186,
+        "max": 18.186,
+        "n": 1,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.search.p50.ms": {
+      "budget": 19.94,
+      "unit": "ms",
+      "measured": {
+        "median": 4.132,
+        "max": 19.937,
+        "n": 40,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.search.p95.ms": {
+      "budget": 12.18,
+      "unit": "ms",
+      "measured": {
+        "median": 8.118,
+        "max": 8.118,
+        "n": 1,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.detail.p50.ms": {
+      "budget": 10.25,
+      "unit": "ms",
+      "measured": {
+        "median": 2.866,
+        "max": 10.245,
+        "n": 30,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.detail.p95.ms": {
+      "budget": 9.91,
+      "unit": "ms",
+      "measured": {
+        "median": 6.606,
+        "max": 6.606,
+        "n": 1,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.preview.p50.ms": {
+      "budget": 9.74,
+      "unit": "ms",
+      "measured": {
+        "median": 3.445,
+        "max": 9.739,
+        "n": 30,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.preview.p95.ms": {
+      "budget": 13.02,
+      "unit": "ms",
+      "measured": {
+        "median": 8.677,
+        "max": 8.677,
+        "n": 1,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.compare.p50.ms": {
+      "budget": 73.75,
+      "unit": "ms",
+      "measured": {
+        "median": 7.361,
+        "max": 73.747,
+        "n": 20,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    },
+    "server.compare.p95.ms": {
+      "budget": 53.01,
+      "unit": "ms",
+      "measured": {
+        "median": 35.337,
+        "max": 35.337,
+        "n": 1,
+        "loadAverageAtStart": 39.32
+      },
+      "why": "max(median x 1.5, max) of the first measurement, taken on a loaded shared machine (see machine.loadAverageAtStart); a later run compares its median against this x noiseMultiplier."
+    }
+  }
+}

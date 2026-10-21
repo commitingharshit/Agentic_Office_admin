@@ -1,0 +1,315 @@
+{
+  "providers": {
+    "agentic": {
+      "hasSaveConfig": true,
+      "keys": [],
+      "local": true,
+      "secrets": []
+    },
+    "byterover": {
+      "hasSaveConfig": true,
+      "keys": [
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "key": "auto_extract"
+        }
+      ],
+      "local": false,
+      "secrets": [
+        {
+          "env_var": "BRV_API_KEY",
+          "key": "api_key"
+        }
+      ]
+    },
+    "hindsight": {
+      "hasSaveConfig": true,
+      "keys": [
+        {
+          "choices": [
+            "cloud",
+            "local_embedded",
+            "local_external"
+          ],
+          "key": "mode"
+        },
+        {
+          "key": "api_url"
+        },
+        {
+          "choices": [
+            "openai",
+            "anthropic",
+            "gemini",
+            "groq",
+            "openrouter",
+            "minimax",
+            "ollama",
+            "lmstudio",
+            "openai_compatible"
+          ],
+          "key": "llm_provider"
+        },
+        {
+          "key": "llm_base_url"
+        },
+        {
+          "key": "llm_model"
+        },
+        {
+          "key": "bank_id"
+        },
+        {
+          "key": "bank_id_template"
+        },
+        {
+          "key": "bank_mission"
+        },
+        {
+          "key": "bank_retain_mission"
+        },
+        {
+          "choices": [
+            "low",
+            "mid",
+            "high"
+          ],
+          "key": "recall_budget"
+        },
+        {
+          "choices": [
+            "hybrid",
+            "context",
+            "tools"
+          ],
+          "key": "memory_mode"
+        },
+        {
+          "choices": [
+            "recall",
+            "reflect"
+          ],
+          "key": "recall_prefetch_method"
+        },
+        {
+          "key": "retain_tags"
+        },
+        {
+          "key": "observation_scopes"
+        },
+        {
+          "key": "retain_source"
+        },
+        {
+          "key": "retain_user_prefix"
+        },
+        {
+          "key": "retain_assistant_prefix"
+        },
+        {
+          "key": "recall_tags"
+        },
+        {
+          "choices": [
+            "any",
+            "all",
+            "any_strict",
+            "all_strict"
+          ],
+          "key": "recall_tags_match"
+        },
+        {
+          "key": "recall_types"
+        },
+        {
+          "key": "auto_recall"
+        },
+        {
+          "key": "auto_retain"
+        },
+        {
+          "key": "retain_every_n_turns"
+        },
+        {
+          "key": "retain_async"
+        },
+        {
+          "key": "retain_context"
+        },
+        {
+          "key": "recall_max_tokens"
+        },
+        {
+          "key": "recall_max_input_chars"
+        },
+        {
+          "key": "recall_prompt_preamble"
+        },
+        {
+          "key": "timeout"
+        },
+        {
+          "key": "idle_timeout"
+        },
+        {
+          "key": "port_health_grace_timeout"
+        }
+      ],
+      "local": false,
+      "secrets": [
+        {
+          "env_var": "HINDSIGHT_API_KEY",
+          "key": "api_key"
+        },
+        {
+          "env_var": "HINDSIGHT_LLM_API_KEY",
+          "key": "llm_api_key"
+        }
+      ]
+    },
+    "holographic": {
+      "hasSaveConfig": true,
+      "keys": [
+        {
+          "key": "db_path"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "key": "auto_extract"
+        },
+        {
+          "key": "default_trust"
+        },
+        {
+          "key": "hrr_dim"
+        }
+      ],
+      "local": true,
+      "secrets": []
+    },
+    "honcho": {
+      "hasSaveConfig": true,
+      "keys": [
+        {
+          "key": "baseUrl"
+        }
+      ],
+      "local": false,
+      "secrets": [
+        {
+          "env_var": "HONCHO_API_KEY",
+          "key": "api_key"
+        }
+      ]
+    },
+    "mem0": {
+      "hasSaveConfig": true,
+      "keys": [
+        {
+          "key": "user_id"
+        },
+        {
+          "key": "agent_id"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "key": "rerank"
+        }
+      ],
+      "local": false,
+      "secrets": [
+        {
+          "env_var": "MEM0_API_KEY",
+          "key": "api_key"
+        }
+      ]
+    },
+    "openviking": {
+      "hasSaveConfig": true,
+      "keys": [
+        {
+          "key": "endpoint"
+        },
+        {
+          "key": "account"
+        },
+        {
+          "key": "user"
+        },
+        {
+          "key": "agent"
+        },
+        {
+          "key": "recall_limit"
+        },
+        {
+          "key": "recall_score_threshold"
+        },
+        {
+          "key": "recall_max_injected_chars"
+        },
+        {
+          "key": "recall_timeout_seconds"
+        },
+        {
+          "key": "recall_request_timeout_seconds"
+        },
+        {
+          "key": "recall_full_read_limit"
+        },
+        {
+          "key": "recall_prefer_abstract"
+        },
+        {
+          "key": "recall_resources"
+        }
+      ],
+      "local": false,
+      "secrets": [
+        {
+          "env_var": "OPENVIKING_API_KEY",
+          "key": "api_key"
+        }
+      ]
+    },
+    "retaindb": {
+      "hasSaveConfig": true,
+      "keys": [
+        {
+          "key": "base_url"
+        },
+        {
+          "key": "project"
+        }
+      ],
+      "local": false,
+      "secrets": [
+        {
+          "env_var": "RETAINDB_API_KEY",
+          "key": "api_key"
+        }
+      ]
+    },
+    "supermemory": {
+      "hasSaveConfig": true,
+      "keys": [],
+      "local": false,
+      "secrets": [
+        {
+          "env_var": "SUPERMEMORY_API_KEY",
+          "key": "api_key"
+        }
+      ]
+    }
+  },
+  "schema": "agentic.marketplace.memory-schemas/1"
+}

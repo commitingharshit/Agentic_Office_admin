@@ -1,0 +1,1174 @@
+diff --git a/next.config.ts b/next.config.ts
+index 2cd7d67..e8e146d 100644
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -3,5 +3,7 @@ import type { NextConfig } from 'next';
+ const config: NextConfig = {
+   output: 'standalone',
+   poweredByHeader: false,
++  // Package uploads (Marketplace > Publish New) go through a server action; the API caps a package at 64 MiB.
++  experimental: { serverActions: { bodySizeLimit: '64mb' } },
+ };
+ export default config;
+diff --git a/src/app/admin/marketplace/actions.ts b/src/app/admin/marketplace/actions.ts
+new file mode 100644
+index 0000000..87413fe
+--- /dev/null
++++ b/src/app/admin/marketplace/actions.ts
+@@ -0,0 +1,72 @@
++'use server';
++// Marketplace server actions. Same pattern as ../actions.ts: re-check the session, call the admin API as the signed-in admin, come back
++// with the outcome in the address. The API enforces permissions and the state machine again; these only carry the request.
++import { revalidatePath } from 'next/cache';
++import { redirect } from 'next/navigation';
++import { adminApi, AdminApiError } from '../../../lib/admin-api';
++import { ACTIONS, PUBLISHABLE_TYPES, VISIBILITIES, packValidation } from '../../../lib/marketplace';
++import { requireAdmin } from '../../../lib/session';
++
++const field = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
++const safeBack = (b: string, fallback: string) => (b.startsWith('/admin/marketplace') && !b.includes('//') && !b.includes('\\') ? b : fallback);
++const done = (to: string, key: 'msg' | 'err', text: string): never => redirect(`${to}${to.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(text)}`);
++
++async function act(back: string, ok: string, fn: (acting: string) => Promise<unknown>): Promise<never> {
++  const admin = await requireAdmin(back);
++  try { await fn(admin.id); } catch (e) { return done(back, 'err', e instanceof AdminApiError ? e.message : 'That did not work.'); }
++  revalidatePath('/admin/marketplace', 'layout');
++  return done(back, 'msg', ok);
++}
++
++export async function versionAction(f: FormData) {
++  const id = field(f, 'id'), action = field(f, 'action'), back = safeBack(field(f, 'back'), '/admin/marketplace/review');
++  if (!(ACTIONS as readonly string[]).includes(action)) return done(back, 'err', 'Unknown action.');
++  const body: Record<string, unknown> = {};
++  if (field(f, 'reason')) body.reason = field(f, 'reason');
++  await act(back, `Version ${action === 'claim' ? 'claimed' : action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : action === 'publish' ? 'published' : action === 'deprecate' ? 'deprecated' : action === 'quarantine' ? 'quarantined' : 'revoked'}.`,
++    (acting) => adminApi(`/admin/marketplace/versions/${encodeURIComponent(id)}/${action}`, { acting, method: 'POST', body }));
++}
++export async function rescanVersion(f: FormData) {
++  const id = field(f, 'id'), back = safeBack(field(f, 'back'), '/admin/marketplace/review');
++  let verdict = '';
++  await act(back, 'Rescanned.', async (acting) => {
++    const r = await adminApi<{ validation?: { ok?: boolean; verified?: boolean } }>(`/admin/marketplace/versions/${encodeURIComponent(id)}/rescan`, { acting, method: 'POST', body: {} });
++    verdict = r.validation?.verified ? 'verified' : r.validation?.ok ? 'NOT verified' : 'failed';
++    if (verdict !== 'verified') throw new AdminApiError(409, `Rescan finished: ${verdict}. See the scan results below.`);
++  });
++}
++export async function deleteReview(f: FormData) {
++  const id = field(f, 'id');
++  await act(safeBack(field(f, 'back'), '/admin/marketplace/reviews'), 'Review deleted.', (acting) => adminApi(`/admin/marketplace/reviews/${encodeURIComponent(id)}`, { acting, method: 'DELETE' }));
++}
++export async function saveMarketplacePublisher(f: FormData) {
++  const id = field(f, 'id');
++  await act('/admin/marketplace/publishers', `Publisher ${id} saved.`, (acting) => adminApi('/admin/marketplace/publishers', { acting, method: 'POST', body: { id, trust: field(f, 'trust'), ...(field(f, 'displayName') ? { displayName: field(f, 'displayName') } : {}), ...(field(f, 'ownerUserId') ? { ownerUserId: field(f, 'ownerUserId') } : {}) } }));
++}
++export async function resolveReport(f: FormData) {
++  const id = field(f, 'id');
++  await act('/admin/marketplace/security', `Report marked ${field(f, 'state')}.`, (acting) => adminApi(`/admin/marketplace/reports/${encodeURIComponent(id)}/resolve`, { acting, method: 'POST', body: { state: field(f, 'state'), ...(field(f, 'reason') ? { reason: field(f, 'reason') } : {}) } }));
++}
++
++/** Upload a package. The server's validation report is the answer: the page re-reads it (by version id, or packed in the address when nothing was stored). */
++export async function submitPackage(f: FormData) {
++  const back = '/admin/marketplace/publish';
++  const admin = await requireAdmin(back);
++  const type = field(f, 'type'), visibility = field(f, 'visibility'), publisher = field(f, 'publisher');
++  const file = f.get('package');
++  if (!PUBLISHABLE_TYPES.includes(type)) return done(back, 'err', 'Not available in this release.');
++  if (!(VISIBILITIES as readonly string[]).includes(visibility)) return done(back, 'err', 'Choose a visibility.');
++  if (!publisher) return done(back, 'err', 'Choose a publisher.');
++  if (!(file instanceof File) || file.size === 0) return done(back, 'err', 'Choose a package ZIP to upload.');
++  const qs = new URLSearchParams({ publisher, visibility });
++  if (field(f, 'team')) qs.set('team', field(f, 'team'));
++  let r: { versionId: string; state: string; validation: any };
++  try {
++    r = await adminApi(`/admin/marketplace/submissions?${qs}`, { acting: admin.id, method: 'POST', bytes: { data: new Uint8Array(await file.arrayBuffer()), contentType: 'application/zip' } });
++  } catch (e) {
++    if (e instanceof AdminApiError && e.body?.validation) return done(`${back}?vr=${packValidation(e.body.validation)}`, 'err', e.message);
++    return done(back, 'err', e instanceof AdminApiError ? e.message : 'That did not work.');
++  }
++  revalidatePath('/admin/marketplace', 'layout');
++  return redirect(`${back}?vr=${packValidation(r.validation)}&version=${encodeURIComponent(r.versionId)}&state=${encodeURIComponent(r.state)}`);
++}
+diff --git a/src/app/admin/marketplace/analytics/page.tsx b/src/app/admin/marketplace/analytics/page.tsx
+new file mode 100644
+index 0000000..ce16a99
+--- /dev/null
++++ b/src/app/admin/marketplace/analytics/page.tsx
+@@ -0,0 +1,46 @@
++import { BarChart } from '../../../../components/admin/Charts';
++import { FilterBar } from '../../../../components/admin/DataTable';
++import { MetricCard } from '../../../../components/admin/MetricCard';
++import { ErrorState, Notice, PageHeader, Section, num } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { LISTING_TYPES, listQuery, pct } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Analytics' };
++
++export default async function MarketplaceAnalytics({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/analytics${listQuery(q, { type: LISTING_TYPES, publisher: true, from: true, to: true })}`, person.id);
++  return (
++    <>
++      <PageHeader title="Usage Analytics" subtitle="Derived from install records and reviews the apps report. Nothing here is estimated." />
++      <FilterBar base="/admin/marketplace/analytics" query={q} fields={[
++        { name: 'type', label: 'Type', type: 'select', options: [['', 'Any type'], ...LISTING_TYPES.map((t) => [t, t] as [string, string])] },
++        { name: 'publisher', label: 'Publisher', width: 160 }, { name: 'from', label: 'From', type: 'date' }, { name: 'to', label: 'To', type: 'date' }]} />
++      {res.ok ? (() => {
++        const d = res.data, cats = d.popularCategories as Array<{ tag: string; listings: number; installs: number }>;
++        return (
++          <>
++            <div className="grid kpis">
++              <MetricCard icon="device" label="Installs" value={num(d.installs)} hint={`${num(d.uninstalls)} uninstalled`} />
++              <MetricCard icon="check" label="Active installs" value={num(d.activeInstalls)} hint="installed and enabled now" />
++              <MetricCard icon="alert" label="Failed installs" value={num(d.failedInstalls)} hint={`failure rate ${pct(d.failureRate)}`} />
++              <MetricCard icon="runs" label="On the latest version" value={pct(d.updateAdoption.ratio)} hint={`${num(d.updateAdoption.onLatest)} of ${num(d.updateAdoption.installs)} tracked installs`} />
++              <MetricCard icon="support" label="Average rating" value={d.averageRating == null ? 'No ratings' : d.averageRating.toFixed(2)} hint={`${num(d.ratingCount)} ratings`} />
++              <MetricCard icon="reliability" label="Security events" value={num(d.securityIncidents)} hint="quarantines and revocations" />
++            </div>
++            <Section title="Popular categories">
++              {cats.length ? <BarChart data={cats.map((c) => c.installs)} labels={cats.map((c) => c.tag)} /> : <p className="hint">No tagged listings with installs yet.</p>}
++            </Section>
++            <Section title="Coverage and gaps">
++              <Notice icon="info"><span>Devices reporting: <b>{num(d.telemetryCoverage.devicesReporting)}</b> of <b>{num(d.telemetryCoverage.devicesKnown)}</b> known ({pct(d.telemetryCoverage.ratio)}). This figure is global, not filtered.</span></Notice>
++              <p className="hint" style={{ marginTop: 8 }}><b>Not collected:</b> {(d.notCollected as string[]).map((n) => n.replace(/_/g, ' ')).join(', ')}. No numbers are shown for these.</p>
++              {(d.notes as string[]).map((n) => <p key={n} className="hint">{n}</p>)}
++            </Section>
++          </>);
++      })() : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/catalog/page.tsx b/src/app/admin/marketplace/catalog/page.tsx
+new file mode 100644
+index 0000000..9a3d5cb
+--- /dev/null
++++ b/src/app/admin/marketplace/catalog/page.tsx
+@@ -0,0 +1,47 @@
++import Link from 'next/link';
++import { DataTable, FilterBar, type Column } from '../../../../components/admin/DataTable';
++import { CursorPager, StateBadge, VerdictBadge } from '../../../../components/admin/marketplace';
++import { ErrorState, Flash, PageHeader, StatusBadge, ago, num } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { CATALOG_FILTERS, LISTING_TYPES, VERSION_STATES, VISIBILITIES, listQuery, ratingText } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Catalog' };
++const opts = (xs: readonly string[], all: string): Array<[string, string]> => [['', all], ...xs.map((x) => [x, x.replace(/_/g, ' ')] as [string, string])];
++
++export default async function Catalog({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/catalog${listQuery(q, CATALOG_FILTERS)}`, person.id);
++  return (
++    <>
++      <PageHeader title="Catalog" subtitle="Every listing with its latest version. The state and security outcome are the latest version's." />
++      <Flash q={q} />
++      <FilterBar base="/admin/marketplace/catalog" query={q} fields={[
++        { name: 'q', label: 'Search', placeholder: 'name or id', width: 220 },
++        { name: 'type', label: 'Type', type: 'select', options: opts(LISTING_TYPES, 'Any type') },
++        { name: 'publisher', label: 'Publisher', placeholder: 'publisher id', width: 160 },
++        { name: 'visibility', label: 'Visibility', type: 'select', options: opts(VISIBILITIES, 'Any visibility') },
++        { name: 'state', label: 'State', type: 'select', options: opts(VERSION_STATES, 'Any state') }]} />
++      {res.ok ? (
++        <>
++          <DataTable<any> base="/admin/marketplace/catalog" query={q} rowKey={(r) => r.id} rows={res.data.items} emptyTitle="No listings match" emptyHint="Nothing is published yet, or the filters exclude everything."
++            columns={[
++              { key: 'name', label: 'Name', render: (r) => <><b>{r.name}</b><div className="faint mono">{r.id}</div></> },
++              { key: 'type', label: 'Type' },
++              { key: 'publisher', label: 'Publisher' },
++              { key: 'visibility', label: 'Visibility', render: (r) => <>{r.visibility} <StatusBadge status={r.trust === 'official' ? 'admin' : r.trust === 'verified' ? 'active' : ''}>{r.trust}</StatusBadge></> },
++              { key: 'state', label: 'State', render: (r) => <StateBadge state={r.state} /> },
++              { key: 'version', label: 'Version', render: (r) => r.latestVersionId ? <Link className="mono" href={`/admin/marketplace/versions/${r.latestVersionId}`}>{r.latestVersion}</Link> : '—' },
++              { key: 'installs', label: 'Installs', align: 'right', render: (r) => num(r.installs) },
++              { key: 'active', label: 'Active', align: 'right', render: (r) => num(r.activeInstalls) },
++              { key: 'rating', label: 'Rating', render: (r) => ratingText(r.ratingAvg, r.ratingCount) },
++              { key: 'updated', label: 'Updated', render: (r) => ago(r.updatedAt) },
++              { key: 'scan', label: 'Security', render: (r) => <VerdictBadge verdict={r.scanVerdict} /> },
++            ] as Column<any>[]} />
++          <CursorPager base="/admin/marketplace/catalog" query={q} next={res.data.nextPage} />
++        </>) : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/collections/page.tsx b/src/app/admin/marketplace/collections/page.tsx
+new file mode 100644
+index 0000000..518b3d1
+--- /dev/null
++++ b/src/app/admin/marketplace/collections/page.tsx
+@@ -0,0 +1,15 @@
++import { EmptyState, PageHeader } from '../../../../components/admin/bits';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Collections & Bundles' };
++
++export default async function Collections() {
++  await adminContext();
++  return (
++    <>
++      <PageHeader title="Collections & Bundles" subtitle="Curated groups of listings and installable bundles." />
++      <div className="table-wrap"><EmptyState icon="gift" title="Not available in this release">Collections and bundles arrive with the next marketplace plan (Plan 2). The API has no endpoints for them yet, so this page shows no data and has no controls.</EmptyState></div>
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/installations/page.tsx b/src/app/admin/marketplace/installations/page.tsx
+new file mode 100644
+index 0000000..8a6e9c9
+--- /dev/null
++++ b/src/app/admin/marketplace/installations/page.tsx
+@@ -0,0 +1,44 @@
++import Link from 'next/link';
++import { DataTable, FilterBar, type Column } from '../../../../components/admin/DataTable';
++import { CursorPager, VerdictBadge } from '../../../../components/admin/marketplace';
++import { ErrorState, Flash, Notice, PageHeader, StatusBadge, ago } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { listQuery } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Installations' };
++const STATES = ['requested', 'permission_review', 'installed', 'configured', 'enabled', 'disabled', 'update_available', 'failed', 'uninstalled'];
++
++export default async function Installations({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/installations${listQuery(q, { user: true, listing: true, state: true, page: true })}`, person.id);
++  return (
++    <>
++      <PageHeader title="Installations" subtitle="What is installed where, as the apps reported it." />
++      <Flash q={q} />
++      <FilterBar base="/admin/marketplace/installations" query={q} fields={[
++        { name: 'user', label: 'User id', placeholder: 'usr_…', width: 200 }, { name: 'listing', label: 'Listing id', placeholder: 'publisher/name', width: 220 },
++        { name: 'state', label: 'State', type: 'select', options: [['', 'Any state'], ...STATES.map((s) => [s, s.replace(/_/g, ' ')] as [string, string])] }]} />
++      {res.ok ? (
++        <>
++          {res.data.note && <Notice icon="info">{res.data.note}</Notice>}
++          <DataTable<any> base="/admin/marketplace/installations" query={q} rowKey={(r) => r.id} rows={res.data.items} emptyTitle="No installations" emptyHint="Nothing matches, or no device has reported an install yet."
++            columns={[
++              { key: 'listing', label: 'Listing', render: (r) => <span className="mono">{r.listingId}</span> },
++              { key: 'version', label: 'Version', render: (r) => r.version ?? '—' },
++              { key: 'state', label: 'State', render: (r) => <StatusBadge status={['installed', 'enabled', 'configured'].includes(r.state) ? 'active' : r.state === 'failed' ? 'failed' : ''}>{String(r.state).replace(/_/g, ' ')}</StatusBadge> },
++              { key: 'enabled', label: 'Enabled', render: (r) => (r.enabled ? 'yes' : 'no') },
++              { key: 'scan', label: 'Scan', render: (r) => <VerdictBadge verdict={r.scanVerdict} /> },
++              { key: 'user', label: 'User', render: (r) => <Link href={`/admin/users/${r.userId}?tab=marketplace`} className="mono">{r.userId}</Link> },
++              { key: 'device', label: 'Device', render: (r) => <span className="mono">{r.deviceId ?? '—'}</span> },
++              { key: 'scope', label: 'Scope', render: (r) => r.scope ?? '—' },
++              { key: 'err', label: 'Last error', render: (r) => r.lastError ?? '' },
++              { key: 'at', label: 'Updated', render: (r) => ago(r.updatedAt) },
++            ] as Column<any>[]} />
++          <CursorPager base="/admin/marketplace/installations" query={q} next={res.data.nextPage} />
++        </>) : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/page.tsx b/src/app/admin/marketplace/page.tsx
+new file mode 100644
+index 0000000..598dbcd
+--- /dev/null
++++ b/src/app/admin/marketplace/page.tsx
+@@ -0,0 +1,54 @@
++import Link from 'next/link';
++import { BarChart } from '../../../components/admin/Charts';
++import { MetricCard } from '../../../components/admin/MetricCard';
++import { ErrorState, Flash, Notice, PageHeader, Section, num } from '../../../components/admin/bits';
++import { load } from '../../../lib/admin-api';
++import { pct } from '../../../lib/marketplace';
++import { adminContext } from '../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace' };
++
++export default async function MarketplaceOverview({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person } = await adminContext();
++  const [an, queue, quarantined, revoked] = await Promise.all([
++    load<any>('/admin/marketplace/analytics', person.id),
++    load<any>('/admin/marketplace/submissions', person.id),
++    load<any>('/admin/marketplace/catalog?state=quarantined&limit=100', person.id),
++    load<any>('/admin/marketplace/catalog?state=revoked&limit=100', person.id),
++  ]);
++  const byType: Record<string, number> = an.ok ? an.data.publishedListingsByType : {};
++  const types = Object.keys(byType);
++  const waiting = queue.ok ? (queue.data.items as any[]) : [];
++  return (
++    <>
++      <PageHeader title="Marketplace" subtitle="Templates and skills: what is published, what is waiting for review, and what the app reports back. Everything here comes from the marketplace API." />
++      <Flash q={q} />
++      {an.ok ? (
++        <>
++          <div className="grid kpis">
++            <MetricCard icon="inbox" label="Published listings" value={num(types.reduce((n, t) => n + byType[t], 0))} hint={types.length ? types.map((t) => `${byType[t]} ${t}`).join(' · ') : 'none yet'} />
++            <MetricCard icon="check" label="Waiting for review" value={queue.ok ? num(waiting.length) : '—'} hint={queue.ok ? `${waiting.filter((w) => w.state === 'submitted').length} submitted · ${waiting.filter((w) => w.state === 'in_review').length} in review` : 'queue unavailable'} />
++            <MetricCard icon="device" label="Installs" value={num(an.data.installs)} hint={`${num(an.data.activeInstalls)} active now · ${num(an.data.uninstalls)} uninstalled`} />
++            <MetricCard icon="alert" label="Failed installs" value={num(an.data.failedInstalls)} hint={`failure rate ${pct(an.data.failureRate)}`} />
++            <MetricCard icon="reliability" label="Quarantined / revoked" value={quarantined.ok && revoked.ok ? `${(quarantined.data.items as any[]).length} / ${(revoked.data.items as any[]).length}` : '—'} hint={`${num(an.data.securityIncidents)} security events recorded`} />
++          </div>
++          <Section title="Published listings by type">
++            {types.length ? <BarChart data={types.map((t) => byType[t])} labels={types} /> : <p className="hint">Nothing is published yet.</p>}
++          </Section>
++          <Section title="How much the app reports">
++            <Notice icon="info"><span>Devices reporting installs: <b>{num(an.data.telemetryCoverage.devicesReporting)}</b> of <b>{num(an.data.telemetryCoverage.devicesKnown)}</b> known ({pct(an.data.telemetryCoverage.ratio)}). Counts above cover only those devices.</span></Notice>
++            <p className="hint" style={{ marginTop: 8 }}><b>Not collected:</b> {(an.data.notCollected as string[]).map((n) => n.replace(/_/g, ' ')).join(', ') || 'nothing'}. These have no data source, so no figure is shown for them.</p>
++          </Section>
++        </>
++      ) : <ErrorState message={an.error} />}
++      <Section title="Next up" count={queue.ok ? waiting.length : undefined} actions={<Link className="btn sm" href="/admin/marketplace/review">Open review queue</Link>}>
++        {queue.ok ? (waiting.length ? (
++          <div className="table-wrap"><table className="dt"><tbody>{waiting.slice(0, 5).map((w) => (
++            <tr key={w.versionId}><td><Link href={`/admin/marketplace/versions/${w.versionId}`}>{w.name}</Link> <span className="faint mono">{w.listingId} {w.version}</span></td><td>{w.type}</td><td>{w.state.replace('_', ' ')}</td></tr>))}</tbody></table></div>
++        ) : <p className="hint">The review queue is empty.</p>) : <ErrorState message={queue.error} />}
++      </Section>
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/publish/page.tsx b/src/app/admin/marketplace/publish/page.tsx
+new file mode 100644
+index 0000000..09676bc
+--- /dev/null
++++ b/src/app/admin/marketplace/publish/page.tsx
+@@ -0,0 +1,55 @@
++import Link from 'next/link';
++import { ValidationReport } from '../../../../components/admin/marketplace';
++import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { LISTING_TYPES, PUBLISHABLE_TYPES, VISIBILITIES, summarizeValidation, unpackValidation } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++import { submitPackage } from '../actions';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Publish to the Marketplace' };
++
++export default async function Publish({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const type = PUBLISHABLE_TYPES.includes(q.type) ? q.type : '';
++  const pubs = type && permissions.includes('marketplace.write') ? await load<any>('/admin/marketplace/publishers', person.id) : null;
++  const result = unpackValidation(q.vr);
++  const summary = result ? summarizeValidation(result) : null;
++  return (
++    <>
++      <PageHeader title="Publish New" subtitle="Upload a package ZIP. The server validates it; nothing is listed until a reviewer approves and publishes it." />
++      <Flash q={q} />
++      {!permissions.includes('marketplace.write') && <Notice tone="warn" icon="alert">Your role cannot submit packages (needs marketplace.write).</Notice>}
++      {result && summary && (
++        <Section title="Validation result">
++          <ValidationReport report={result} title="Server validation" />
++          {q.version ? <p className="hint">Recorded as version <Link className="mono" href={`/admin/marketplace/versions/${q.version}`}>{q.version}</Link> in state <b>{q.state}</b>. {summary.outcome === 'verified' ? 'It is waiting in the review queue.' : summary.outcome === 'unverified' ? 'It is in the queue but cannot be approved until a rescan verifies it.' : 'It was rejected automatically and will not enter the queue.'}</p>
++            : <p className="hint">Nothing was recorded for this upload.</p>}
++        </Section>)}
++      <Section title="Step 1: what are you publishing?">
++        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
++          {LISTING_TYPES.map((t) => PUBLISHABLE_TYPES.includes(t)
++            ? <Link key={t} href={`/admin/marketplace/publish?type=${t}`} className="card" aria-current={type === t ? 'true' : undefined} style={{ padding: 14, outline: type === t ? '2px solid var(--accent, #4f46e5)' : undefined }}><b>{t}</b><div className="muted">Available</div></Link>
++            : <div key={t} className="card" aria-disabled="true" style={{ padding: 14, opacity: 0.55 }}><b>{t}</b><div className="muted">Not available in this release</div></div>)}
++        </div>
++      </Section>
++      {type && (
++        <Section title={`Step 2: upload the ${type} package`}>
++          {pubs && !pubs.ok ? <ErrorState message={pubs.error} /> : (
++            <form action={submitPackage} className="form-row">
++              <input type="hidden" name="type" value={type} />
++              <label className="field"><span>Package (.zip)</span><input type="file" name="package" accept=".zip,application/zip" required /></label>
++              <label className="field"><span>Publisher (existing only)</span>
++                <select name="publisher" required defaultValue="">{<option value="" disabled>Choose a publisher</option>}{(pubs?.data.items ?? []).map((p: any) => <option key={p.id} value={p.id}>{p.displayName} ({p.id}){p.verified ? ' ✓' : ''}</option>)}</select></label>
++              <label className="field"><span>Visibility</span><select name="visibility" defaultValue="private">{VISIBILITIES.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
++              <label className="field"><span>Team id (team visibility only)</span><input name="team" placeholder="team id" /></label>
++              <button className="btn primary" disabled={!permissions.includes('marketplace.write')}>Upload and validate</button>
++            </form>)}
++          {pubs?.ok && !(pubs.data.items as any[]).length && <p className="hint">No publishers exist yet. A superadmin creates them under <Link href="/admin/marketplace/publishers">Publishers</Link>.</p>}
++          <p className="hint">Maximum 64 MiB. The manifest id must start with the chosen publisher. Only roles with review permission can ask for public or org visibility; the server refuses it otherwise.</p>
++          <p className="hint"><StatusBadge status="pending">note</StatusBadge> A result of “not verified” means a required check, such as the skill security scan, did not run. It is never shown as success.</p>
++        </Section>)}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/publishers/page.tsx b/src/app/admin/marketplace/publishers/page.tsx
+new file mode 100644
+index 0000000..fe7e745
+--- /dev/null
++++ b/src/app/admin/marketplace/publishers/page.tsx
+@@ -0,0 +1,44 @@
++import { ConfirmForm } from '../../../../components/admin/client';
++import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, ago, num } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { adminContext } from '../../../../lib/session';
++import { saveMarketplacePublisher } from '../actions';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Publishers' };
++
++export default async function Publishers({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person, role } = await adminContext();
++  const res = await load<any>('/admin/marketplace/publishers', person.id);
++  const isSuper = role === 'superadmin';
++  return (
++    <>
++      <PageHeader title="Publishers" subtitle="Who may publish. A publisher's trust (community, verified, official) is shown on all of its listings." />
++      <Flash q={q} />
++      {!isSuper && <Notice icon="info">Only a superadmin can create or verify publishers. You can read the list.</Notice>}
++      {isSuper && (
++        <Section title="Create or update a publisher">
++          <form action={saveMarketplacePublisher} className="form-row">
++            <label className="field"><span>Id (lowercase, digits, dashes)</span><input name="id" required pattern="[a-z0-9][a-z0-9\-]*" placeholder="acme-tools" /></label>
++            <label className="field"><span>Display name</span><input name="displayName" maxLength={120} /></label>
++            <label className="field"><span>Owner user id (new publishers)</span><input name="ownerUserId" placeholder="optional" /></label>
++            <label className="field"><span>Trust</span><select name="trust" defaultValue="community"><option value="community">community (not verified)</option><option value="verified">verified</option><option value="official">official</option></select></label>
++            <button className="btn primary">Save publisher</button>
++          </form>
++          <p className="hint">Changing trust updates the trust shown on every non-private listing of that publisher.</p>
++        </Section>)}
++      <Section title="Publishers" count={res.ok ? res.data.items.length : undefined}>
++        {res.ok ? (
++          <div className="table-wrap"><table className="dt"><thead><tr><th>Id</th><th>Name</th><th>Trust</th><th className="right">Listings</th><th>Owner</th><th>Created</th>{isSuper && <th />}</tr></thead>
++            <tbody>{(res.data.items as any[]).map((p) => (
++              <tr key={p.id}><td className="mono">{p.id}</td><td>{p.displayName}</td><td><StatusBadge status={p.trust === 'official' ? 'admin' : p.trust === 'verified' ? 'active' : ''}>{p.trust}</StatusBadge></td><td className="num">{num(p.listings)}</td><td className="mono">{p.ownerUserId}</td><td>{ago(p.createdAt)}</td>
++                {isSuper && <td className="right">{p.trust === 'community'
++                  ? <ConfirmForm action={saveMarketplacePublisher} fields={{ id: p.id, trust: 'verified' }} label="Verify" title={`Verify ${p.id}?`} body="Its listings will show as verified." tone="primary" confirmLabel="Verify" />
++                  : <ConfirmForm action={saveMarketplacePublisher} fields={{ id: p.id, trust: 'community' }} label="Remove verification" title={`Remove verification from ${p.id}?`} body="Its listings go back to community trust." confirmLabel="Remove verification" />}</td>}</tr>))}
++              {!res.data.items.length && <tr><td colSpan={7} className="dt-empty">No publishers yet.</td></tr>}</tbody></table></div>
++        ) : <ErrorState message={res.error} />}
++      </Section>
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/releases/page.tsx b/src/app/admin/marketplace/releases/page.tsx
+new file mode 100644
+index 0000000..fce3605
+--- /dev/null
++++ b/src/app/admin/marketplace/releases/page.tsx
+@@ -0,0 +1,33 @@
++import Link from 'next/link';
++import { FilterBar } from '../../../../components/admin/DataTable';
++import { CursorPager, StateBadge } from '../../../../components/admin/marketplace';
++import { ErrorState, Notice, PageHeader, ago } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { CATALOG_FILTERS, LISTING_TYPES, VERSION_STATES, listQuery } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Releases' };
++
++export default async function Releases({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/catalog${listQuery(q, CATALOG_FILTERS)}`, person.id);
++  return (
++    <>
++      <PageHeader title="Versions & Releases" subtitle="Most recently changed listings first. Open a version for its full release history." />
++      <Notice icon="info">The API has no cross-listing release-event feed yet, so this page lists listings by last change and links to each version's own event history (claimed, approved, published, deprecated, quarantined, revoked, with who and why).</Notice>
++      <FilterBar base="/admin/marketplace/releases" query={q} fields={[
++        { name: 'q', label: 'Search', width: 200 }, { name: 'type', label: 'Type', type: 'select', options: [['', 'Any type'], ...LISTING_TYPES.map((t) => [t, t] as [string, string])] },
++        { name: 'state', label: 'Latest state', type: 'select', options: [['', 'Any state'], ...VERSION_STATES.map((s) => [s, s.replace(/_/g, ' ')] as [string, string])] }]} />
++      {res.ok ? (
++        <>
++          <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Latest version</th><th>State</th><th>Changed</th></tr></thead>
++            <tbody>{(res.data.items as any[]).map((r) => (
++              <tr key={r.id}><td><b>{r.name}</b> <span className="faint mono">{r.id}</span></td><td>{r.latestVersionId ? <Link className="mono" href={`/admin/marketplace/versions/${r.latestVersionId}`}>{r.latestVersion}</Link> : '—'}</td><td><StateBadge state={r.state} /></td><td>{ago(r.updatedAt)}</td></tr>))}
++              {!res.data.items.length && <tr><td colSpan={4} className="dt-empty">No listings.</td></tr>}</tbody></table></div>
++          <CursorPager base="/admin/marketplace/releases" query={q} next={res.data.nextPage} />
++        </>) : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/review/page.tsx b/src/app/admin/marketplace/review/page.tsx
+new file mode 100644
+index 0000000..6fa64ab
+--- /dev/null
++++ b/src/app/admin/marketplace/review/page.tsx
+@@ -0,0 +1,34 @@
++import Link from 'next/link';
++import { VersionActions, StateBadge, VerdictBadge } from '../../../../components/admin/marketplace';
++import { ErrorState, Flash, Notice, PageHeader, StatusBadge, ago } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { allowedActions } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Review Queue' };
++
++export default async function ReviewQueue({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const res = await load<any>('/admin/marketplace/submissions', person.id);
++  const canReview = permissions.includes('marketplace.review');
++  return (
++    <>
++      <PageHeader title="Review Queue" subtitle="Claim, approve, reject and publish. Approving or publishing needs a verified security scan." />
++      <Flash q={q} />
++      {!canReview && <Notice tone="warn" icon="alert">Your role can read the queue but not decide on it (needs marketplace.review).</Notice>}
++      {res.ok ? (
++        <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Version</th><th>State</th><th>Security</th><th>Submitted</th><th>Actions</th></tr></thead>
++          <tbody>{(res.data.items as any[]).map((r) => (
++            <tr key={r.versionId}>
++              <td><Link href={`/admin/marketplace/versions/${r.versionId}`}><b>{r.name}</b></Link> <span className="faint">{r.type} · {r.publisher}</span></td>
++              <td className="mono">{r.version}</td><td><StateBadge state={r.state} /></td>
++              <td><VerdictBadge verdict={r.scanVerdict} /> {!r.verified && <StatusBadge status="pending">not verified</StatusBadge>}</td>
++              <td>{ago(r.submittedAt)}</td>
++              <td>{allowedActions(r.state, permissions).length || permissions.includes('marketplace.write') ? <VersionActions versionId={r.versionId} state={r.state} permissions={permissions} back="/admin/marketplace/review" /> : <span className="faint">—</span>}</td></tr>))}
++            {!res.data.items.length && <tr><td colSpan={6} className="dt-empty">Nothing is waiting for review.</td></tr>}</tbody></table></div>
++      ) : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/reviews/page.tsx b/src/app/admin/marketplace/reviews/page.tsx
+new file mode 100644
+index 0000000..f2ae6b8
+--- /dev/null
++++ b/src/app/admin/marketplace/reviews/page.tsx
+@@ -0,0 +1,38 @@
++import Link from 'next/link';
++import { FilterBar } from '../../../../components/admin/DataTable';
++import { CursorPager } from '../../../../components/admin/marketplace';
++import { ConfirmForm } from '../../../../components/admin/client';
++import { ErrorState, Flash, Notice, PageHeader, ago } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { listQuery } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++import { deleteReview } from '../actions';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Reviews' };
++
++export default async function Reviews({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/reviews${listQuery(q, { listing: true, page: true })}`, person.id);
++  const canModerate = permissions.includes('marketplace.moderate');
++  const back = `/admin/marketplace/reviews${listQuery(q, { listing: true })}`;
++  return (
++    <>
++      <PageHeader title="Ratings & Reviews" subtitle="Newest first. Deleting a review is permanent; the audit log keeps a hash and length of the text, never the text." />
++      <Flash q={q} />
++      <FilterBar base="/admin/marketplace/reviews" query={q} fields={[{ name: 'listing', label: 'Listing id', placeholder: 'publisher/name', width: 240 }]} />
++      {res.ok ? (
++        <>
++          {res.data.note && <Notice icon="info">{res.data.note}</Notice>}
++          <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Stars</th><th>Review</th><th>User</th><th>When</th><th /></tr></thead>
++            <tbody>{(res.data.items as any[]).map((r) => (
++              <tr key={r.id}><td><Link className="mono" href={`/admin/marketplace/reviews?listing=${encodeURIComponent(r.listingId)}`}>{r.listingId}</Link></td><td>{'★'.repeat(r.stars)}{'☆'.repeat(Math.max(0, 5 - r.stars))}</td>
++                <td style={{ maxWidth: 420 }}>{r.body ?? <span className="faint">rating only</span>}</td><td><Link className="mono" href={`/admin/users/${r.userId}?tab=marketplace`}>{r.userId}</Link></td><td>{ago(r.createdAt)}</td>
++                <td className="right">{canModerate ? <ConfirmForm action={deleteReview} fields={{ id: r.id, back }} label="Delete" title="Delete this review?" body="The review is removed for good and the listing's rating is recalculated. This cannot be undone." confirmLabel="Delete review" /> : null}</td></tr>))}
++              {!res.data.items.length && <tr><td colSpan={6} className="dt-empty">No reviews yet.</td></tr>}</tbody></table></div>
++          <CursorPager base="/admin/marketplace/reviews" query={q} next={res.data.nextPage} />
++        </>) : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/security/page.tsx b/src/app/admin/marketplace/security/page.tsx
+new file mode 100644
+index 0000000..a944a1a
+--- /dev/null
++++ b/src/app/admin/marketplace/security/page.tsx
+@@ -0,0 +1,53 @@
++import Link from 'next/link';
++import { FilterBar } from '../../../../components/admin/DataTable';
++import { CursorPager, StateBadge } from '../../../../components/admin/marketplace';
++import { ConfirmForm } from '../../../../components/admin/client';
++import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, ago } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { listQuery } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++import { resolveReport } from '../actions';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Security Reports' };
++const RSTATES = ['open', 'triaged', 'actioned', 'dismissed'];
++
++export default async function Security({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const [reports, quarantined, revoked] = await Promise.all([
++    load<any>(`/admin/marketplace/reports${listQuery(q, { state: RSTATES, page: true })}`, person.id),
++    load<any>('/admin/marketplace/catalog?state=quarantined&limit=100', person.id),
++    load<any>('/admin/marketplace/catalog?state=revoked&limit=100', person.id),
++  ]);
++  const canModerate = permissions.includes('marketplace.moderate');
++  const pulled = [...(quarantined.ok ? quarantined.data.items : []), ...(revoked.ok ? revoked.data.items : [])] as any[];
++  return (
++    <>
++      <PageHeader title="Security Reports" subtitle="Reports people filed against listings, and the versions that were pulled." />
++      <Flash q={q} />
++      <Section title="Quarantined and revoked" count={quarantined.ok && revoked.ok ? pulled.length : undefined}>
++        {quarantined.ok && revoked.ok ? (
++          <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Latest version</th><th>State</th><th>Publisher</th><th>Updated</th></tr></thead>
++            <tbody>{pulled.map((r) => <tr key={r.id}><td><b>{r.name}</b> <span className="faint mono">{r.id}</span></td><td>{r.latestVersionId ? <Link className="mono" href={`/admin/marketplace/versions/${r.latestVersionId}`}>{r.latestVersion}</Link> : '—'}</td><td><StateBadge state={r.state} /></td><td>{r.publisher}</td><td>{ago(r.updatedAt)}</td></tr>)}
++              {!pulled.length && <tr><td colSpan={5} className="dt-empty">No listing currently has a quarantined or revoked latest version.</td></tr>}</tbody></table></div>
++        ) : <ErrorState message={(!quarantined.ok ? quarantined.error : !revoked.ok ? revoked.error : '')} />}
++        <p className="hint">This lists listings whose latest version is quarantined or revoked. Older versions pulled while a newer one exists appear in that listing's version history.</p>
++      </Section>
++      <Section title="Reports" count={reports.ok ? reports.data.items.length : undefined}>
++        <FilterBar base="/admin/marketplace/security" query={q} fields={[{ name: 'state', label: 'State', type: 'select', options: [['', 'Any state'], ...RSTATES.map((s) => [s, s] as [string, string])] }]} />
++        {reports.ok ? (
++          <>
++            {reports.data.note && <Notice icon="info">{reports.data.note}</Notice>}
++            <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Reason</th><th>Details</th><th>State</th><th>Filed</th>{canModerate && <th />}</tr></thead>
++              <tbody>{(reports.data.items as any[]).map((r) => (
++                <tr key={r.id}><td className="mono">{r.listingId}{r.versionId && <div className="faint"><Link href={`/admin/marketplace/versions/${r.versionId}`}>{r.versionId}</Link></div>}</td><td>{r.reason}</td><td style={{ maxWidth: 360 }}>{r.details ?? ''}</td>
++                  <td><StatusBadge status={r.state === 'open' ? 'open' : r.state === 'actioned' ? 'active' : ''}>{r.state}</StatusBadge></td><td>{ago(r.createdAt)}</td>
++                  {canModerate && <td className="right">{r.state === 'open' && <ConfirmForm action={resolveReport} fields={{ id: r.id, state: 'triaged' }} label="Triage" title="Mark as triaged?" body="You have looked at it; it stays open for follow-up." tone="" confirmLabel="Triage" />}{(r.state === 'open' || r.state === 'triaged') && <> <ConfirmForm action={resolveReport} fields={{ id: r.id, state: 'actioned' }} label="Actioned" title="Mark as actioned?" body="Action was taken (for example the version was quarantined). This closes the report." tone="primary" confirmLabel="Mark actioned" /> <ConfirmForm action={resolveReport} fields={{ id: r.id, state: 'dismissed' }} label="Dismiss" title="Dismiss this report?" body="No action is needed. This closes the report." confirmLabel="Dismiss" /></>}</td>}</tr>))}
++                {!reports.data.items.length && <tr><td colSpan={6} className="dt-empty">No reports.</td></tr>}</tbody></table></div>
++            <CursorPager base="/admin/marketplace/security" query={q} next={reports.data.nextPage} />
++          </>) : <ErrorState message={reports.error} />}
++      </Section>
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/settings/page.tsx b/src/app/admin/marketplace/settings/page.tsx
+new file mode 100644
+index 0000000..5ba1a40
+--- /dev/null
++++ b/src/app/admin/marketplace/settings/page.tsx
+@@ -0,0 +1,26 @@
++import { Notice, PageHeader, Section, StatusBadge } from '../../../../components/admin/bits';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Settings' };
++
++export default async function MarketplaceSettings() {
++  const { person, role, permissions } = await adminContext();
++  const mine = permissions.filter((p) => p.startsWith('marketplace.'));
++  const rows: Array<[string, React.ReactNode, string]> = [
++    ['Your role', <StatusBadge key="r" status="admin">{role}</StatusBadge>, 'As the admin API reports it for you.'],
++    ['Your marketplace permissions', mine.length ? mine.join(', ') : 'none', 'marketplace.read lists; write submits and deprecates; review claims, approves, rejects and publishes; moderate quarantines, revokes and deletes reviews.'],
++    ['Roles source', 'Set on the API service', 'AO_MARKETPLACE_ROLES (adminName:role, comma separated) on accounts-sync. Without it every admin is read-only (analyst). The console cannot read this value.'],
++    ['Skill security scanner', 'Not reported by the API', 'The API exposes no scanner status endpoint. When the scanner is down, skill submissions answer 503 scanner_unavailable and say so on the Publish page.'],
++    ['OfficeCLI render check (templates)', 'Not reported by the API', 'When it is unavailable the template check is recorded as skipped and the version stays “not verified”.'],
++  ];
++  return (
++    <>
++      <PageHeader title="Settings" subtitle={`Effective marketplace configuration, read-only. Signed in as ${person.email}.`} />
++      <Notice icon="info">Nothing here can be changed from the console. It shows only what the admin API tells this console; anything it does not expose is marked as such rather than guessed.</Notice>
++      <Section title="Configuration">
++        <div className="table-wrap"><table className="dt"><tbody>{rows.map(([k, v, hint]) => <tr key={k}><td>{k}</td><td>{v}</td><td className="muted">{hint}</td></tr>)}</tbody></table></div>
++      </Section>
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/submissions/page.tsx b/src/app/admin/marketplace/submissions/page.tsx
+new file mode 100644
+index 0000000..6041245
+--- /dev/null
++++ b/src/app/admin/marketplace/submissions/page.tsx
+@@ -0,0 +1,35 @@
++import Link from 'next/link';
++import { DataTable, FilterBar, type Column } from '../../../../components/admin/DataTable';
++import { StateBadge, VerdictBadge } from '../../../../components/admin/marketplace';
++import { ErrorState, Flash, Notice, PageHeader, StatusBadge, ago } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { listQuery } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Submissions' };
++
++export default async function Submissions({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/submissions${listQuery(q, { state: ['submitted', 'in_review'] })}`, person.id);
++  return (
++    <>
++      <PageHeader title="Submissions" subtitle="Versions waiting for a decision, oldest first (up to 100). Open one to see its manifest, permissions and scan." />
++      <Flash q={q} />
++      <Notice icon="info">Packages that fail a required check are rejected automatically and never enter this queue; find them in the catalog with state “rejected”.</Notice>
++      <FilterBar base="/admin/marketplace/submissions" query={q} fields={[{ name: 'state', label: 'State', type: 'select', options: [['', 'Submitted and in review'], ['submitted', 'submitted'], ['in_review', 'in review']] }]} />
++      {res.ok ? (
++        <DataTable<any> base="/admin/marketplace/submissions" query={q} rowKey={(r) => r.versionId} rows={res.data.items} emptyTitle="The queue is empty" emptyHint="Nothing is waiting for review."
++          columns={[
++            { key: 'name', label: 'Listing', render: (r) => <><Link href={`/admin/marketplace/versions/${r.versionId}`}><b>{r.name}</b></Link><div className="faint mono">{r.listingId}</div></> },
++            { key: 'type', label: 'Type' }, { key: 'publisher', label: 'Publisher' },
++            { key: 'version', label: 'Version', render: (r) => <span className="mono">{r.version}</span> },
++            { key: 'state', label: 'State', render: (r) => <StateBadge state={r.state} /> },
++            { key: 'scan', label: 'Security', render: (r) => <>{<VerdictBadge verdict={r.scanVerdict} />} {r.verified ? null : <StatusBadge status="pending">not verified</StatusBadge>}</> },
++            { key: 'at', label: 'Submitted', render: (r) => ago(r.submittedAt) },
++          ] as Column<any>[]} />
++      ) : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/versions/[id]/page.tsx b/src/app/admin/marketplace/versions/[id]/page.tsx
+new file mode 100644
+index 0000000..a0a8ec4
+--- /dev/null
++++ b/src/app/admin/marketplace/versions/[id]/page.tsx
+@@ -0,0 +1,59 @@
++import Link from 'next/link';
++import { Timeline } from '../../../../../components/admin/Feed';
++import { StateBadge, ValidationReport, VerdictBadge, VersionActions } from '../../../../../components/admin/marketplace';
++import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, bytes, when } from '../../../../../components/admin/bits';
++import { load } from '../../../../../lib/admin-api';
++import { isSensitiveCapability, label } from '../../../../../lib/marketplace';
++import { adminContext } from '../../../../../lib/session';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Version' };
++
++export default async function VersionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
++  const { id } = await params;
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/versions/${encodeURIComponent(id)}`, person.id);
++  if (!res.ok) return <><PageHeader title="Version" /><ErrorState message={res.error} /></>;
++  const v = res.data, m = v.manifest ?? {};
++  const overall = (v.scans as any[]).filter((s) => s.scanner === 'validation').pop();
++  const perChecks = (v.scans as any[]).filter((s) => s.scanner !== 'validation');
++  const report = overall?.findings && typeof overall.findings === 'object' && Array.isArray(overall.findings.checks) ? overall.findings : null;
++  const perms: any[] = Array.isArray(m.permissions) ? m.permissions : [];
++  const back = `/admin/marketplace/versions/${id}`;
++  return (
++    <>
++      <PageHeader title={m.title ?? v.listingId} subtitle={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><StateBadge state={v.state} /><VerdictBadge verdict={v.scanVerdict} /><span className="mono">{v.listingId} {v.version}</span></span>}
++        actions={<VersionActions versionId={v.id} state={v.state} permissions={permissions} back={back} />} />
++      <Flash q={q} />
++      <Section title="Manifest">
++        <div className="card"><div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 180px) 1fr', gap: '8px 16px' }}>
++          <span className="muted">Type</span><span>{m.type ?? '—'}</span><span className="muted">Summary</span><span>{m.summary ?? '—'}</span>
++          <span className="muted">License</span><span>{m.license ?? '—'}</span><span className="muted">Compatible with</span><span><code>{JSON.stringify(v.compat ?? m.compat ?? {})}</code></span>
++          <span className="muted">Package</span><span>{bytes(v.size)} · <span className="mono">{String(v.sha256).slice(0, 16)}…</span></span>
++          <span className="muted">Created</span><span>{when(v.createdAt)}</span><span className="muted">Published</span><span>{v.publishedAt ? when(v.publishedAt) : 'not published'}</span>
++          <span className="muted">Dependencies</span><span>{(v.dependencies as any[]).length ? (v.dependencies as any[]).map((d) => `${d.id} ${d.range}`).join(', ') : 'none'}</span>
++          <span className="muted">Review</span><span>{v.submission ? <>{label(v.submission.state)}{v.submission.notes ? ` — ${v.submission.notes}` : ''}</> : 'no submission record'}</span>
++        </div></div>
++      </Section>
++      <Section title="Requested permissions" count={perms.length}>
++        {perms.length ? (
++          <>
++            <Notice tone="warn" icon="alert">Review each request against what the package needs. Highlighted rows can write, run code, or reach the network.</Notice>
++            <div className="table-wrap" style={{ marginTop: 10 }}><table className="dt"><thead><tr><th>Capability</th><th>Scope</th><th>Reason given</th></tr></thead>
++              <tbody>{perms.map((p, i) => <tr key={i} style={isSensitiveCapability(String(p.capability)) ? { background: 'color-mix(in srgb, var(--warn, #b7791f) 12%, transparent)' } : undefined}>
++                <td className="mono">{String(p.capability)} {isSensitiveCapability(String(p.capability)) && <StatusBadge status="past_due">sensitive</StatusBadge>}</td><td className="mono">{String(p.scope ?? '—')}</td><td>{String(p.reason ?? '—')}</td></tr>)}</tbody></table></div>
++          </>) : <p className="hint">This package requests no permissions.</p>}
++      </Section>
++      <Section title="Security scan">
++        <ValidationReport report={report} />
++        {v.state === 'submitted' && !v.validation?.verified && <p className="hint">Approve and publish stay blocked until a scan is verified; “Rescan” re-runs the validators on the stored package.</p>}
++        {perChecks.length > 0 && <p className="hint">{perChecks.length} per-check scan row{perChecks.length === 1 ? '' : 's'} on record; latest summary {overall ? when(overall.at) : 'none'}.</p>}
++      </Section>
++      <Section title="Release events" count={(v.events as any[]).length}>
++        {(v.events as any[]).length ? <Timeline items={(v.events as any[]).map((e) => ({ at: e.at, title: <>{e.event} <span className="faint">by {e.actor ?? 'system'}</span></>, detail: e.detail?.reason ? `Reason: ${e.detail.reason}` : e.detail?.from ? `${e.detail.from} to ${e.detail.to}` : undefined, tone: ['rejected', 'quarantined', 'revoked'].includes(e.event) ? 'bad' : e.event === 'published' ? 'ok' : undefined }))} /> : <p className="hint">No release events.</p>}
++      </Section>
++      <p><Link className="btn" href="/admin/marketplace/catalog">Back to the catalog</Link></p>
++    </>
++  );
++}
+diff --git a/src/app/admin/users/[id]/page.tsx b/src/app/admin/users/[id]/page.tsx
+index 5d5aec8..5d4d2b4 100644
+--- a/src/app/admin/users/[id]/page.tsx
++++ b/src/app/admin/users/[id]/page.tsx
+@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
+ export const metadata = { title: 'User' };
+ const TABS = [
+   { key: 'overview', label: 'Overview' }, { key: 'auth', label: 'Authentication & Devices' }, { key: 'sessions', label: 'Workspace Sessions' },
+-  { key: 'runs', label: 'Agent Runs' }, { key: 'usage', label: 'Usage & Credits' }, { key: 'support', label: 'Support & Communications' }, { key: 'audit', label: 'Security & Audit' },
++  { key: 'runs', label: 'Agent Runs' }, { key: 'usage', label: 'Usage & Credits' }, { key: 'support', label: 'Support & Communications' }, { key: 'audit', label: 'Security & Audit' }, { key: 'marketplace', label: 'Marketplace' },
+ ];
+ 
+ export default async function UserPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
+@@ -36,6 +36,7 @@ export default async function UserPage({ params, searchParams }: { params: Promi
+     tab === 'auth' && can('sessions.read') ? load<any>(`/admin/users/${encodeURIComponent(id)}/keycloak`, person.id) : null,
+     tab === 'auth' && can('sessions.read') ? load<any>(`/admin/users/${encodeURIComponent(id)}/sign-ins`, person.id) : null,
+   ]);
++  const mkt = tab === 'marketplace' && can('marketplace.read') ? await load<any>(`/admin/marketplace/users/${encodeURIComponent(id)}/installs`, person.id) : null;
+   const label = u.email ?? u.id;
+ 
+   return (
+@@ -188,6 +189,36 @@ export default async function UserPage({ params, searchParams }: { params: Promi
+ 
+       {tab === 'support' && <div className="table-wrap"><EmptyState icon="support" title="No tickets or messages yet">Support tickets, messages sent to this person, and diagnostics they choose to share will be listed here once the Support and Communications modules are switched on.</EmptyState></div>}
+ 
++      {tab === 'marketplace' && (mkt?.ok ? (
++        <>
++          <div className="grid kpis">
++            <MetricCard icon="device" label="Installed" value={num((mkt.data.items as any[]).filter((i) => ['installed', 'configured', 'enabled', 'disabled', 'update_available'].includes(i.state)).length)} hint={`${num((mkt.data.items as any[]).length)} install records`} />
++            <MetricCard icon="alert" label="Failed installs" value={num((mkt.data.items as any[]).filter((i) => i.state === 'failed').length)} />
++            <MetricCard icon="gift" label="Favorites" value={num(mkt.data.favorites.length)} /><MetricCard icon="support" label="Reviews" value={num(mkt.data.reviews.length)} />
++          </div>
++          <Section title="Installed extensions" count={mkt.data.items.length}>
++            <div className="table-wrap"><table className="dt"><thead><tr><th>Extension</th><th>Version</th><th>State</th><th>Enabled</th><th>Scan</th><th>Scope</th><th>Device</th><th>Installed</th><th>Last error</th></tr></thead>
++              <tbody>{(mkt.data.items as any[]).map((i) => (
++                <tr key={i.id}><td><Link className="mono" href={`/admin/marketplace/catalog?q=${encodeURIComponent(i.listingId)}`}>{i.listingId}</Link></td><td className="mono">{i.version ?? '—'}</td>
++                  <td><StatusBadge status={['installed', 'enabled', 'configured'].includes(i.state) ? 'active' : i.state === 'failed' ? 'failed' : ''}>{String(i.state).replace(/_/g, ' ')}</StatusBadge></td><td>{i.enabled ? 'yes' : 'no'}</td>
++                  <td>{i.scanVerdict === 'clean' ? 'clean' : i.scanVerdict === 'blocked' ? 'blocked' : i.scanVerdict ? 'not verified' : '—'}</td><td>{i.scope ?? '—'}</td><td className="mono">{i.deviceId ?? '—'}</td><td>{when(i.installedAt)}</td><td className="muted">{i.lastError ?? ''}</td></tr>))}
++                {!mkt.data.items.length && <tr><td colSpan={9} className="dt-empty">This person has no marketplace installs.</td></tr>}</tbody></table></div>
++          </Section>
++          <Section title="Teams" count={mkt.data.teams.length}>
++            <div className="table-wrap"><table className="dt"><thead><tr><th>Team id</th><th>Role</th></tr></thead>
++              <tbody>{(mkt.data.teams as any[]).map((t) => <tr key={t.teamId}><td className="mono">{t.teamId}</td><td>{t.role}</td></tr>)}
++                {!mkt.data.teams.length && <tr><td colSpan={2} className="dt-empty">Not a member of any marketplace team.</td></tr>}</tbody></table></div>
++          </Section>
++          <Section title="Favorites" count={mkt.data.favorites.length}>
++            {mkt.data.favorites.length ? <ul>{(mkt.data.favorites as any[]).map((f) => <li key={f.listingId}><span className="mono">{f.listingId}</span> <span className="faint">{ago(f.createdAt)}</span></li>)}</ul> : <p className="hint">No favorites.</p>}
++          </Section>
++          <Section title="Reviews" count={mkt.data.reviews.length}>
++            <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Stars</th><th>Review</th><th>When</th></tr></thead>
++              <tbody>{(mkt.data.reviews as any[]).map((r) => <tr key={r.id}><td className="mono">{r.listingId}</td><td>{r.stars}</td><td>{r.body ?? <span className="faint">rating only</span>}</td><td>{ago(r.createdAt)}</td></tr>)}
++                {!mkt.data.reviews.length && <tr><td colSpan={4} className="dt-empty">No reviews.</td></tr>}</tbody></table></div>
++          </Section>
++        </>) : mkt ? <ErrorState message={mkt.error} /> : <Notice icon="alert">Your role cannot view marketplace data.</Notice>)}
++
+       {tab === 'audit' && (audit?.ok ? (
+         audit.data.entries.length
+           ? <Timeline items={audit.data.entries.map((e: any) => ({ at: e.at, title: <><span className="mono">{e.action.replace(/_/g, ' ')}</span> <span className="faint">by {e.admin_user_id}</span></>, detail: Object.keys(e.detail ?? {}).length ? <code>{JSON.stringify(e.detail)}</code> : undefined, tone: e.action === 'denied' ? 'bad' : undefined }))} />
+diff --git a/src/components/admin/ReasonForm.tsx b/src/components/admin/ReasonForm.tsx
+new file mode 100644
+index 0000000..2f19f79
+--- /dev/null
++++ b/src/components/admin/ReasonForm.tsx
+@@ -0,0 +1,30 @@
++'use client';
++import { useRef, useState, type ReactNode } from 'react';
++
++/** A button that opens a dialog asking for a written reason (required) before it posts to a server action. For reject, quarantine, revoke. */
++export function ReasonForm({ action, fields, label, title, body, confirmLabel, tone = 'danger' }: {
++  action: (f: FormData) => void | Promise<void>; fields: Record<string, string>; label: string; title: string; body: ReactNode; confirmLabel?: string; tone?: 'danger' | 'primary' | '';
++}) {
++  const ref = useRef<HTMLDialogElement>(null);
++  const [reason, setReason] = useState('');
++  return (
++    <>
++      <button type="button" className={`btn sm ${tone}`.trim()} onClick={() => { setReason(''); ref.current?.showModal(); }}>{label}</button>
++      <dialog ref={ref} aria-label={title}>
++        <form action={action}>
++          {Object.entries(fields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
++          <div className="dialog-body">
++            <h3>{title}</h3>
++            <div className="muted">{body}</div>
++            <label className="field"><span>Reason (required, kept in the release history and audit log)</span>
++              <textarea name="reason" required minLength={3} maxLength={1000} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></label>
++          </div>
++          <div className="dialog-foot">
++            <button type="button" className="btn" onClick={() => ref.current?.close()}>Cancel</button>
++            <button className={`btn ${tone === 'danger' ? 'danger' : 'primary'}`} disabled={reason.trim().length < 3}>{confirmLabel ?? label}</button>
++          </div>
++        </form>
++      </dialog>
++    </>
++  );
++}
+diff --git a/src/components/admin/Shell.tsx b/src/components/admin/Shell.tsx
+index c3e900c..fa1ac58 100644
+--- a/src/components/admin/Shell.tsx
++++ b/src/components/admin/Shell.tsx
+@@ -54,7 +54,7 @@ export function Shell({ nav, admin, mfaOff, healthy, children }: { nav: NavGroup
+     return out;
+   }, [path, items]);
+ 
+-  const current = (href: string) => (href === '/admin' ? path === '/admin' : path === href || path.startsWith(`${href}/`));
++  const current = (href: string) => (href === '/admin' || href === '/admin/marketplace' ? path === href : path === href || path.startsWith(`${href}/`));
+ 
+   return (
+     <div className="shell" data-collapsed={collapsed}>
+diff --git a/src/components/admin/marketplace.tsx b/src/components/admin/marketplace.tsx
+new file mode 100644
+index 0000000..df4991d
+--- /dev/null
++++ b/src/components/admin/marketplace.tsx
+@@ -0,0 +1,69 @@
++import Link from 'next/link';
++import { allowedActions, canRescan, label, summarizeValidation, withParams, type Check, type MarketAction } from '../../lib/marketplace';
++import { StatusBadge, Notice } from './bits';
++import { ConfirmForm } from './client';
++import { ReasonForm } from './ReasonForm';
++import { rescanVersion, versionAction } from '../../app/admin/marketplace/actions';
++
++const STATE_TONE: Record<string, string> = { published: 'active', approved: 'active', submitted: 'pending', in_review: 'pending', rejected: 'failed', quarantined: 'failed', revoked: 'revoked', deprecated: 'expired' };
++export const StateBadge = ({ state }: { state: string | null | undefined }) => (state ? <StatusBadge status={STATE_TONE[state] ?? state}>{label(state)}</StatusBadge> : <span className="faint">no versions</span>);
++const VERDICT_TONE: Record<string, string> = { clean: 'active', pending: 'pending', blocked: 'failed' };
++export const VerdictBadge = ({ verdict }: { verdict: string | null | undefined }) => (verdict ? <StatusBadge status={VERDICT_TONE[verdict] ?? verdict}>{verdict === 'pending' ? 'not verified' : verdict}</StatusBadge> : <span className="faint">—</span>);
++
++/** "Next" by keyset cursor. The API has no previous-page cursor; the browser's Back button is the way back. */
++export function CursorPager({ base, query, next }: { base: string; query: Record<string, string | undefined>; next: string | null | undefined }) {
++  if (!next && !query.page) return null;
++  return (
++    <div className="pager">
++      <span>{query.page ? 'Showing a later page.' : 'First page.'}</span>
++      <span className="btns">
++        {query.page ? <Link className="btn sm" href={withParams(base, query, { page: undefined })}>First page</Link> : null}
++        {next ? <Link className="btn sm" href={withParams(base, query, { page: next })}>Next</Link> : <span className="btn sm" aria-disabled="true">No more</span>}
++      </span>
++    </div>
++  );
++}
++
++export function ValidationReport({ report, title = 'Validation' }: { report: { ok?: boolean; verified?: boolean; checks?: Check[] } | null | undefined; title?: string }) {
++  if (!report) return <Notice icon="info">No validation report is on record for this version.</Notice>;
++  const s = summarizeValidation(report);
++  return (
++    <>
++      <Notice tone={s.outcome === 'verified' ? 'ok' : s.outcome === 'unverified' ? 'warn' : 'bad'} icon={s.outcome === 'verified' ? 'check' : 'alert'}><b>{title}: {s.outcome}.</b> {s.headline} <span className="muted">({s.passed} passed, {s.skipped} skipped, {s.failed} failed)</span></Notice>
++      <div className="table-wrap" style={{ marginTop: 10 }}><table className="dt"><thead><tr><th>Check</th><th>Result</th><th>Required</th><th>Detail</th></tr></thead>
++        <tbody>{s.checks.map((c, i) => (
++          <tr key={i}><td className="mono">{c.name}</td>
++            <td><StatusBadge status={c.status === 'ok' ? 'active' : c.status === 'skipped' ? 'pending' : 'failed'}>{c.status}</StatusBadge></td>
++            <td>{c.required ? 'yes' : 'no'}</td><td className="muted">{c.detail ?? ''}</td></tr>))}
++          {!s.checks.length && <tr><td colSpan={4} className="dt-empty">The report lists no checks.</td></tr>}</tbody></table></div>
++    </>
++  );
++}
++
++const COPY: Record<MarketAction, { label: string; title: string; body: string; tone: 'danger' | 'primary' | ''; reason: boolean }> = {
++  claim: { label: 'Claim', title: 'Claim this version for review?', body: 'It moves to in review and shows you as the reviewer.', tone: 'primary', reason: false },
++  approve: { label: 'Approve', title: 'Approve this version?', body: 'Approval needs a verified security scan. A version you submitted yourself needs another admin (a superadmin can override).', tone: 'primary', reason: false },
++  reject: { label: 'Reject', title: 'Reject this version?', body: 'The publisher sees the reason. A rejected version is final.', tone: 'danger', reason: true },
++  publish: { label: 'Publish', title: 'Publish this version?', body: 'It becomes installable by everyone the listing is visible to.', tone: 'primary', reason: false },
++  deprecate: { label: 'Deprecate', title: 'Deprecate this version?', body: 'It stays installed where it is but is no longer offered.', tone: '', reason: false },
++  quarantine: { label: 'Quarantine', title: 'Quarantine this version?', body: 'It is pulled from the catalog while it is investigated.', tone: 'danger', reason: true },
++  revoke: { label: 'Revoke', title: 'Revoke this version?', body: 'Revocation is final: it cannot be installed or re-enabled anywhere.', tone: 'danger', reason: true },
++};
++
++/** Only the buttons the state machine allows AND the viewer's permissions cover. The API checks both again. */
++export function VersionActions({ versionId, state, permissions, back }: { versionId: string; state: string; permissions: readonly string[]; back: string }) {
++  const acts = allowedActions(state, permissions);
++  const rescan = canRescan(state, permissions);
++  if (!acts.length && !rescan) return <span className="faint">No actions available{permissions.some((p) => p.startsWith('marketplace.')) ? ' in this state for your role' : ''}.</span>;
++  return (
++    <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
++      {acts.map((a) => {
++        const c = COPY[a], fields = { id: versionId, action: a, back };
++        return c.reason
++          ? <ReasonForm key={a} action={versionAction} fields={fields} label={c.label} title={c.title} body={c.body} tone={c.tone} />
++          : <ConfirmForm key={a} action={versionAction} fields={fields} label={c.label} title={c.title} body={c.body} tone={c.tone} confirmLabel={c.label} />;
++      })}
++      {rescan && <ConfirmForm action={rescanVersion} fields={{ id: versionId, back }} label="Rescan" title="Rescan the stored package?" body="Runs the validators again on the stored bytes and records a fresh scan result." tone="" confirmLabel="Rescan" />}
++    </span>
++  );
++}
+diff --git a/src/components/admin/nav.ts b/src/components/admin/nav.ts
+index 4f57780..8f50f89 100644
+--- a/src/components/admin/nav.ts
++++ b/src/components/admin/nav.ts
+@@ -17,6 +17,21 @@ export const NAV: NavGroup[] = [
+     { href: '/admin/coupons', label: 'Coupons', icon: 'coupons', perm: 'coupons.read' },
+     { href: '/admin/communications', label: 'Communications', icon: 'comms', perm: 'comms.read' },
+   ] },
++  { label: 'Marketplace', items: [
++    { href: '/admin/marketplace', label: 'Overview', icon: 'overview', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/catalog', label: 'Catalog', icon: 'inbox', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/publish', label: 'Publish New', icon: 'plus', perm: 'marketplace.write' },
++    { href: '/admin/marketplace/submissions', label: 'Submissions', icon: 'inbox', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/review', label: 'Review Queue', icon: 'check', perm: 'marketplace.review' },
++    { href: '/admin/marketplace/installations', label: 'Installations', icon: 'device', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/analytics', label: 'Usage Analytics', icon: 'analytics', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/reviews', label: 'Ratings & Reviews', icon: 'support', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/publishers', label: 'Publishers', icon: 'users', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/collections', label: 'Collections & Bundles', icon: 'gift', perm: 'marketplace.read', soon: true },
++    { href: '/admin/marketplace/releases', label: 'Versions & Releases', icon: 'clock', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/security', label: 'Security Reports', icon: 'reliability', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/settings', label: 'Settings', icon: 'settings', perm: 'marketplace.read' },
++  ] },
+   { label: 'Intelligence', items: [
+     { href: '/admin/analytics', label: 'Product Analytics', icon: 'analytics', perm: 'analytics.read' },
+     { href: '/admin/reliability', label: 'Reliability', icon: 'reliability', perm: 'runs.read' },
+diff --git a/src/lib/admin-api.ts b/src/lib/admin-api.ts
+index 84693d0..f8772e9 100644
+--- a/src/lib/admin-api.ts
++++ b/src/lib/admin-api.ts
+@@ -4,23 +4,26 @@ const base = () => (process.env.AO_ADMIN_API_URL ?? '').replace(/\/+$/, '');
+ 
+ export class AdminApiError extends Error {
+   readonly status: number;
+-  constructor(status: number, message: string) { super(message); this.status = status; }
++  /** The parsed JSON error body, when there was one (the marketplace API returns `code` and, for a failed upload, `validation`). */
++  readonly body?: Record<string, any>;
++  constructor(status: number, message: string, body?: Record<string, any>) { super(message); this.status = status; this.body = body; }
+ }
+ 
+-export async function adminApi<T = any>(path: string, o: { acting: string; method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }): Promise<T> {
++export async function adminApi<T = any>(path: string, o: { acting: string; method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; bytes?: { data: Uint8Array; contentType: string } }): Promise<T> {
+   const token = process.env.AO_ADMIN_API_TOKEN;
+   if (!base() || !token) throw new AdminApiError(503, 'The admin API is not configured (AO_ADMIN_API_URL, AO_ADMIN_API_TOKEN).');
+   const r = await fetch(`${base()}${path}`, {
+     method: o.method ?? 'GET',
+-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-ao-acting-admin': o.acting },
+-    body: o.body === undefined ? undefined : JSON.stringify(o.body),
++    headers: { authorization: `Bearer ${token}`, 'content-type': o.bytes?.contentType ?? 'application/json', 'x-ao-acting-admin': o.acting },
++    // a binary body (a package ZIP) is sent as-is; everything else is JSON
++    body: o.bytes ? (o.bytes.data as unknown as BodyInit) : o.body === undefined ? undefined : JSON.stringify(o.body),
+     cache: 'no-store',
+     signal: AbortSignal.timeout(20_000),
+   });
+   const text = await r.text();
+   let data: any = text;
+   try { data = JSON.parse(text); } catch { /* CSV or text */ }
+-  if (!r.ok) throw new AdminApiError(r.status, typeof data === 'object' && data?.error ? data.error : `The admin API answered ${r.status}.`);
++  if (!r.ok) throw new AdminApiError(r.status, typeof data === 'object' && data?.error ? data.error : `The admin API answered ${r.status}.`, typeof data === 'object' && data ? data : undefined);
+   return data as T;
+ }
+ 
+diff --git a/src/lib/marketplace.ts b/src/lib/marketplace.ts
+new file mode 100644
+index 0000000..10916a1
+--- /dev/null
++++ b/src/lib/marketplace.ts
+@@ -0,0 +1,100 @@
++// Pure helpers for the Marketplace admin pages: no Next, no fetch, so they are unit-tested directly (test/marketplace.test.ts).
++// The API (accounts-sync /admin/marketplace/*) is the authority on every rule below; these mirror it only to decide what to SHOW.
++
++export const LISTING_TYPES = ['template', 'skill', 'agent', 'workflow', 'extension', 'theme'] as const;
++/** Types the publish wizard accepts in this release (the API's validators exist for these two only). */
++export const PUBLISHABLE_TYPES: readonly string[] = ['template', 'skill'];
++export const VISIBILITIES = ['public', 'org', 'team', 'private'] as const;
++export const VERSION_STATES = ['draft', 'validating', 'testing', 'submitted', 'in_review', 'approved', 'published', 'rejected', 'deprecated', 'quarantined', 'revoked'] as const;
++export const ACTIONS = ['claim', 'approve', 'reject', 'publish', 'deprecate', 'quarantine', 'revoke'] as const;
++export type MarketAction = typeof ACTIONS[number];
++
++/** Same table as the API's ACTION_PERMISSION. */
++export const ACTION_PERMISSION: Record<MarketAction, string> = {
++  claim: 'marketplace.review', approve: 'marketplace.review', reject: 'marketplace.review', publish: 'marketplace.review',
++  deprecate: 'marketplace.write', quarantine: 'marketplace.moderate', revoke: 'marketplace.moderate',
++};
++export const NEEDS_REASON: readonly MarketAction[] = ['reject', 'quarantine', 'revoke'];
++
++/** Same table as the API's transition(): which states each action may start from. */
++const FROM: Record<MarketAction, (s: string) => boolean> = {
++  claim: (s) => s === 'submitted',
++  approve: (s) => s === 'submitted' || s === 'in_review',
++  reject: (s) => s === 'submitted' || s === 'in_review' || s === 'approved',
++  publish: (s) => s === 'approved',
++  deprecate: (s) => s === 'published',
++  quarantine: (s) => s === 'published' || s === 'approved' || s === 'deprecated',
++  revoke: (s) => !['draft', 'validating', 'testing', 'revoked'].includes(s),
++};
++
++/** The lifecycle buttons to offer for a version: allowed by the state machine AND by the viewer's permissions. */
++export function allowedActions(state: string, permissions: readonly string[]): MarketAction[] {
++  return ACTIONS.filter((a) => FROM[a](state) && permissions.includes(ACTION_PERMISSION[a]));
++}
++/** Rescan is offered for the states the API accepts it in, to anyone with marketplace.write. */
++export const canRescan = (state: string, permissions: readonly string[]) => ['submitted', 'in_review', 'approved'].includes(state) && permissions.includes('marketplace.write');
++
++export interface Check { name: string; ok: boolean; skipped?: boolean; required?: boolean; detail?: string }
++export interface ValidationSummary {
++  total: number; passed: number; skipped: number; failed: number;
++  /** What the report as a whole honestly says. 'verified' only when the server said verified:true and nothing failed. */
++  outcome: 'verified' | 'unverified' | 'failed';
++  headline: string;
++  checks: Array<Check & { status: 'ok' | 'skipped' | 'failed' }>;
++}
++/** Never claims success unless the server did: ok:true without verified:true is 'unverified' (some required check did not run). */
++export function summarizeValidation(v: { ok?: boolean; verified?: boolean; checks?: Check[] } | null | undefined): ValidationSummary {
++  const checks = (v?.checks ?? []).map((c) => ({ ...c, status: (c.skipped ? 'skipped' : c.ok ? 'ok' : 'failed') as 'ok' | 'skipped' | 'failed' }));
++  const failed = checks.filter((c) => c.status === 'failed').length, skipped = checks.filter((c) => c.status === 'skipped').length;
++  const passed = checks.length - failed - skipped;
++  const outcome = !v || v.ok !== true || failed > 0 ? 'failed' : v.verified === true ? 'verified' : 'unverified';
++  const headline = outcome === 'verified' ? 'Every required check ran and passed.'
++    : outcome === 'unverified' ? `Not verified: ${skipped ? `${skipped} check${skipped === 1 ? ' was' : 's were'} skipped` : 'the server did not mark this verified'}. The version cannot be approved until a rescan verifies it.`
++    : `Failed: ${failed || 'a'} required check${failed === 1 ? '' : 's'} did not pass.`;
++  return { total: checks.length, passed, skipped, failed, outcome, headline, checks };
++}
++
++/** Query-string builder for list pages: keeps only known, non-empty, valid filters (the API rejects bad enum values with 400). */
++export function listQuery(raw: Record<string, string | undefined>, allow: Record<string, readonly string[] | true>): string {
++  const p = new URLSearchParams();
++  for (const [k, rule] of Object.entries(allow)) {
++    const v = (raw[k] ?? '').trim();
++    if (!v) continue;
++    if (rule !== true && !rule.includes(v)) continue;
++    p.set(k, v.slice(0, 200));
++  }
++  const s = p.toString();
++  return s ? `?${s}` : '';
++}
++export const CATALOG_FILTERS = { q: true, type: LISTING_TYPES, publisher: true, visibility: VISIBILITIES, state: VERSION_STATES, page: true } as const;
++
++/** Link to the same list with a different cursor, preserving the other filters. */
++export function withParams(base: string, q: Record<string, string | undefined>, patch: Record<string, string | undefined>): string {
++  const p = new URLSearchParams();
++  for (const [k, v] of Object.entries({ ...q, ...patch })) if (v !== undefined && v !== '' && k !== 'msg' && k !== 'err') p.set(k, v);
++  const s = p.toString();
++  return s ? `${base}?${s}` : base;
++}
++
++export const ratingText = (avg: number | null | undefined, count: number | null | undefined) => (avg == null || !count ? 'No ratings' : `${avg.toFixed(1)} (${count})`);
++export const pct = (r: number | null | undefined) => (r == null ? 'n/a' : `${Math.round(r * 1000) / 10}%`);
++
++export const STATE_LABEL: Record<string, string> = { in_review: 'in review' };
++export const label = (s: string | null | undefined) => (s ? (STATE_LABEL[s] ?? s.replace(/_/g, ' ')) : '—');
++/** Permission names the manifest asks for, flagged when they reach beyond reading the workspace. */
++export const SENSITIVE_CAPS = /^(exec|net|fs\.write|fs\.home|secrets|shell|process)/;
++export const isSensitiveCapability = (c: string) => SENSITIVE_CAPS.test(c) || /\.write$/.test(c);
++
++/** Encode/decode a compact validation result across a redirect (the action cannot render, so the page re-reads it from the address). */
++export function packValidation(v: { ok?: boolean; verified?: boolean; checks?: Check[] }): string {
++  const slim = { ok: v.ok === true, verified: v.verified === true, checks: (v.checks ?? []).slice(0, 40).map((c) => ({ name: String(c.name).slice(0, 80), ok: !!c.ok, skipped: !!c.skipped, required: !!c.required, ...(c.detail ? { detail: String(c.detail).slice(0, 240) } : {}) })) };
++  return Buffer.from(JSON.stringify(slim)).toString('base64url');
++}
++export function unpackValidation(s: string | undefined): { ok: boolean; verified: boolean; checks: Check[] } | null {
++  if (!s || s.length > 12_000) return null;
++  try {
++    const d = JSON.parse(Buffer.from(s, 'base64url').toString('utf8'));
++    if (!d || !Array.isArray(d.checks)) return null;
++    return { ok: d.ok === true, verified: d.verified === true, checks: d.checks.filter((c: any) => c && typeof c.name === 'string').map((c: any) => ({ name: c.name, ok: !!c.ok, skipped: !!c.skipped, required: !!c.required, detail: typeof c.detail === 'string' ? c.detail : undefined })) };
++  } catch { return null; }
++}
+diff --git a/test/marketplace.test.ts b/test/marketplace.test.ts
+new file mode 100644
+index 0000000..4c6df41
+--- /dev/null
++++ b/test/marketplace.test.ts
+@@ -0,0 +1,61 @@
++// Pure helpers behind the Marketplace pages. No database, no server: `node --import tsx --test test/marketplace.test.ts`.
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { ACTIONS, CATALOG_FILTERS, allowedActions, canRescan, isSensitiveCapability, listQuery, packValidation, ratingText, summarizeValidation, unpackValidation, withParams } from '../src/lib/marketplace.ts';
++
++const ALL = ['marketplace.read', 'marketplace.write', 'marketplace.review', 'marketplace.moderate'];
++const ENGINEER = ['marketplace.read', 'marketplace.write', 'marketplace.review'];
++
++test('allowedActions follows the API state machine', () => {
++  assert.deepEqual(allowedActions('submitted', ALL), ['claim', 'approve', 'reject', 'revoke']);
++  assert.deepEqual(allowedActions('in_review', ALL), ['approve', 'reject', 'revoke']);
++  assert.deepEqual(allowedActions('approved', ALL), ['reject', 'publish', 'quarantine', 'revoke']);
++  assert.deepEqual(allowedActions('published', ALL), ['deprecate', 'quarantine', 'revoke']);
++  assert.deepEqual(allowedActions('deprecated', ALL), ['quarantine', 'revoke']);
++  assert.deepEqual(allowedActions('quarantined', ALL), ['revoke']);
++  for (const s of ['draft', 'validating', 'testing', 'revoked', 'rejected']) assert.deepEqual(allowedActions(s, ALL).filter((a) => a !== 'revoke'), [], s);
++  assert.deepEqual(allowedActions('revoked', ALL), []);
++  assert.ok(!allowedActions('rejected', ALL).includes('approve'));
++});
++test('allowedActions needs the permission as well as the state', () => {
++  assert.deepEqual(allowedActions('published', ENGINEER), ['deprecate']);        // no moderate: no quarantine/revoke
++  assert.deepEqual(allowedActions('submitted', ['marketplace.read']), []);       // analyst: nothing
++  assert.deepEqual(allowedActions('submitted', []), []);
++  assert.deepEqual(allowedActions('published', ['marketplace.moderate']), ['quarantine', 'revoke']);
++  assert.equal(ACTIONS.length, 7);
++});
++test('canRescan only in review states and with write', () => {
++  assert.ok(canRescan('submitted', ENGINEER)); assert.ok(canRescan('approved', ENGINEER));
++  assert.ok(!canRescan('published', ENGINEER)); assert.ok(!canRescan('submitted', ['marketplace.read']));
++});
++test('summarizeValidation never reports success without verified:true', () => {
++  const ok = summarizeValidation({ ok: true, verified: true, checks: [{ name: 'manifest', ok: true }, { name: 'scan', ok: true, required: true }] });
++  assert.equal(ok.outcome, 'verified'); assert.equal(ok.passed, 2);
++  const unv = summarizeValidation({ ok: true, verified: false, checks: [{ name: 'manifest', ok: true }, { name: 'skill-scan', ok: true, skipped: true, required: true }] });
++  assert.equal(unv.outcome, 'unverified'); assert.equal(unv.skipped, 1); assert.equal(unv.passed, 1); assert.match(unv.headline, /Not verified/);
++  const bad = summarizeValidation({ ok: false, verified: false, checks: [{ name: 'manifest', ok: false, detail: 'bad' }, { name: 'x', ok: true }] });
++  assert.equal(bad.outcome, 'failed'); assert.equal(bad.failed, 1);
++  assert.equal(summarizeValidation({ ok: true, verified: true, checks: [{ name: 'a', ok: false }] }).outcome, 'failed');   // a failed check wins over a claimed ok
++  assert.equal(summarizeValidation(null).outcome, 'failed'); assert.equal(summarizeValidation({ ok: true, checks: [] }).outcome, 'unverified');
++});
++test('listQuery keeps only known, valid, non-empty filters', () => {
++  assert.equal(listQuery({}, CATALOG_FILTERS), '');
++  assert.equal(listQuery({ q: ' memo ', type: 'template', state: 'published' }, CATALOG_FILTERS), '?q=memo&type=template&state=published');
++  assert.equal(listQuery({ type: 'bogus', visibility: 'secret', state: 'nope', evil: 'x' }, CATALOG_FILTERS), '');
++  assert.equal(listQuery({ q: 'a&b=c' }, CATALOG_FILTERS), '?q=a%26b%3Dc');
++  assert.equal(listQuery({ q: 'x'.repeat(500) }, CATALOG_FILTERS).length, '?q='.length + 200);
++});
++test('withParams swaps the cursor and drops flash messages', () => {
++  assert.equal(withParams('/b', { type: 'skill', page: 'p1', msg: 'hi' }, { page: 'p2' }), '/b?type=skill&page=p2');
++  assert.equal(withParams('/b', { page: 'p1' }, { page: undefined }), '/b');
++});
++test('validation survives the redirect round trip, bounded', () => {
++  const v = { ok: true, verified: false, checks: [{ name: 'scan', ok: true, skipped: true, required: true, detail: 'd'.repeat(1000) }] };
++  const back = unpackValidation(packValidation(v));
++  assert.equal(back?.verified, false); assert.equal(back?.checks[0].skipped, true); assert.equal(back?.checks[0].detail?.length, 240);
++  assert.equal(unpackValidation('not-base64-json'), null); assert.equal(unpackValidation(undefined), null);
++});
++test('small formatters are honest', () => {
++  assert.equal(ratingText(null, 0), 'No ratings'); assert.equal(ratingText(4.25, 3), '4.3 (3)'); assert.equal(ratingText(0, 0), 'No ratings');
++  assert.ok(isSensitiveCapability('exec.script')); assert.ok(isSensitiveCapability('fs.workspace.write')); assert.ok(!isSensitiveCapability('fs.workspace.read'));
++});

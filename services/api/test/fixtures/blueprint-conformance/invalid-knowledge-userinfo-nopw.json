@@ -1,0 +1,25 @@
+{
+  "schema": "agentic.agent-blueprint/1",
+  "identity": {
+    "name": "Analyst",
+    "role": "Research analyst",
+    "description": "Summarises filings.",
+    "instructionsFile": "SOUL.md"
+  },
+  "objective": {
+    "goal": "Produce a sourced summary.",
+    "successCriteria": [
+      "every claim cites a source"
+    ]
+  },
+  "executionEnvironments": [
+    "desktop"
+  ],
+  "knowledgeSources": [
+    {
+      "name": "x",
+      "kind": "url",
+      "ref": "https://token@host.example/p"
+    }
+  ]
+}

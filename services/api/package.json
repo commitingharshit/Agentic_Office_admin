@@ -5,9 +5,20 @@
   "scripts": {
     "migrate": "node db/migrate.ts",
     "test": "node --test test/*.test.ts",
-    "test:postgres": "bash test/run-with-postgres.sh"
+    "test:postgres": "bash test/run-with-postgres.sh",
+    "eval": "node evals/run-scan-gate.ts && node evals/run-template-validator.ts && node evals/run-blueprint-validator.ts && node evals/run-bundle-validator.ts",
+    "eval:scan-gate": "node evals/run-scan-gate.ts",
+    "eval:templates": "node evals/run-template-validator.ts",
+    "eval:blueprints": "node evals/run-blueprint-validator.ts",
+    "eval:bundles": "node evals/run-bundle-validator.ts",
+    "eval:differential": "node evals/run-template-differential.ts"
   },
   "dependencies": {
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "fflate": "0.8.3"
   }
 }

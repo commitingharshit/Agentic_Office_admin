@@ -1,0 +1,506 @@
+{
+ "comment": "Shared by services/accounts-sync/test/marketplace-policy-vectors.test.ts and apps/desktop .../test/node/policyGate.test.ts. Generated from src/marketplace/policy.ts evaluate(); edit both implementations together.",
+ "cases": [
+  {
+   "name": "no layers allows",
+   "policy": {
+    "layers": []
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": true
+   }
+  },
+  {
+   "name": "open layer allows",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": true
+   }
+  },
+  {
+   "name": "allowlist with no rules allows nothing",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "not on the allowlist of the organization policy"
+   }
+  },
+  {
+   "name": "allowlist publisher rule allows",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "allow",
+        "matchKind": "publisher",
+        "matchValue": "acme"
+       }
+      ]
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": true
+   }
+  },
+  {
+   "name": "allowlist denies a non-listed publisher",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "allow",
+        "matchKind": "publisher",
+        "matchValue": "other"
+       }
+      ]
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "not on the allowlist of the organization policy"
+   }
+  },
+  {
+   "name": "deny beats allow in the same layer",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "allow",
+        "matchKind": "publisher",
+        "matchValue": "acme"
+       },
+       {
+        "effect": "deny",
+        "matchKind": "listing",
+        "matchValue": "acme/helper"
+       }
+      ]
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "denied by the organization policy: listing acme/helper"
+   }
+  },
+  {
+   "name": "a deny in a later layer beats an allow in an earlier one",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "allow",
+        "matchKind": "type",
+        "matchValue": "skill"
+       }
+      ]
+     },
+     {
+      "scopeKind": "team",
+      "scopeId": "t1",
+      "mode": "open",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "deny",
+        "matchKind": "type",
+        "matchValue": "skill"
+       }
+      ]
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "denied by the team policy (t1): type skill"
+   }
+  },
+  {
+   "name": "every allowlist layer must match",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "allow",
+        "matchKind": "type",
+        "matchValue": "skill"
+       }
+      ]
+     },
+     {
+      "scopeKind": "team",
+      "scopeId": "t1",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "allow",
+        "matchKind": "publisher",
+        "matchValue": "zzz"
+       }
+      ]
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "not on the allowlist of the team policy (t1)"
+   }
+  },
+  {
+   "name": "min trust floor denies a lower tier",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": "verified",
+      "requireCleanScan": false,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "trust community is below verified required by the organization policy"
+   }
+  },
+  {
+   "name": "min trust floor allows an equal tier",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": "community",
+      "requireCleanScan": false,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": true
+   }
+  },
+  {
+   "name": "min trust floor allows a higher tier",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": "community",
+      "requireCleanScan": false,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "official",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": true
+   }
+  },
+  {
+   "name": "require clean scan denies warnings",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": null,
+      "requireCleanScan": true,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "warnings"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "the organization policy requires a clean security scan (verdict: warnings)"
+   }
+  },
+  {
+   "name": "require clean scan denies pending",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": null,
+      "requireCleanScan": true,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "pending"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "the organization policy requires a clean security scan (verdict: pending)"
+   }
+  },
+  {
+   "name": "require clean scan allows clean",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": null,
+      "requireCleanScan": true,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": true
+   }
+  },
+  {
+   "name": "type deny matches an agent",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "deny",
+        "matchKind": "type",
+        "matchValue": "agent"
+       }
+      ]
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/analyst",
+    "publisherId": "acme",
+    "type": "agent",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "denied by the organization policy: type agent"
+   }
+  },
+  {
+   "name": "type deny does not match a skill",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "org",
+      "scopeId": "default",
+      "mode": "open",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": [
+       {
+        "effect": "deny",
+        "matchKind": "type",
+        "matchValue": "agent"
+       }
+      ]
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": true
+   }
+  },
+  {
+   "name": "team layer reason names the team",
+   "policy": {
+    "layers": [
+     {
+      "scopeKind": "team",
+      "scopeId": "t9",
+      "mode": "allowlist",
+      "minTrust": null,
+      "requireCleanScan": false,
+      "rules": []
+     }
+    ]
+   },
+   "subject": {
+    "listingId": "acme/helper",
+    "publisherId": "acme",
+    "type": "skill",
+    "trust": "community",
+    "scanVerdict": "clean"
+   },
+   "expect": {
+    "allowed": false,
+    "reason": "not on the allowlist of the team policy (t9)"
+   }
+  }
+ ]
+}

@@ -1,0 +1,79 @@
+{
+  "schema": "agentic.marketplace/1",
+  "id": "fixture-pub/ma-analyst",
+  "type": "agent",
+  "version": "1.0.0",
+  "title": "M&A Analyst (fixture)",
+  "summary": "TEST FIXTURE ONLY. Due-diligence analyst agent.",
+  "license": "MIT",
+  "compat": {
+    "app": "^1.0.0"
+  },
+  "dependencies": [
+    {
+      "id": "fixture-pub/dd-checklist",
+      "range": "^1.0.0"
+    },
+    {
+      "id": "fixture-pub/financial-model-review",
+      "range": "^1.0.0"
+    },
+    {
+      "id": "fixture-pub/comps-researcher",
+      "range": "^1.0.0"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "fs.workspace.read",
+      "scope": "deals/**",
+      "reason": "Reads data-room documents in the deal folder."
+    },
+    {
+      "capability": "fs.workspace.write",
+      "scope": "deals/**",
+      "reason": "Writes the workbook, memo and deck into the deal folder."
+    },
+    {
+      "capability": "network",
+      "scope": "public web (toolset web)",
+      "reason": "Looks up public comparable-company data."
+    },
+    {
+      "capability": "tool.invoke",
+      "scope": "delegate_task",
+      "reason": "Delegates comps research to a child agent."
+    }
+  ],
+  "files": [
+    {
+      "path": "blueprint.json",
+      "sha256": "7e7a5de9eb7354c5a0bfe6548c678cd60a0ebd2a0150c49760208383b79148e4",
+      "size": 1787
+    },
+    {
+      "path": "SOUL.md",
+      "sha256": "e7df1beeea172e84cc7aeef6ecfb2739e1c7e01d471b87aa151f40e1bc36dd92",
+      "size": 673
+    },
+    {
+      "path": "README.md",
+      "sha256": "68c93447af75a45a7e4ae57b25e60c6c3a10cdc983a8507e3fceb0574eddd384",
+      "size": 305
+    }
+  ],
+  "payload": {
+    "blueprint": "blueprint.json",
+    "schema": "agentic.agent-blueprint/1",
+    "components": [
+      "modelPolicy",
+      "skillReferences",
+      "toolPermissions",
+      "memoryBinding",
+      "verificationPolicy",
+      "delegationPolicy",
+      "contextScope",
+      "schedulingPolicy"
+    ]
+  }
+}

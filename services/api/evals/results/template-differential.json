@@ -1,0 +1,57 @@
+{
+  "seed": 1,
+  "mutations": 500,
+  "corpusCases": 62,
+  "total": 562,
+  "validatorAccepts": 85,
+  "validatorRejects": 477,
+  "officecli": {
+    "ok": 139,
+    "cannotOpen": 214,
+    "invalid": 200,
+    "error": 9
+  },
+  "gaps": [],
+  "documentedGaps": [],
+  "acceptedButSchemaInvalid": 40,
+  "acceptedButSchemaInvalidExamples": [
+    "b06-hyperlink-field-https-link-path: validator accept; officecli invalid (Found 1 validation error(s): [Schema])",
+    "m002-xlsx-xml-delete-char: validator accept; officecli invalid (Found 1 validation error(s): [Schema])",
+    "m011-xlsx-xml-delete-char: validator accept; officecli invalid (Found 1 validation error(s): [Schema])",
+    "m019-pptx-drop-part: validator accept; officecli invalid (Found 8 validation error(s): [Package])",
+    "m038-xlsx-drop-part: validator accept; officecli invalid (Found 2 validation error(s): )",
+    "m043-pptx-dup-element: validator accept; officecli invalid (Found 1 validation error(s): [Schema])",
+    "m046-pptx-dup-element: validator accept; officecli invalid (Found 1 validation error(s): [Schema])",
+    "m069-docx-dup-element: validator accept; officecli invalid (Found 1 validation error(s): [Schema])",
+    "m072-docx-dup-element: validator accept; officecli invalid (Found 1 validation error(s): [Schema])",
+    "m075-docx-dup-element: validator accept; officecli invalid (Found 1 validation error(s): [Schema])"
+  ],
+  "rejectedButOfficecliOk": 96,
+  "rejectedForPolicy": 87,
+  "stricterThanOfficecli": [
+    "x12-override-missing-part: validator reject [ooxml-zip]; officecli ok",
+    "h27-percent-twin: validator reject [ooxml-zip]; officecli ok",
+    "h35-main-part-retyped: validator reject [ooxml-zip]; officecli ok",
+    "m021-docx-ct-override: validator reject [ooxml-zip]; officecli ok",
+    "m050-xlsx-ct-override: validator reject [ooxml-zip]; officecli ok",
+    "m122-xlsx-ct-override: validator reject [ooxml-zip]; officecli ok",
+    "m309-docx-ct-override: validator reject [ooxml-zip]; officecli ok",
+    "m451-pptx-flip-bytes: validator reject [ooxml-zip]; officecli ok",
+    "m495-docx-ct-override: validator reject [ooxml-zip]; officecli ok"
+  ],
+  "mutationsAcceptedByValidator": 80,
+  "mutationsOfficecliCannotOpen": 205,
+  "officecliErrors": [
+    "m145-pptx-ct-override: validator reject [ooxml-zip]; officecli error (Error: Incorrect content type for PackageRelationship part.)",
+    "m178-pptx-ct-override: validator reject [ooxml-zip]; officecli error (Error: Incorrect content type for PackageRelationship part.)",
+    "m193-pptx-ct-override: validator reject [ooxml-zip]; officecli error (Error: Incorrect content type for PackageRelationship part.)",
+    "m468-docx-rels-target: validator reject [no-active-content]; officecli error (timed out or did not run)",
+    "m469-pptx-xml-delete-char: validator accept; officecli error (timed out or did not run)",
+    "m470-xlsx-drop-part: validator reject [ooxml-zip,no-active-content]; officecli error (timed out or did not run)",
+    "m471-docx-rels-target: validator reject [no-active-content]; officecli error (timed out or did not run)",
+    "m472-pptx-drop-part: validator accept; officecli error (timed out or did not run)",
+    "m473-xlsx-xml-swap-tag: validator reject [ooxml-zip,no-active-content]; officecli error (timed out or did not run)"
+  ],
+  "staleKnownGaps": [],
+  "officecli_binary": "officecli"
+}

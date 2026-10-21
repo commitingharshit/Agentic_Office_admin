@@ -1,0 +1,507 @@
+{
+  "valid-minimal": {
+    "ok": true
+  },
+  "valid-full": {
+    "ok": true
+  },
+  "valid-all-environments": {
+    "ok": true
+  },
+  "valid-unicode-text": {
+    "ok": true
+  },
+  "valid-auto-edit": {
+    "ok": true
+  },
+  "invalid-wrong-schema": {
+    "ok": false,
+    "code": "schema",
+    "path": "schema"
+  },
+  "invalid-missing-identity": {
+    "ok": false,
+    "code": "required",
+    "path": "identity"
+  },
+  "invalid-unknown-top-key": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "readOnly"
+  },
+  "invalid-readonly-flag-in-tools": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "toolPermissions.readOnly"
+  },
+  "invalid-readonly-mode": {
+    "ok": false,
+    "code": "enum",
+    "path": "toolPermissions.mode"
+  },
+  "invalid-approvals-off-mode": {
+    "ok": false,
+    "code": "enum",
+    "path": "toolPermissions.mode"
+  },
+  "invalid-ecs-class-key": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "components"
+  },
+  "invalid-unknown-nested-key": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "identity.avatar"
+  },
+  "invalid-instructions-traversal": {
+    "ok": false,
+    "code": "path",
+    "path": "identity.instructionsFile"
+  },
+  "invalid-instructions-absolute": {
+    "ok": false,
+    "code": "path",
+    "path": "identity.instructionsFile"
+  },
+  "invalid-instructions-case": {
+    "ok": false,
+    "code": "path",
+    "path": "identity.instructionsFile"
+  },
+  "invalid-instructions-other-file": {
+    "ok": false,
+    "code": "path",
+    "path": "identity.instructionsFile"
+  },
+  "invalid-environments-empty": {
+    "ok": false,
+    "code": "too_few_items",
+    "path": "executionEnvironments"
+  },
+  "invalid-environments-unknown": {
+    "ok": false,
+    "code": "enum",
+    "path": "executionEnvironments[0]"
+  },
+  "invalid-environments-duplicate": {
+    "ok": false,
+    "code": "duplicate",
+    "path": "executionEnvironments"
+  },
+  "invalid-criteria-empty": {
+    "ok": false,
+    "code": "too_few_items",
+    "path": "objective.successCriteria"
+  },
+  "invalid-model-apikey": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "modelPolicy.primary.apiKey"
+  },
+  "invalid-model-baseurl": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "modelPolicy.primary.baseUrl"
+  },
+  "invalid-model-name-userinfo": {
+    "ok": false,
+    "code": "pattern",
+    "path": "modelPolicy.primary.model"
+  },
+  "invalid-model-effort": {
+    "ok": false,
+    "code": "enum",
+    "path": "modelPolicy.primary.reasoningEffort"
+  },
+  "invalid-provider-uppercase-space": {
+    "ok": false,
+    "code": "pattern",
+    "path": "modelPolicy.primary.provider"
+  },
+  "invalid-skill-bad-id": {
+    "ok": false,
+    "code": "bad_ref",
+    "path": "skillReferences[0].id"
+  },
+  "invalid-skill-reserved-slug": {
+    "ok": false,
+    "code": "bad_ref",
+    "path": "skillReferences[0].id"
+  },
+  "invalid-skill-bad-range": {
+    "ok": false,
+    "code": "bad_ref",
+    "path": "skillReferences[0].range"
+  },
+  "invalid-skill-missing-required": {
+    "ok": false,
+    "code": "required",
+    "path": "skillReferences[0].required"
+  },
+  "invalid-skill-duplicate": {
+    "ok": false,
+    "code": "duplicate",
+    "path": "skillReferences"
+  },
+  "invalid-skill-url-id": {
+    "ok": false,
+    "code": "bad_ref",
+    "path": "skillReferences[0].id"
+  },
+  "invalid-toolset-wildcard": {
+    "ok": false,
+    "code": "pattern",
+    "path": "toolPermissions.toolsets[0]"
+  },
+  "invalid-toolset-path-like": {
+    "ok": false,
+    "code": "pattern",
+    "path": "toolPermissions.toolsets[0]"
+  },
+  "invalid-kit-wildcard": {
+    "ok": false,
+    "code": "pattern",
+    "path": "toolPermissions.kits[0]"
+  },
+  "invalid-tools-missing-deny": {
+    "ok": false,
+    "code": "required",
+    "path": "toolPermissions.deny"
+  },
+  "invalid-memory-scope-global": {
+    "ok": false,
+    "code": "enum",
+    "path": "memoryBinding.scope"
+  },
+  "invalid-memory-writeapproval-string": {
+    "ok": false,
+    "code": "type",
+    "path": "memoryBinding.writeApproval"
+  },
+  "invalid-knowledge-userinfo": {
+    "ok": false,
+    "code": "secret_shape",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-knowledge-userinfo-nopw": {
+    "ok": false,
+    "code": "pattern",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-knowledge-http": {
+    "ok": false,
+    "code": "pattern",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-knowledge-url-query": {
+    "ok": false,
+    "code": "pattern",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-knowledge-file-scheme": {
+    "ok": false,
+    "code": "pattern",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-knowledge-workspace-traversal": {
+    "ok": false,
+    "code": "path",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-knowledge-workspace-absolute": {
+    "ok": false,
+    "code": "path",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-knowledge-connector-userinfo": {
+    "ok": false,
+    "code": "pattern",
+    "path": "knowledgeSources[0].ref"
+  },
+  "invalid-hook-command-string": {
+    "ok": false,
+    "code": "type",
+    "path": "hookBindings[0].hook"
+  },
+  "invalid-hook-command-field": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "hookBindings[0].command"
+  },
+  "invalid-hook-event-shape": {
+    "ok": false,
+    "code": "pattern",
+    "path": "hookBindings[0].event"
+  },
+  "invalid-verification-kind": {
+    "ok": false,
+    "code": "enum",
+    "path": "verificationPolicy.checks[0].kind"
+  },
+  "invalid-verification-attempts": {
+    "ok": false,
+    "code": "range",
+    "path": "verificationPolicy.checks[0].maxAttempts"
+  },
+  "invalid-verification-skill-ref-not-id": {
+    "ok": false,
+    "code": "bad_ref",
+    "path": "verificationPolicy.checks[0].id"
+  },
+  "invalid-delegation-depth-zero": {
+    "ok": false,
+    "code": "range",
+    "path": "delegationPolicy.maxDepth"
+  },
+  "invalid-delegation-depth-six": {
+    "ok": false,
+    "code": "range",
+    "path": "delegationPolicy.maxDepth"
+  },
+  "invalid-delegation-depth-huge": {
+    "ok": false,
+    "code": "range",
+    "path": "delegationPolicy.maxDepth"
+  },
+  "invalid-delegation-depth-fraction": {
+    "ok": false,
+    "code": "type",
+    "path": "delegationPolicy.maxDepth"
+  },
+  "invalid-delegation-concurrent-huge": {
+    "ok": false,
+    "code": "range",
+    "path": "delegationPolicy.maxConcurrent"
+  },
+  "invalid-delegation-depth-nan": {
+    "ok": false,
+    "code": "type",
+    "path": "delegationPolicy.maxDepth"
+  },
+  "invalid-delegation-child-missing-role": {
+    "ok": false,
+    "code": "required",
+    "path": "delegationPolicy.children[0].role"
+  },
+  "invalid-delegation-child-duplicate": {
+    "ok": false,
+    "code": "duplicate",
+    "path": "delegationPolicy.children"
+  },
+  "invalid-context-glob-traversal": {
+    "ok": false,
+    "code": "path",
+    "path": "contextScope.pathGlobs[0]"
+  },
+  "invalid-context-glob-absolute": {
+    "ok": false,
+    "code": "path",
+    "path": "contextScope.pathGlobs[0]"
+  },
+  "invalid-context-glob-home": {
+    "ok": false,
+    "code": "path",
+    "path": "contextScope.pathGlobs[0]"
+  },
+  "invalid-context-access": {
+    "ok": false,
+    "code": "enum",
+    "path": "contextScope.workspaceAccess"
+  },
+  "invalid-context-tokens": {
+    "ok": false,
+    "code": "range",
+    "path": "contextScope.maxContextTokens"
+  },
+  "invalid-schedule-too-long": {
+    "ok": false,
+    "code": "too_long",
+    "path": "schedulingPolicy.triggers[0].schedule"
+  },
+  "invalid-schedule-missing": {
+    "ok": false,
+    "code": "required",
+    "path": "schedulingPolicy.triggers[0].schedule"
+  },
+  "invalid-schedule-on-manual": {
+    "ok": false,
+    "code": "unknown_key",
+    "path": "schedulingPolicy.triggers[0].schedule"
+  },
+  "invalid-workflow-duplicate": {
+    "ok": false,
+    "code": "duplicate",
+    "path": "workflowReferences"
+  },
+  "invalid-string-too-long": {
+    "ok": false,
+    "code": "too_long",
+    "path": "identity.description"
+  },
+  "invalid-name-newline": {
+    "ok": false,
+    "code": "bad_chars",
+    "path": "identity.name"
+  },
+  "invalid-name-nul": {
+    "ok": false,
+    "code": "bad_chars",
+    "path": "identity.name"
+  },
+  "invalid-name-bidi": {
+    "ok": false,
+    "code": "bad_chars",
+    "path": "identity.name"
+  },
+  "invalid-name-line-separator": {
+    "ok": false,
+    "code": "bad_chars",
+    "path": "identity.role"
+  },
+  "invalid-name-lone-surrogate": {
+    "ok": false,
+    "code": "bad_unicode",
+    "path": "identity.name"
+  },
+  "invalid-name-padded": {
+    "ok": false,
+    "code": "pattern",
+    "path": "identity.name"
+  },
+  "invalid-name-empty": {
+    "ok": false,
+    "code": "empty",
+    "path": "identity.name"
+  },
+  "invalid-name-number": {
+    "ok": false,
+    "code": "type",
+    "path": "identity.name"
+  },
+  "invalid-secret-openai-key": {
+    "ok": false,
+    "code": "secret_shape",
+    "path": "objective.goal"
+  },
+  "invalid-secret-github-token": {
+    "ok": false,
+    "code": "secret_shape",
+    "path": "objective.successCriteria[0]"
+  },
+  "invalid-secret-private-key": {
+    "ok": false,
+    "code": "secret_shape",
+    "path": "identity.description"
+  },
+  "invalid-secret-aws-key": {
+    "ok": false,
+    "code": "secret_shape",
+    "path": "identity.description"
+  },
+  "invalid-secret-jwt": {
+    "ok": false,
+    "code": "secret_shape",
+    "path": "identity.description"
+  },
+  "invalid-secret-url-userinfo-in-text": {
+    "ok": false,
+    "code": "secret_shape",
+    "path": "identity.description"
+  },
+  "invalid-array-too-long": {
+    "ok": false,
+    "code": "too_many_items",
+    "path": "objective.successCriteria"
+  },
+  "invalid-criteria-over-32": {
+    "ok": false,
+    "code": "too_many_items",
+    "path": "objective.successCriteria"
+  },
+  "invalid-skills-over-64": {
+    "ok": false,
+    "code": "too_many_items",
+    "path": "skillReferences"
+  },
+  "invalid-not-json": {
+    "ok": false,
+    "code": "not_json",
+    "path": ""
+  },
+  "invalid-trailing-garbage": {
+    "ok": false,
+    "code": "not_json",
+    "path": ""
+  },
+  "invalid-bom": {
+    "ok": false,
+    "code": "not_json",
+    "path": ""
+  },
+  "invalid-yaml-document": {
+    "ok": false,
+    "code": "not_json",
+    "path": ""
+  },
+  "invalid-array-root": {
+    "ok": false,
+    "code": "type",
+    "path": ""
+  },
+  "invalid-null-root": {
+    "ok": false,
+    "code": "type",
+    "path": ""
+  },
+  "invalid-duplicate-key": {
+    "ok": false,
+    "code": "duplicate_key",
+    "path": "executionEnvironments"
+  },
+  "invalid-duplicate-key-escaped": {
+    "ok": false,
+    "code": "duplicate_key",
+    "path": "schema"
+  },
+  "invalid-proto-key": {
+    "ok": false,
+    "code": "forbidden_key",
+    "path": "__proto__"
+  },
+  "invalid-proto-key-escaped": {
+    "ok": false,
+    "code": "forbidden_key",
+    "path": "__proto__"
+  },
+  "invalid-constructor-key": {
+    "ok": false,
+    "code": "forbidden_key",
+    "path": "identity.constructor"
+  },
+  "invalid-prototype-key-nested": {
+    "ok": false,
+    "code": "forbidden_key",
+    "path": "modelPolicy.primary.prototype"
+  },
+  "invalid-too-deep": {
+    "ok": false,
+    "code": "too_deep",
+    "path": "modelPolicy.a.a.a.a.a.a.a"
+  },
+  "invalid-too-deep-array": {
+    "ok": false,
+    "code": "too_deep",
+    "path": "workflowReferences[0][0][0][0][0][0][0]"
+  },
+  "invalid-oversized-document": {
+    "ok": false,
+    "code": "too_large",
+    "path": ""
+  },
+  "invalid-oversized-by-content": {
+    "ok": false,
+    "code": "too_large",
+    "path": ""
+  }
+}
