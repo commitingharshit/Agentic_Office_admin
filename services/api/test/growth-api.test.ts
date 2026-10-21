@@ -59,11 +59,12 @@ async function signedIn(name: string) {
   users.push(r.body.user.id);
   return { id: r.body.user.id as string, tok: r.body.token as string };
 }
-async function campaign(name: string, over: { tier?: string; priority?: number; max?: number; gap?: number; placement?: string; plans?: string[] } = {}) {
+// Every campaign here is targeted at the test's own people, so test files running side by side never see each other's campaigns.
+async function campaign(name: string, people: string[], over: { tier?: string; priority?: number; max?: number; gap?: number; placement?: string; plans?: string[] } = {}) {
   const id = `c_${name}_${tag}`; campaigns.push(id);
   await owner.query(`INSERT INTO campaigns(id, name, status, tier, priority, starts_at, max_impressions, min_gap_seconds) VALUES ($1,$2,'live',$3,$4, now() - interval '1 hour', $5, $6)`,
     [id, name, over.tier ?? 'promo', over.priority ?? 0, over.max ?? 3, over.gap ?? 0]);
-  if (over.plans) await owner.query('INSERT INTO campaign_targets(campaign_id, plan_ids) VALUES ($1, $2)', [id, over.plans]);
+  await owner.query('INSERT INTO campaign_targets(campaign_id, plan_ids, user_ids) VALUES ($1, $2, $3)', [id, over.plans ?? null, people]);
   await owner.query(`INSERT INTO creatives(id, campaign_id, placement_id, kind, headline, card, status) VALUES ($1,$2,$3,'card',$4,$5,'ready')`,
     [`cr_${id}`, id, over.placement ?? 'chat_empty', name, JSON.stringify({ v: 1, layout: 'stack', blocks: [{ type: 'heading', text: name }] })]);
   return id;
@@ -74,7 +75,7 @@ const eligible = (tok: string, placement = 'chat_empty') => http(`/v1/promotions
 
 test('the eligible promotion comes back with its validated card; it needs sign-in and a known placement', { skip }, async () => {
   const u = await signedIn('basic');
-  const c = await campaign('basic', { priority: 90 });
+  const c = await campaign('basic', [u.id], { priority: 90 });
   assert.equal((await http('/v1/promotions/eligible?placement=chat_empty', null)).status, 401);
   assert.equal((await eligible(u.tok, 'popup')).status, 400);
   const r = await eligible(u.tok);
@@ -86,13 +87,13 @@ test('the eligible promotion comes back with its validated card; it needs sign-i
 
 test('events are counted once per event id; impressions drive the frequency cap and a dismissal ends it', { skip }, async () => {
   const u = await signedIn('freq');
-  const c = await campaign('freq', { priority: 95, max: 2 });
+  const c = await campaign('freq', [u.id], { priority: 95, max: 2 });
   const e1 = event(c, 'impression');
   assert.deepEqual((await send('/v1/promotions/events', u.tok, { events: [e1, e1] })).body, { accepted: 1, duplicate: 1, linked: false });
   assert.equal((await eligible(u.tok)).body.item?.campaign_id, c, 'one impression of two');
   await send('/v1/promotions/events', u.tok, { events: [event(c, 'impression')] });
   assert.notEqual((await eligible(u.tok)).body.item?.campaign_id, c, 'cap reached');
-  const d = await campaign('dismiss', { priority: 99 });
+  const d = await campaign('dismiss', [u.id], { priority: 99 });
   assert.equal((await eligible(u.tok)).body.item?.campaign_id, d);
   await send('/v1/promotions/events', u.tok, { events: [event(d, 'dismiss')] });
   assert.notEqual((await eligible(u.tok)).body.item?.campaign_id, d, 'dismissed is never shown again');
@@ -100,7 +101,7 @@ test('events are counted once per event id; impressions drive the frequency cap 
 
 test('an event cannot name a creative from another campaign or placement', { skip }, async () => {
   const u = await signedIn('forge');
-  const c = await campaign('forge');
+  const c = await campaign('forge', [u.id]);
   const bad = { ...event(c, 'click'), placement: 'bottom_strip' };
   assert.equal((await send('/v1/promotions/events', u.tok, { events: [bad] })).status, 400);
   assert.equal((await send('/v1/promotions/events', u.tok, { events: [{ ...event(c, 'click'), type: 'purchase' }] })).status, 400);
@@ -108,7 +109,7 @@ test('an event cannot name a creative from another campaign or placement', { ski
 
 test('events are linked to the person only when they share usage', { skip }, async () => {
   const u = await signedIn('consent');
-  const c = await campaign('consent');
+  const c = await campaign('consent', [u.id]);
   await send('/v1/promotions/events', u.tok, { events: [event(c, 'view')] });
   await owner.query('INSERT INTO usage_consent(user_id, shared) VALUES ($1, true) ON CONFLICT (user_id) DO UPDATE SET shared = true', [u.id]);
   assert.equal((await send('/v1/promotions/events', u.tok, { events: [event(c, 'click')] })).body.linked, true);
@@ -118,13 +119,15 @@ test('events are linked to the person only when they share usage', { skip }, asy
 
 test('an ad-free plan or entitlement and the person\'s own switch remove promotions but not release notes', { skip }, async () => {
   const u = await signedIn('adfree');
-  const p = await campaign('adfree-promo', { priority: 98, placement: 'bottom_strip' });
+  const p = await campaign('adfree-promo', [u.id], { priority: 98, placement: 'bottom_strip' });
   assert.equal((await eligible(u.tok, 'bottom_strip')).body.item?.campaign_id, p);
   await owner.query(`INSERT INTO entitlements(user_id, key, value, source) VALUES ($1, 'ad_free', 'true', 'test')`, [u.id]);
   assert.notEqual((await eligible(u.tok, 'bottom_strip')).body.item?.campaign_id, p);
-  const rel = await campaign('adfree-release', { tier: 'release', placement: 'bottom_strip' });
+  const rel = await campaign('adfree-release', [u.id], { tier: 'release', placement: 'bottom_strip' });
   assert.equal((await eligible(u.tok, 'bottom_strip')).body.item?.campaign_id, rel);
   const v = await signedIn('optout');
+  const vp = await campaign('optout-promo', [v.id], { priority: 98, placement: 'bottom_strip' });
+  assert.equal((await eligible(v.tok, 'bottom_strip')).body.item?.campaign_id, vp);
   assert.equal((await send('/v1/promotions/prefs', v.tok, { in_app: false }, 'PUT')).body.in_app, false);
   const got = (await eligible(v.tok, 'bottom_strip')).body.item;
   assert.ok(!got || got.tier !== 'promo', 'no promotion for someone who switched them off');
