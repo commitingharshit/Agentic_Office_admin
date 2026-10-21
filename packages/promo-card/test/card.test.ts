@@ -67,3 +67,42 @@ test('garbage in never throws', () => {
   const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
   assert.equal(validateCard(cyclic).ok, false);
 });
+
+test('fuzz: thousands of mutated cards never throw, and anything accepted is clean and stable under a second validation', () => {
+  let seed = 12345;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const pick = <T>(a: T[]): T => a[Math.floor(rnd() * a.length)];
+  const junk: unknown[] = [null, undefined, 0, -1, 1e999, NaN, '', ' ', 'x'.repeat(500), '‮', '\u0000', '<script>alert(1)</script>', 'javascript:alert(1)', [], {}, [[]], { __proto__: { a: 1 } }, true, 'https://u:p@evil.example/', 'http://insecure.example', 'open_url'];
+  const base = { v: 1, layout: 'stack', tone: 'accent', disclosure: 'Featured', blocks: [{ type: 'heading', text: 'Hi' }, { type: 'text', text: 'there' }, { type: 'checklist', items: ['a', 'b'] }, { type: 'image', media: 'image', alt: 'x' }], actions: [{ label: 'Go', action: { command: 'open_url', arg: 'https://example.com/a' } }, { label: 'Plans', action: { command: 'open_plans' } }] };
+  const mutate = (v: any, depth = 0): any => {
+    if (v && typeof v === 'object' && depth < 5) {
+      const copy: any = Array.isArray(v) ? [...v] : { ...v };
+      const keys = Object.keys(copy);
+      const n = 1 + Math.floor(rnd() * 3);
+      for (let i = 0; i < n; i++) {
+        const k = keys.length && rnd() < 0.8 ? pick(keys) : pick(['x', 'type', 'command', 'arg', 'text', 'v']);
+        const r = rnd();
+        if (r < 0.35) copy[k] = pick(junk); else if (r < 0.5) delete copy[k]; else if (copy[k] && typeof copy[k] === 'object') copy[k] = mutate(copy[k], depth + 1); else copy[k] = pick(junk);
+      }
+      return copy;
+    }
+    return pick(junk);
+  };
+  let accepted = 0;
+  for (let i = 0; i < 4000; i++) {
+    const input = mutate(base);
+    const r = validateCard(input);
+    if (r.ok) {
+      accepted++;
+      assert.deepEqual(validateCard(r.value).value, r.value, 'a clean card validates to itself');
+      // text is data the app draws as plain text, so markup in it is inert; what must never survive is any field outside the schema
+      const KEYS = new Set(['v', 'layout', 'tone', 'disclosure', 'blocks', 'actions', 'type', 'text', 'media', 'alt', 'label', 'value', 'items', 'action', 'command', 'arg']);
+      const walk = (n: any): void => { if (n && typeof n === 'object') for (const [k, v] of Object.entries(n)) { if (!Array.isArray(n)) assert.ok(KEYS.has(k), `unexpected field ${k}`); walk(v); } };
+      walk(r.value);
+      for (const a of r.value!.actions ?? []) if (a.action.command === 'open_url') assert.match(a.action.arg!, /^https:\/\/[^@]*$/);
+    } else {
+      assert.ok(r.errors.length > 0);
+    }
+  }
+  assert.ok(accepted > 0, 'some mutations are still valid, so the loop is testing both sides');
+});

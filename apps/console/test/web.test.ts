@@ -426,3 +426,32 @@ test('payments and notifications pages: a finance admin sees them, an analyst ca
   const bad = await get('/admin/payments/ord_doesnotexist12345', { cookie: fin.cookie });
   assert.equal(bad.status, 404);
 });
+
+test('growth pages: an analyst can read them but has no way to change anything; a superadmin creates a campaign through the rendered form, persisted and audited', { skip }, async () => {
+  const boss = await person('growthboss', 'admin');
+  await owner.query(`INSERT INTO admin_roles(user_id, role) VALUES ($1,'superadmin') ON CONFLICT (user_id) DO UPDATE SET role='superadmin'`, [boss.id]);
+  const an = await person('growthanalyst', 'admin');
+  await owner.query(`INSERT INTO admin_roles(user_id, role) VALUES ($1,'analyst') ON CONFLICT (user_id) DO UPDATE SET role='analyst'`, [an.id]);
+  for (const [path, title] of [['/admin/growth', /Growth/], ['/admin/growth/campaigns', /Campaigns/], ['/admin/growth/releases', /Releases/], ['/admin/growth/email', /Campaign email/]] as const) {
+    const r = await get(path, { cookie: boss.cookie });
+    assert.equal(r.status, 200, path); assert.match(r.body, title, path);
+    assert.equal((await get(path, { cookie: an.cookie })).status, 200, `${path} readable by an analyst`);
+  }
+  const anList = await get('/admin/growth/campaigns', { cookie: an.cookie });
+  assert.doesNotMatch(anList.body, /New campaign/, 'an analyst is not offered the form');
+  const page = await get('/admin/growth/campaigns', { cookie: boss.cookie });
+  const name = `Launch ${tag}`;
+  const form = renderedForm(page.body, 'Create', { name });
+  const sent = await postForm('/admin/growth/campaigns', form, boss.cookie);
+  assert.ok([200, 303].includes(sent.status), `status ${sent.status}`);
+  const row = (await owner.query(`SELECT id, status, created_by FROM campaigns WHERE name = $1`, [name])).rows[0];
+  assert.ok(row, 'the campaign was stored'); assert.equal(row.status, 'draft'); assert.equal(row.created_by, boss.id);
+  assert.ok((await owner.query(`SELECT count(*)::int AS n FROM admin_audit WHERE admin_user_id = $1 AND action ILIKE '%campaign%'`, [boss.id])).rows[0].n > 0, 'the change is on the audit trail');
+  // the same form, replayed with an analyst's session, changes nothing
+  const forged = await postForm('/admin/growth/campaigns', renderedForm(page.body, 'Create', { name: `Forged ${tag}` }), an.cookie);
+  assert.ok(forged.status < 500);
+  assert.equal((await owner.query(`SELECT count(*)::int AS n FROM campaigns WHERE name = $1`, [`Forged ${tag}`])).rows[0].n, 0, 'an analyst cannot create a campaign');
+  const detail = await get(`/admin/growth/campaigns/${row.id}`, { cookie: boss.cookie });
+  assert.equal(detail.status, 200);
+  await owner.query('DELETE FROM campaigns WHERE name = $1', [name]);
+});
