@@ -80,7 +80,7 @@ agents.register();
 const agentsOk = () => agents.ok();
 // Team assignments, install policy, install-time re-resolution and bundle plans (before `marketplace`, whose catch-all answers 404).
 const marketplaceTeams = sync && app && marketplaceStore ? marketplaceTeamsHandler({ app, authenticate: sync.authenticate, store: marketplaceStore }) : undefined;
-const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools, agentsOk }) : undefined;
+const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools, agentsOk, verifyMode: env.AO_VERIFY_MODE === 'queue' ? 'queue' : 'inline' }) : undefined;
 const admin = adminHandler(deps);
 // Marketplace publishing runs the REAL scanner (skills guard) and, when OFFICECLI_BIN is set, the officecli render check.
 // Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.

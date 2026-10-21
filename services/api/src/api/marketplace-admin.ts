@@ -19,6 +19,7 @@ import { parsePolicyDoc, readPolicy, type PolicyDoc } from './marketplace-teams.
 import { storeEvidenceSink } from '../marketplace/verify/evidence.ts';
 import { runPipeline } from '../marketplace/verify/runner.ts';
 import { MAX_RESULT_BYTES, type PipelineTools } from '../marketplace/verify/types.ts';
+import { claimJob, clampLease, clipErr, enqueueJob, failJob, heartbeatJob, latestJob, lockLeased, validWorkerId, LeaseLostError } from '../marketplace/verify/jobs.ts';
 import { checkApprovalGate, latestVerification, normaliseResult, recordVerification, validateAgainstVersion, VerificationError, toView } from '../marketplace/verifyStore.ts';
 
 export interface MarketplaceAdminDeps {
@@ -39,6 +40,8 @@ export interface MarketplaceAdminDeps {
   agentsOk?: () => boolean;
   /** Tools the in-process verification run may use (light stages only; heavy stages belong to the out-of-process worker, which POSTs its result to .../verification). Absent tools make their stages 'skipped'. */
   verifyTools?: PipelineTools;
+  /** 'inline' (default; tests and dev): POST .../verify runs the pipeline in this process with `verifyTools`. 'queue': it only ENQUEUES a job for the out-of-process verifier worker (AO_VERIFY_MODE=queue). */
+  verifyMode?: 'inline' | 'queue';
 }
 
 export class ApiError extends Error {
@@ -470,6 +473,14 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     if (runs.length >= MAX_RUNS_PER_MINUTE) throw fail(429, 'rate_limited', 'Too many verification runs; try again in a minute.');
     recentRuns.set(adminId, [...runs, now]);
     const v = await versionForVerify(pool, versionId);
+    if (deps.verifyMode === 'queue') {
+      return tx(async (c) => {
+        const cur = await versionForVerify(c, versionId);
+        const { job, duplicate } = await enqueueJob(c, cur, adminId);
+        if (!duplicate) await audit(c, adminId, 'verify_enqueue', null, { listingId: cur.listing_id, versionId, jobId: job.id, sha256: cur.sha256 });
+        return { queued: true, jobId: job.id, status: job.status, duplicate };
+      });
+    }
     const bytes = await deps.store.get(v.sha256);
     if (!bytes) throw fail(409, 'artifact_missing', 'The stored artifact is missing.');
     let pkg: UnpackedPackage;
@@ -484,12 +495,68 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       return { verificationId: rec.id, duplicate: rec.duplicate, verdict: result.verdict };
     }));
   }
+  // ── verifier worker protocol (marketplace.verify_worker only). The lease token proves ownership of a claimed job.
+  const tokenOf = (req: IncomingMessage) => { const t = req.headers['x-lease-token']; if (typeof t !== 'string' || !/^[0-9a-f]{48}$/.test(t)) throw fail(409, 'lease_lost', 'Missing or malformed lease token.'); return t; };
+  const wrapJ = async <T>(fn: () => Promise<T>): Promise<T> => { try { return await wrapV(fn); } catch (e) { if (e instanceof LeaseLostError) throw fail(409, 'lease_lost', e.message); throw e; } };
+  async function claimNext(adminId: string, body: Record<string, unknown>) {
+    if (!validWorkerId(body.worker)) throw fail(400, 'bad_request', 'worker must be 1 to 120 characters of A-Z a-z 0-9 _ . : @ -.');
+    const leaseSec = clampLease(body.leaseSec);
+    return tx(async (c) => {
+      const j = await claimJob(c, body.worker as string, leaseSec);
+      if (!j) return { job: null };
+      await audit(c, adminId, 'verify_claim', null, { jobId: j.id, versionId: j.versionId, attempt: j.attempts, worker: j.leaseOwner });
+      return { job: { id: j.id, versionId: j.versionId, sha256: j.sha256, type: j.type, attempts: j.attempts, maxAttempts: j.maxAttempts, leaseToken: j.leaseToken, leaseSec } };
+    });
+  }
+  async function jobArtifact(jobId: string, token: string): Promise<Uint8Array> {
+    const j = await wrapJ(() => tx((c) => lockLeased(c, jobId, token)));
+    const bytes = await deps.store.get(j.sha256);
+    if (!bytes) throw fail(409, 'artifact_missing', 'The stored artifact is missing.');
+    return bytes;
+  }
+  async function jobBlob(jobId: string, token: string, mime: string, bytes: Buffer) {
+    if (!['image/png', 'text/plain', 'application/json'].includes(mime)) throw fail(400, 'bad_request', 'Evidence mime is not allowed.');
+    return wrapJ(() => tx(async (c) => {
+      const j = await lockLeased(c, jobId, token);
+      if (j.blobs >= 40) throw fail(409, 'too_many_blobs', 'At most 40 evidence blobs per job.');
+      const r = await putArtifact(deps.store, new Uint8Array(bytes), 2 * 1024 * 1024);
+      const clash = (await c.query('SELECT 1 FROM marketplace_artifacts WHERE sha256 = $1', [r.sha256])).rowCount;
+      if (clash) throw fail(400, 'bad_request', 'Evidence must be its own blob, not a package artifact.');
+      await c.query('UPDATE marketplace_verify_jobs SET blobs = blobs + 1 WHERE id = $1', [jobId]);
+      return { sha256: r.sha256, size: r.size };
+    }));
+  }
+  /** Delivers the result: lease-checked, bound to the job's artifact sha AND the version's CURRENT sha, idempotent per job. */
+  async function jobComplete(adminId: string, jobId: string, token: string, raw: Record<string, unknown>) {
+    const out = await wrapJ(() => tx(async (c) => {
+      const prior = (await c.query('SELECT status, lease_token, verification_id FROM marketplace_verify_jobs WHERE id = $1 FOR UPDATE', [jobId])).rows[0];
+      if (!prior) throw fail(404, 'not_found', 'No such job.');
+      // A retried delivery (the response was lost) is answered from the record, not rejected and not stored twice.
+      if (prior.status === 'done' && prior.lease_token === token && prior.verification_id) return { verificationId: prior.verification_id, duplicate: true };
+      const j = await lockLeased(c, jobId, token);
+      const v = await versionForVerify(c, j.versionId);
+      if (v.sha256 !== j.sha256) {
+        await c.query(`UPDATE marketplace_verify_jobs SET status = 'dead', finished_at = now(), lease_token = NULL, lease_until = NULL, last_error = 'artifact-changed' WHERE id = $1`, [jobId]);
+        return { mismatch: true as const };   // the dead-letter mark must commit, so the error is raised after the transaction
+      }
+      const n = normaliseResult(raw);
+      await validateAgainstVersion(c, deps.store, n, { sha256: j.sha256, type: v.type });
+      const rec = await recordVerification(c, j.versionId, n, adminId);
+      await c.query(`UPDATE marketplace_verify_jobs SET status = 'done', finished_at = now(), lease_until = NULL, verification_id = $2, last_error = NULL WHERE id = $1`, [jobId, rec.id]);
+      if (!rec.duplicate) await audit(c, adminId, 'verification_record', null, { listingId: v.listing_id, versionId: j.versionId, verificationId: rec.id, verdict: n.result.verdict, sha256: j.sha256, jobId });
+      return { verificationId: rec.id, duplicate: rec.duplicate, verdict: n.result.verdict };
+    }));
+    if ('mismatch' in out) throw fail(409, 'sha_mismatch', 'The version no longer carries the artifact this job verified; the result was discarded.');
+    return out;
+  }
   async function readVerification(adminId: string, versionId: string) {
     return read(adminId, 'view_verification', null, { versionId }, async (c) => {
       await versionForVerify(c, versionId);
       const s = await latestVerification(c, versionId);
       const history = (await c.query('SELECT id, sha256, verdict, pipeline, pipeline_version, finished_at FROM marketplace_verifications WHERE version_id = $1 ORDER BY seq DESC LIMIT 50', [versionId])).rows;
+      const job = await latestJob(c, versionId);
       return { verification: s ? { id: s.id, ...toView(s) } : null,
+        ...(job ? { job: { id: job.id, status: job.status, attempts: job.attempts, maxAttempts: job.maxAttempts, lastError: job.lastError } } : {}),
         history: history.map((h) => ({ id: h.id, artifactSha256: h.sha256, verdict: h.verdict, pipeline: h.pipeline, pipelineVersion: h.pipeline_version, at: new Date(h.finished_at).toISOString() })) };
     });
   }
@@ -876,6 +943,28 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       if (a === 'versions' && id && sub === 'verify' && m === 'POST') { need('marketplace.review'); return send(200, await runVerification(adminId, vid(id))), true; }
       if (a === 'versions' && id && sub === 'verification' && m === 'POST') { need('marketplace.review'); return send(200, await recordResult(adminId, vid(id), await jsonBody(req, MAX_RESULT_BYTES))), true; }
       if (a === 'versions' && id && sub === 'verification' && m === 'GET') { need('marketplace.read'); return send(200, await readVerification(adminId, vid(id))), true; }
+      if (a === 'verify-jobs' && id === 'claim' && !sub && m === 'POST') { need('marketplace.verify_worker'); return send(200, await claimNext(adminId, await jsonBody(req))), true; }
+      if (a === 'verify-jobs' && id && sub && m === 'GET' && sub === 'artifact') {
+        need('marketplace.verify_worker');
+        const bytes = await jobArtifact(vid(id), tokenOf(req));
+        res.writeHead(200, { 'content-type': 'application/zip', 'cache-control': 'no-store', 'content-length': String(bytes.length) }); res.end(Buffer.from(bytes)); return true;
+      }
+      if (a === 'verify-jobs' && id && sub === 'blob' && m === 'POST') {
+        need('marketplace.verify_worker');
+        const mime = String(req.headers['content-type'] ?? '').split(';')[0].trim();
+        return send(200, await jobBlob(vid(id), tokenOf(req), mime, await readBytes(req, 2 * 1024 * 1024))), true;
+      }
+      if (a === 'verify-jobs' && id && sub === 'heartbeat' && m === 'POST') {
+        need('marketplace.verify_worker');
+        const b = await jsonBody(req), token = tokenOf(req);
+        return send(200, await wrapJ(() => tx((c) => heartbeatJob(c, vid(id), token, clampLease(b.leaseSec))))), true;
+      }
+      if (a === 'verify-jobs' && id && sub === 'result' && m === 'POST') { need('marketplace.verify_worker'); return send(200, await jobComplete(adminId, vid(id), tokenOf(req), await jsonBody(req, MAX_RESULT_BYTES))), true; }
+      if (a === 'verify-jobs' && id && sub === 'fail' && m === 'POST') {
+        need('marketplace.verify_worker');
+        const b = await jsonBody(req), token = tokenOf(req);
+        return send(200, await wrapJ(() => tx((c) => failJob(c, vid(id), token, clipErr(b.error))))), true;
+      }
       if (a === 'versions' && id && sub === 'rescan' && m === 'POST') { need('marketplace.write'); return send(200, await rescan(adminId, vid(id))), true; }
       if (a === 'installations' && !id && m === 'GET') { need('marketplace.read'); return send(200, await installations(adminId, sp)), true; }
       if (a === 'users' && id && sub === 'installs' && m === 'GET') { need('marketplace.read'); return send(200, await userInstalls(adminId, vid(id))), true; }
