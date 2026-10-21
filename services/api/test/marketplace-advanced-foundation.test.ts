@@ -108,7 +108,8 @@ describe('checkBounded / checkOnlyFiles / impliedPermissions / risk tier', () =>
 
 describe('placeholders and the support table', () => {
   test('every advanced type answers type-supported:false with a reason and path; surface/agent/bundle too', async () => {
-    for (const t of ['hook', 'routine', 'memory', 'bridge', 'connector', 'workflow'] as const) {
+    // routine is no longer a placeholder (Plan 3 Task 4 replaced its validator: see marketplace-routine-validate.test.ts); the others still are
+    for (const t of ['hook', 'memory', 'bridge', 'connector', 'workflow'] as const) {
       const r = await validateArtifact(t, pkgOf(t));
       const c = r.checks.find((k) => k.name === 'type-supported');
       assert.ok(c && c.ok === false && /not available|not supported/i.test(c.detail ?? ''), t);

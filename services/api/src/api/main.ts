@@ -21,6 +21,7 @@ import { s3ArtifactStore } from '../marketplace/artifacts.ts';
 import { registerValidator } from '../marketplace/validate/index.ts';
 import { createSkillValidator } from '../marketplace/validate/skill.ts';
 import { createSkillsGuardScanner } from '../marketplace/validate/skillsGuard.ts';
+import { createRoutineValidator } from '../marketplace/validate/routine.ts';
 import { createTemplateValidator } from '../marketplace/validate/template.ts';
 import { skillScannerSelfCheck } from '../marketplace/selfcheck.ts';
 import { validateArtifact } from '../marketplace/validate/index.ts';
@@ -65,6 +66,8 @@ const admin = adminHandler(deps);
 // Marketplace publishing runs the REAL scanner (skills guard) and, when OFFICECLI_BIN is set, the officecli render check.
 // Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.
 try { registerValidator('skill', createSkillValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: skill scanner unavailable, skill submissions stay unverified:', (e as Error).message); }
+// Routines: the prompt text goes through the same scanner; without it a routine report stays unverified and the admin API refuses to approve it.
+try { registerValidator('routine', createRoutineValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: routine prompt scanner unavailable, routine submissions stay unverified:', (e as Error).message); }
 if (env.OFFICECLI_BIN) {
   try { accessSync(env.OFFICECLI_BIN, fsConstants.X_OK); registerValidator('template', createTemplateValidator({ officecli: officecliRenderer() })); }
   catch { console.error(`marketplace: OFFICECLI_BIN=${env.OFFICECLI_BIN} is not an executable file; templates cannot reach 'verified' until it is fixed.`); }
