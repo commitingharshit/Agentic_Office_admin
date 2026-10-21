@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { cache } from 'react';
 import { adminApi } from './admin-api';
+import { withMarketplacePermissions } from './marketplace';
 import { getAuth } from './instance';
 import { keycloakMode, readSession, safeNext, SESSION_COOKIE } from './keycloak';
 import { cookies } from 'next/headers';
@@ -60,5 +61,6 @@ export interface AdminContext { person: Person; role: string; permissions: strin
 export const adminContext = cache(async (): Promise<AdminContext> => {
   const person = await requireAdmin();
   const me = await adminApi<{ role: string; permissions: string[] }>('/admin/me', { acting: person.id });
-  return { person, role: me.role ?? "unknown", permissions: Array.isArray(me.permissions) ? me.permissions : [] };
+  const mp = await adminApi<{ role?: string; permissions?: string[] }>('/admin/marketplace/me', { acting: person.id }).catch(() => null);   // unreachable or not mounted: no marketplace permissions
+  return { person, role: me.role ?? "unknown", permissions: withMarketplacePermissions(Array.isArray(me.permissions) ? me.permissions : [], mp) };
 });

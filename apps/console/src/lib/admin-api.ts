@@ -4,23 +4,26 @@ const base = () => (process.env.AO_ADMIN_API_URL ?? '').replace(/\/+$/, '');
 
 export class AdminApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
+  /** The parsed JSON error body, when there was one (the marketplace API returns `code` and, for a failed upload, `validation`). */
+  readonly body?: Record<string, any>;
+  constructor(status: number, message: string, body?: Record<string, any>) { super(message); this.status = status; this.body = body; }
 }
 
-export async function adminApi<T = any>(path: string, o: { acting?: string; method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown }): Promise<T> {
+export async function adminApi<T = any>(path: string, o: { acting?: string; method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; bytes?: { data: Uint8Array; contentType: string } }): Promise<T> {
   const token = process.env.AO_ADMIN_API_TOKEN;
   if (!base() || !token) throw new AdminApiError(503, 'The admin API is not configured (AO_ADMIN_API_URL, AO_ADMIN_API_TOKEN).');
   const r = await fetch(`${base()}${path}`, {
     method: o.method ?? 'GET',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(o.acting ? { 'x-ao-acting-admin': o.acting } : {}) },
-    body: o.body === undefined ? undefined : JSON.stringify(o.body),
+    headers: { authorization: `Bearer ${token}`, 'content-type': o.bytes?.contentType ?? 'application/json', ...(o.acting ? { 'x-ao-acting-admin': o.acting } : {}) },
+    // a binary body (a package ZIP) is sent as-is; everything else is JSON
+    body: o.bytes ? (o.bytes.data as unknown as BodyInit) : o.body === undefined ? undefined : JSON.stringify(o.body),
     cache: 'no-store',
     signal: AbortSignal.timeout(20_000),
   });
   const text = await r.text();
   let data: any = text;
   try { data = JSON.parse(text); } catch { /* CSV or text */ }
-  if (!r.ok) throw new AdminApiError(r.status, typeof data === 'object' && data?.error ? data.error : `The admin API answered ${r.status}.`);
+  if (!r.ok) throw new AdminApiError(r.status, typeof data === 'object' && data?.error ? data.error : `The admin API answered ${r.status}.`, typeof data === 'object' && data ? data : undefined);
   return data as T;
 }
 

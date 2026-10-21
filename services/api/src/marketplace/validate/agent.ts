@@ -172,7 +172,8 @@ export function createAgentValidator(opts: AgentValidatorOptions = {}) {
     const required = new Set<PermissionRequest['capability']>(deriveRequired(bp));
     if (compileRes && !('unavailable' in compileRes) && compileRes.report) for (const c of compileRes.report.requiredCapabilities) required.add(c);
     const esc = checkEscalation(bp, declared, [...required], resolved);
-    checks.push(esc.length ? fail('permissions-subset', diag(esc)) : ok('permissions-subset'));
+    const caps = (xs: Iterable<string>) => [...new Set(xs)].sort().join(', ') || 'none';
+    checks.push(esc.length ? fail('permissions-subset', diag(esc)) : ok('permissions-subset', { detail: `derived: ${caps(required)}; declared: ${caps(declared.map(p => p.capability))}` }));
     const wc = checkNoWildcards(bp, declared);
     checks.push(wc.length ? fail('no-wildcards', diag(wc)) : ok('no-wildcards'));
     const dg = checkDelegationGraph(m.id, resolved, bp.delegationPolicy?.maxDepth ?? 1);
