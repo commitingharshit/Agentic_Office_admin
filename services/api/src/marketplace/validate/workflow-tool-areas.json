@@ -154,7 +154,8 @@
    "office_render_preview": "verify",
    "office_replace_placeholders": "edit",
    "office_rollback": "edit",
-   "office_validate": "verify"
+   "office_validate": "verify",
+   "office_verify_scope": "verify"
   },
   "pdf": {
    "analysis_put": "admin",
@@ -348,7 +349,9 @@
    "excel_get_workbook_map": "read",
    "excel_index": "admin",
    "excel_insert_delete": "edit",
+   "excel_lbo_checks": "verify",
    "excel_merge_sheet": "author",
+   "excel_metamorphic": "verify",
    "excel_model_checks": "verify",
    "excel_open": "open",
    "excel_propose": "edit",
