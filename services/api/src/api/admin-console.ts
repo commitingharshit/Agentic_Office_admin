@@ -311,8 +311,8 @@ export async function reliability(deps: AdminDeps, q: URLSearchParams) {
   const [t] = await rows(deps.ro, `SELECT count(*)::int AS runs,
       count(*) FILTER (WHERE state = 'succeeded')::int AS succeeded, count(*) FILTER (WHERE state = 'failed')::int AS failed,
       count(*) FILTER (WHERE state = 'cancelled')::int AS cancelled, count(*) FILTER (WHERE state = 'running')::int AS running,
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.ended_at - r.started_at)) FILTER (WHERE r.ended_at IS NOT NULL) AS p50_s,
-      percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM r.ended_at - r.started_at)) FILTER (WHERE r.ended_at IS NOT NULL) AS p95_s
+      round((percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.ended_at - r.started_at)) FILTER (WHERE r.ended_at IS NOT NULL))::numeric, 3)::float8 AS p50_s,
+      round((percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM r.ended_at - r.started_at)) FILTER (WHERE r.ended_at IS NOT NULL))::numeric, 3)::float8 AS p95_s
     FROM agent_runs r WHERE ${win}`, [days]);
   const finished = n(t.succeeded) + n(t.failed);
   const failures = await rows(deps.ro, `SELECT coalesce(r.failure_category, 'unknown') AS category, count(*)::int AS runs FROM agent_runs r WHERE ${win} AND r.state = 'failed' GROUP BY 1 ORDER BY 2 DESC`, [days]);
