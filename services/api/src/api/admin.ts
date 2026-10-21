@@ -41,7 +41,7 @@ export function parseTokens(spec: string | undefined): Map<string, string> {
   return m;
 }
 
-async function authenticate(req: IncomingMessage, deps: AdminDeps): Promise<string> {
+export async function authenticate(req: IncomingMessage, deps: AdminDeps): Promise<string> {
   const h = req.headers.authorization ?? '';
   const tok = /^Bearer\s+(.+)$/i.exec(h)?.[1];
   if (!tok) throw new HttpError(401, 'Sign in as an admin.');

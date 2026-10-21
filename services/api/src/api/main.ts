@@ -9,12 +9,18 @@
 //   CLERK_AUTHORIZED_PARTIES=origin[,origin]   (optional azp allow-list)
 import { createServer } from 'node:http';
 import pg from 'pg';
-import { adminHandler, parseTokens } from './admin.ts';
+import { adminHandler, authenticate as adminAuthenticate, parseTokens } from './admin.ts';
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { S3 } from './s3.ts';
 import { marketplaceHandler } from './marketplace.ts';
+import { marketplaceAdminHandler } from './marketplace-admin.ts';
 import { syncHandler } from './sync.ts';
 import { s3ArtifactStore } from '../marketplace/artifacts.ts';
+import { registerValidator } from '../marketplace/validate/index.ts';
+import { createSkillValidator } from '../marketplace/validate/skill.ts';
+import { createSkillsGuardScanner } from '../marketplace/validate/skillsGuard.ts';
+import { createTemplateValidator } from '../marketplace/validate/template.ts';
+import { officecliRenderer } from '../marketplace/validate/officecli.ts';
 
 const env = process.env;
 const need = (k: string) => { const v = env[k]; if (!v) { console.error(`${k} is not set`); process.exit(2); } return v; };
@@ -49,6 +55,12 @@ const sync = app && clerk ? syncHandler({ app, verify: (t) => clerk.verify(t), s
   } : undefined }) : undefined;
 const marketplace = sync && app && s3 ? marketplaceHandler({ app, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') }) : undefined;
 const admin = adminHandler(deps);
+// Marketplace publishing runs the REAL scanner (skills guard) and, when OFFICECLI_BIN is set, the officecli render check.
+// Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.
+try { registerValidator('skill', createSkillValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: skill scanner unavailable, skill submissions stay unverified:', (e as Error).message); }
+if (env.OFFICECLI_BIN) registerValidator('template', createTemplateValidator({ officecli: officecliRenderer() }));
+// No roleOf yet: every authenticated admin is a superadmin, as admin.ts treats them today (see marketplace/permissions.ts).
+const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') }) : undefined;
 
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);
@@ -56,6 +68,7 @@ const server = createServer(async (req, res) => {
   if (marketplace && (await marketplace(req, res))) return;   // before sync, whose /v1 catch-all answers 404
   if (sync && (await sync(req, res))) return;
   if (!sync && req.url?.startsWith('/v1/')) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'Sign-in is not configured on this server yet (CLERK_PUBLISHABLE_KEY).' })); return; }
+  if (marketplaceAdmin && (await marketplaceAdmin(req, res))) return;
   await admin(req, res);
 });
 server.listen(port, bind, () => console.log(`admin API on http://${bind}:${port} (${deps.tokens.size} admin token(s), blobs ${deps.s3 ? 'on' : 'off'}, sign-in ${clerk ? 'Clerk' : 'tokens only'}, sync ${sync ? 'on' : 'off'})`));

@@ -53,7 +53,14 @@ export async function startMarketplacePg(): Promise<MarketplacePg> {
     ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
     CREATE POLICY own_rows ON devices USING (user_id = current_setting('app.user_id', true));
     GRANT SELECT ON devices TO ao_app;
-    CREATE TABLE admin_audit (id bigserial PRIMARY KEY);`);
+    CREATE TABLE admin_audit (
+      id bigserial PRIMARY KEY, admin_user_id text NOT NULL, action text NOT NULL, target_user_id text,
+      detail jsonb NOT NULL DEFAULT '{}', at timestamptz NOT NULL DEFAULT now());
+    GRANT SELECT ON users, devices TO ao_admin, ao_readonly;
+    GRANT SELECT, INSERT ON admin_audit TO ao_admin;
+    GRANT SELECT ON admin_audit TO ao_readonly;
+    GRANT USAGE ON SEQUENCE admin_audit_id_seq TO ao_admin;
+    GRANT INSERT ON users TO ao_admin;`);
   await owner.query(migration);
   const app = await connect('ao_app'); const admin = await connect('ao_admin');
   return {
