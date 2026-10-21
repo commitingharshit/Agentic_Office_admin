@@ -11,7 +11,9 @@ import { artifactKey, putArtifact, UnpackError, unpack, MAX_ARTIFACT_BYTES, type
 import { can, type AdminRole, type MarketplacePermission } from '../marketplace/permissions.ts';
 import { LIVE_INSTALL, latestPublished } from '../marketplace/search.ts';
 import { INSTALL_STATES } from '../marketplace/store.ts';
-import { BRIDGE_TYPES, TYPE_POLICY, maxTier, needsManualReview, trustAtLeast } from '../marketplace/support.ts';
+import { BRIDGE_TYPES, OPERATIONAL, TYPE_POLICY, maxTier, needsManualReview, trustAtLeast, type TypePolicy } from '../marketplace/support.ts';
+import { buildReviewSummary, reviewSummaryHash, safe as safeText } from '../marketplace/summary.ts';
+import { checkNoLiteralSecrets } from '../marketplace/validate/advanced-common.ts';
 import { LISTING_TYPES, type ListingType, type ValidationReport, type UnpackedPackage, type VersionState, type Visibility } from '../marketplace/types.ts';
 import { validateArtifact, type ValidateContext } from '../marketplace/validate/index.ts';
 import { audienceCatalog } from '../marketplace/catalog.ts';
@@ -221,14 +223,25 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     return o.rowCount ? 'official' : 'verified';
   }
 
-  // ── submissions
-  /** What a reviewer acknowledges: a stable hash over exactly what the version asks for. Computed server side from the stored manifest and artifact hash. */
-  function summaryHash(manifest: any, artifactSha: string, tier: string | null): string {
-    const canon = (v: any): any => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v;
-    const perms = Array.isArray(manifest?.permissions) ? [...manifest.permissions].map(canon).sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : 1) : [];
-    return createHash('sha256').update(JSON.stringify(canon({ schema: 'agentic.marketplace.review-summary/1', id: manifest?.id, type: manifest?.type, version: manifest?.version,
-      artifact: artifactSha, riskTier: tier, permissions: perms, dependencies: canon(manifest?.dependencies ?? []), payload: canon(manifest?.payload ?? {}) }))).digest('hex');
+  // ── type policy (Plan 3 Task 12): the code floor (TYPE_POLICY) merged with what a superadmin raised in marketplace_type_policy. Never below the floor.
+  const TIERS = ['data', 'declarative', 'executable'] as const;
+  const TRUST_ORDER = ['private', 'community', 'verified', 'official'] as const;
+  const maxTrust = (a: typeof TRUST_ORDER[number], b: typeof TRUST_ORDER[number]) => (TRUST_ORDER.indexOf(a) >= TRUST_ORDER.indexOf(b) ? a : b);
+  async function effectivePolicy(q: { query: Client['query'] } | pg.Pool): Promise<Record<string, TypePolicy>> {
+    const rows = (await (q as pg.Pool).query('SELECT type, risk_tier, manual_review, min_publisher_trust FROM marketplace_type_policy')).rows;
+    const out: Record<string, TypePolicy> = {};
+    for (const t of LISTING_TYPES) out[t] = { ...TYPE_POLICY[t] };
+    for (const r of rows) {
+      const f = TYPE_POLICY[r.type as ListingType]; if (!f) continue;
+      out[r.type] = { riskTier: maxTier(f.riskTier, TIERS.includes(r.risk_tier) ? r.risk_tier : f.riskTier), manualReview: f.manualReview || r.manual_review === true,
+        minPublisherTrust: maxTrust(f.minPublisherTrust, TRUST_ORDER.includes(r.min_publisher_trust) ? r.min_publisher_trust : f.minPublisherTrust) };
+    }
+    return out;
   }
+
+  // ── submissions
+  /** What a reviewer acknowledges: the Plan 3 Task 1 hash (src/marketplace/summary.ts), computed server side from the stored manifest and artifact hash. */
+  const summaryHash = reviewSummaryHash;
   async function submit(adminId: string, role: AdminRole, req: IncomingMessage, sp: URLSearchParams) {
     const ct = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
     if (ct !== 'application/zip') throw fail(415, 'unsupported_media_type', 'Send the package as application/zip.');
@@ -260,9 +273,9 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     const verified = report.verified === true && report.ok;
     const state: VersionState = report.ok ? 'submitted' : 'rejected';
     const verdict = !report.ok ? 'blocked' : verified ? 'clean' : 'pending';
-    const policy = TYPE_POLICY[m.type];
+    const policy = (await effectivePolicy(pool))[m.type];
     const riskTier = maxTier(policy?.riskTier ?? 'executable', report.riskTier ?? 'data');
-    const manualReview = needsManualReview(m.type, riskTier, report.checks);
+    const manualReview = (policy?.manualReview ?? true) || needsManualReview(m.type, riskTier, report.checks);
     const stored = await putArtifact(deps.store, bytes);   // content addressed; the bytes never reach a log or an audit row
     const versionId = newId('ver');
     const [major, minor, patch] = semverParts(m.version);
@@ -348,8 +361,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const to = transition(v.state, action);
       // A type that needs manual review (unknown types count as needing it): NO role is exempt from separation of duties, and the
       // reviewer must acknowledge the exact permission summary the server computes from the stored version.
-      const scanChecks = (action === 'approve' || action === 'publish') ? (((await latestScan(c, versionId))?.findings?.checks ?? []) as Array<{ name: string }>) : [];
-      const manual = needsManualReview(String(v.manifest?.type), v.risk_tier ?? null, scanChecks);
+      const scanChecks = (action === 'approve' || action === 'publish') ? (((await latestScan(c, versionId))?.findings?.checks ?? []) as Array<{ name: string; ok: boolean; skipped?: boolean; detail?: string }>) : [];
+      const manual = needsManualReview(String(v.manifest?.type), v.risk_tier ?? null, scanChecks) || (action === 'approve' || action === 'publish' ? (await effectivePolicy(c))[String(v.manifest?.type)]?.manualReview === true : false);
       if (manual && (action === 'approve' || action === 'publish')) {
         const sub = (await c.query(`SELECT actor FROM marketplace_release_events WHERE version_id = $1 AND event = 'submitted' ORDER BY id LIMIT 1`, [versionId])).rows[0];
         const owner = (await c.query(`SELECT l.owner_user_id FROM marketplace_listings l WHERE l.id = $1`, [v.listing_id])).rows[0]?.owner_user_id;
@@ -357,7 +370,10 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       }
       let ack: string | undefined;
       if (manual && action === 'approve') {
-        const want = summaryHash(v.manifest, v.sha256, v.risk_tier ?? null);
+        const sum = buildReviewSummary(v.manifest.type as ListingType, v.manifest, { artifactSha256: v.sha256, riskTier: v.risk_tier ?? null, checks: scanChecks });
+        // a reviewer must not approve what they could not read in full
+        if (sum.truncated) throw fail(409, 'summary_truncated', 'The review summary of this version is larger than can be shown; it cannot be approved.');
+        const want = sum.sha256;
         const got = typeof body.ack_summary_sha256 === 'string' ? body.ack_summary_sha256.toLowerCase() : '';
         if (got !== want) throw fail(409, 'summary_ack_required', 'Approve with ack_summary_sha256 set to the permission summary hash of this exact version.', { expectedSummarySha256: want });
         ack = want;
@@ -567,7 +583,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     const visibility = oneOf(sp.get('visibility'), VISIBILITIES, 'visibility');
     const state = oneOf(sp.get('state'), VERSION_STATES, 'state');
     const publisher = idParam(sp.get('publisher'), PUBLISHER_ID, 'publisher');
-    const tier = oneOf(sp.get('tier'), ['data', 'declarative', 'executable'] as const, 'tier');
+    const tier = oneOf(sp.get('riskTier') ?? sp.get('tier'), ['data', 'declarative', 'executable'] as const, 'riskTier');
+    const mr = oneOf(sp.get('manualReview'), ['true', 'false'] as const, 'manualReview');
     const q = sp.get('q')?.trim() || null;
     if (q !== null && q.length > 200) throw fail(400, 'bad_request', 'q is too long (200 characters at most).');
     const cur = decodeCursor(sp.get('page'), LISTING_ID);
@@ -580,10 +597,15 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     if (publisher) where.push(`l.publisher_id = ${$(publisher)}`);
     if (state) where.push(`lv.state = ${$(state)}`);
     if (tier) where.push(`lv.risk_tier = ${$(tier)}`);
+    if (mr) {
+      // the same rule as needsManualReview(): the type's policy row says so (a type with no row counts as manual), or an agent/bundle whose latest version is executable
+      const manualSql = `(COALESCE((SELECT p.manual_review FROM marketplace_type_policy p WHERE p.type = l.type), true) OR (l.type IN ('agent','bundle') AND lv.risk_tier = 'executable'))`;
+      where.push(mr === 'true' ? manualSql : `NOT ${manualSql}`);
+    }
     if (q) { const a = $(q), b = $(`%${likeEscape(q.toLowerCase())}%`); where.push(`(l.search @@ websearch_to_tsquery('simple', ${a}::text) OR lower(l.id) LIKE ${b} OR lower(l.title) LIKE ${b})`); }
     if (cur) { const u = $(cur.u), id = $(cur.id); where.push(`(l.updated_at < ${u}::timestamptz OR (l.updated_at = ${u}::timestamptz AND l.id > ${id}::text))`); }
     const lim = $(limit + 1);
-    return read(adminId, 'list_catalog', null, { q, type, visibility, publisher, state, tier }, async (c) => {
+    return read(adminId, 'list_catalog', null, { q, type, visibility, publisher, state, tier, manualReview: mr }, async (c) => {
       const rows = (await c.query(`
         SELECT l.id, l.title, l.type, l.publisher_id, l.visibility, l.trust, l.updated_at, ${UTC('l.updated_at')} AS updated_raw,
                lv.id AS latest_version_id, lv.version AS latest_version, lv.state AS version_state, lv.scan_verdict, lv.risk_tier,
@@ -597,12 +619,13 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
          ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
          ORDER BY l.updated_at DESC, l.id ASC LIMIT ${lim}`, values)).rows;
       const page = rows.slice(0, limit), last = page[page.length - 1];
+      const eff = await effectivePolicy(c);
       return {
         items: page.map((r) => ({
           id: r.id, name: r.title, type: r.type, publisher: r.publisher_id, visibility: r.visibility, trust: r.trust, state: r.version_state ?? null,
           latestVersion: r.latest_version ?? null, latestVersionId: r.latest_version_id ?? null, installs: r.installs, activeInstalls: r.active_installs,
           ratingAvg: r.rating_avg === null ? null : Number(r.rating_avg), ratingCount: Number(r.rating_count ?? 0), updatedAt: r.updated_at, scanVerdict: r.scan_verdict ?? null,
-          ...((BRIDGE_TYPES as readonly string[]).includes(r.type) ? { riskTier: r.risk_tier ?? null } : {}),
+          riskTier: r.risk_tier ?? null, manualReview: eff[r.type]?.manualReview === true || needsManualReview(r.type, r.risk_tier ?? null),
         })),
         nextPage: rows.length > limit && last ? encodeCursor(last.updated_raw, last.id) : null,
       };
@@ -638,10 +661,38 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
                (SELECT s.findings FROM marketplace_security_scans s WHERE s.version_id = v.id AND s.scanner = $2 ORDER BY s.at DESC, s.id DESC LIMIT 1) AS overall
           FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id
          WHERE v.state = ANY($1::text[]) ORDER BY v.created_at ASC, v.id ASC LIMIT ${PAGE_MAX}`, [state ? [state] : ['submitted', 'in_review'], OVERALL])).rows;
-      return { items: rows.map((r) => ({ versionId: r.id, listingId: r.listing_id, name: r.title, type: r.type, publisher: r.publisher_id, version: r.version, state: r.state,
-        scanVerdict: r.scan_verdict, verified: r.overall?.verified === true, submittedAt: r.created_at, riskTier: r.risk_tier ?? null,
-        ...(needsManualReview(r.type, r.risk_tier ?? null, r.overall?.checks ?? []) ? { manualReview: true, summarySha256: summaryHash(r.manifest, r.sha256, r.risk_tier ?? null) } : {}),
-        ...((BRIDGE_TYPES as readonly string[]).includes(r.type) ? { review: reviewSummary(r) } : {}) })) };
+      const eff = await effectivePolicy(c);
+      return { items: rows.map((r) => {
+        const checks = (r.overall?.checks ?? []) as Array<{ name: string; ok: boolean; skipped?: boolean; detail?: string }>;
+        const manual = needsManualReview(r.type, r.risk_tier ?? null, checks) || eff[r.type]?.manualReview === true;
+        const sum = manual || (BRIDGE_TYPES as readonly string[]).includes(r.type) ? buildReviewSummary(r.type as ListingType, r.manifest, { artifactSha256: r.sha256, riskTier: r.risk_tier ?? null, checks }) : null;
+        return { versionId: r.id, listingId: r.listing_id, name: r.title, type: r.type, publisher: r.publisher_id, version: r.version, state: r.state,
+          scanVerdict: r.scan_verdict, verified: r.overall?.verified === true, submittedAt: r.created_at, riskTier: r.risk_tier ?? null,
+          ...(manual && sum ? { manualReview: true, summarySha256: sum.sha256, highRisk: sum.highRisk, summaryTruncated: sum.truncated } : { manualReview: false }),
+          ...((BRIDGE_TYPES as readonly string[]).includes(r.type) ? { review: reviewSummary(r) } : {}) };
+      }) };
+    });
+  }
+
+  /** One queue entry in full: the server-built review summary the reviewer acknowledges, from the stored manifest and recorded checks only. */
+  async function submissionDetail(adminId: string, versionId: string) {
+    return read(adminId, 'view_submission', null, { versionId }, async (c) => {
+      const r = (await c.query(`
+        SELECT v.id, v.listing_id, v.version, v.state, v.scan_verdict, v.created_at, v.manifest, v.sha256, v.risk_tier, l.title, l.type, l.publisher_id, l.trust,
+               (SELECT s.findings FROM marketplace_security_scans s WHERE s.version_id = v.id AND s.scanner = $2 ORDER BY s.at DESC, s.id DESC LIMIT 1) AS overall,
+               (SELECT e.actor FROM marketplace_release_events e WHERE e.version_id = v.id AND e.event = 'submitted' ORDER BY e.id LIMIT 1) AS submitted_by
+          FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id WHERE v.id = $1`, [versionId, OVERALL])).rows[0];
+      if (!r) throw fail(404, 'not_found', 'No such version.');
+      const checks = (r.overall?.checks ?? []) as Array<{ name: string; ok: boolean; skipped?: boolean; detail?: string }>;
+      const eff = await effectivePolicy(c);
+      const manual = needsManualReview(r.type, r.risk_tier ?? null, checks) || eff[r.type]?.manualReview === true;
+      const sum = buildReviewSummary(r.type as ListingType, r.manifest, { artifactSha256: r.sha256, riskTier: r.risk_tier ?? null, checks });
+      return { versionId: r.id, listingId: r.listing_id, name: r.title, type: r.type, publisher: r.publisher_id, trust: r.trust, version: r.version, state: r.state, scanVerdict: r.scan_verdict,
+        verified: r.overall?.verified === true, submittedAt: r.created_at, submittedBy: r.submitted_by ?? null, riskTier: sum.riskTier, manualReview: manual,
+        policy: { effective: eff[r.type] ?? null, floor: TYPE_POLICY[r.type as ListingType] ?? null },
+        summary: { text: sum.text, sections: sum.sections, validation: sum.validation, truncated: sum.truncated }, summarySha256: sum.sha256, highRisk: sum.highRisk,
+        acknowledgement: manual ? { required: true, field: 'ack_summary_sha256', action: 'POST /admin/marketplace/versions/:id/approve', note: 'Approve with ack_summary_sha256 set to summarySha256. A different submitter and publisher is required, whatever your role.' } : { required: false },
+        ...((BRIDGE_TYPES as readonly string[]).includes(r.type) ? { review: reviewSummary(r) } : {}) };
     });
   }
 
@@ -873,6 +924,153 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     });
   }
 
+  // ── advanced types (Plan 3 Task 12): type policy, per-type halt, per-type analytics and the risky-type security view
+  const RISKY_TYPES = LISTING_TYPES.filter((t) => t !== 'template' && t !== 'skill');
+  const typeParam = (v: string): ListingType => { if (!(LISTING_TYPES as readonly string[]).includes(v)) throw fail(404, 'not_found', 'Not found.'); return v as ListingType; };
+
+  async function typePolicy(adminId: string) {
+    return read(adminId, 'view_type_policy', null, {}, async (c) => {
+      const eff = await effectivePolicy(c);
+      const rows = (await c.query('SELECT type, updated_by, updated_at FROM marketplace_type_policy')).rows;
+      const meta = new Map(rows.map((r) => [r.type as string, r]));
+      return { items: LISTING_TYPES.map((t) => ({
+        type: t, ...eff[t], floor: TYPE_POLICY[t], raised: JSON.stringify(eff[t]) !== JSON.stringify(TYPE_POLICY[t]),
+        supported: OPERATIONAL[t]?.supported === true, updatedBy: meta.get(t)?.updated_by ?? null, updatedAt: meta.get(t)?.updated_at ?? null,
+      })), note: 'The code floor can only be raised here, never lowered. A raised value applies to submissions and approvals from now on; versions already published are not re-judged.' };
+    });
+  }
+
+  async function setTypePolicy(adminId: string, type: ListingType, body: Record<string, unknown>) {
+    const known = new Set(['riskTier', 'manualReview', 'minPublisherTrust', 'reason']);
+    for (const k of Object.keys(body)) if (!known.has(k)) throw fail(400, 'bad_request', `Unknown field ${JSON.stringify(k.slice(0, 40))}.`);
+    const reason = reasonOf(body.reason, true);
+    const riskTier = body.riskTier === undefined ? null : oneOf(typeof body.riskTier === 'string' ? body.riskTier : '#', TIERS, 'riskTier');
+    const minTrust = body.minPublisherTrust === undefined ? null : oneOf(typeof body.minPublisherTrust === 'string' ? body.minPublisherTrust : '#', TRUST_ORDER, 'minPublisherTrust');
+    if (body.manualReview !== undefined && typeof body.manualReview !== 'boolean') throw fail(400, 'bad_request', 'manualReview must be true or false.');
+    if (riskTier === null && minTrust === null && body.manualReview === undefined) throw fail(400, 'bad_request', 'Nothing to change: give riskTier, manualReview or minPublisherTrust.');
+    const floor = TYPE_POLICY[type];
+    return tx(async (c) => {
+      const cur = (await c.query('SELECT risk_tier, manual_review, min_publisher_trust FROM marketplace_type_policy WHERE type = $1 FOR UPDATE', [type])).rows[0];
+      if (!cur) throw fail(404, 'not_found', 'Not found.');
+      const next = { riskTier: riskTier ?? cur.risk_tier, manualReview: body.manualReview === undefined ? cur.manual_review : body.manualReview, minPublisherTrust: minTrust ?? cur.min_publisher_trust };
+      const below: string[] = [];
+      if (TIERS.indexOf(next.riskTier) < TIERS.indexOf(floor.riskTier)) below.push(`riskTier (floor ${floor.riskTier})`);
+      if (floor.manualReview && next.manualReview !== true) below.push('manualReview (floor true)');
+      if (TRUST_ORDER.indexOf(next.minPublisherTrust) < TRUST_ORDER.indexOf(floor.minPublisherTrust)) below.push(`minPublisherTrust (floor ${floor.minPublisherTrust})`);
+      if (below.length) throw fail(409, 'below_floor', `The policy of ${type} cannot be set below its code floor: ${below.join(', ')}.`, { floor });
+      await c.query('UPDATE marketplace_type_policy SET risk_tier = $2, manual_review = $3, min_publisher_trust = $4, updated_by = $5, updated_at = now() WHERE type = $1',
+        [type, next.riskTier, next.manualReview, next.minPublisherTrust, adminId]);
+      await audit(c, adminId, 'set_type_policy', null, { type, before: { riskTier: cur.risk_tier, manualReview: cur.manual_review, minPublisherTrust: cur.min_publisher_trust }, after: next, reason });
+      return { type, ...next, floor };
+    });
+  }
+
+  /** Quarantines every published or deprecated version of one type in ONE statement, with one release event per version and one audit row. Devices pick it up on their next status sync. */
+  async function haltType(adminId: string, type: ListingType, body: Record<string, unknown>) {
+    for (const k of Object.keys(body)) if (k !== 'reason') throw fail(400, 'bad_request', `Unknown field ${JSON.stringify(k.slice(0, 40))}.`);
+    const reason = reasonOf(body.reason, true)!;
+    return tx(async (c) => {
+      const r = await c.query(`
+        WITH t AS (SELECT v.id, v.listing_id, v.state FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id
+                    WHERE l.type = $1 AND v.state IN ('published','deprecated') ORDER BY v.id FOR UPDATE OF v),
+             u AS (UPDATE marketplace_versions v SET state = 'quarantined' FROM t WHERE v.id = t.id RETURNING v.id),
+             e AS (INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail)
+                   SELECT t.listing_id, t.id, 'quarantined', $2, jsonb_build_object('reason', $3::text, 'from', t.state, 'to', 'quarantined', 'halt', $1::text) FROM t JOIN u ON u.id = t.id RETURNING 1)
+        SELECT (SELECT count(*) FROM u)::int AS versions, (SELECT count(DISTINCT listing_id) FROM t)::int AS listings, (SELECT count(*) FROM e)::int AS events,
+               COALESCE((SELECT jsonb_agg(t.id ORDER BY t.id) FROM (SELECT id FROM t ORDER BY id LIMIT 200) t), '[]'::jsonb) AS ids`, [type, adminId, reason]);
+      const row = r.rows[0];
+      await audit(c, adminId, 'halt_type', null, { type, reason, versions: row.versions, listings: row.listings, events: row.events, versionIds: row.ids });
+      return { type, quarantinedVersions: row.versions, listings: row.listings, releaseEvents: row.events, versionIds: row.ids,
+        note: 'Devices learn of this on their next installs status sync (state quarantined). Submissions of this type are not blocked; publish nothing until the cause is understood.' };
+    });
+  }
+
+  /** Install failure text is device-reported and free-form: bucket it, strip hosts, urls, emails, paths, ids and token-looking runs, and drop anything that still looks like a credential. */
+  function sanitizeReason(raw: unknown): string {
+    let t = typeof raw === 'string' ? raw.slice(0, 400) : '';
+    t = t.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>').replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '<email>')
+      .replace(/(?:\b[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?/gi, '<host>').replace(/(?:[A-Za-z]:\\|\/)[^\s:;,)'"]+/g, '<path>')
+      .replace(/\b(?:usr|ver|dev|ins|lst|tm)_[A-Za-z0-9_-]+/g, '<id>').replace(/[A-Za-z0-9_+/=-]{20,}/g, '<redacted>').replace(/\d{4,}/g, '<n>')
+      .replace(/\s+/g, ' ').trim();
+    if (!checkNoLiteralSecrets(t, new Set()).ok) return '<redacted>';
+    return safeText(t, 140) || '(no reason recorded)';
+  }
+
+  async function advancedAnalytics(adminId: string, sp: URLSearchParams) {
+    const from = day(sp.get('from'), 'from'), to = day(sp.get('to'), 'to');
+    if (from && to && from > to) throw fail(400, 'bad_request', 'from is after to.');
+    const rangeFor = (col: string, values: unknown[]) => { let r = ''; if (from) { values.push(from); r += ` AND ${col} >= $${values.length}::date`; } if (to) { values.push(to); r += ` AND ${col} < $${values.length}::date + 1`; } return r; };
+    return read(adminId, 'view_analytics_advanced', null, { from, to }, async (c) => {
+      const q = async (sql: (rg: (col: string) => string) => string) => { const values: unknown[] = []; const rows = (await c.query(sql((col) => rangeFor(col, values)), values)).rows; return rows; };
+      const [published, versions, inst, uninst, incidents, failed, cov] = await series([
+        () => q(() => `SELECT l.type, count(*)::int AS n FROM marketplace_listings l WHERE EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.listing_id = l.id AND v.state = 'published') GROUP BY l.type`),
+        () => q(() => `SELECT l.type, v.state, count(*)::int AS n FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id GROUP BY l.type, v.state`),
+        () => q((rg) => `SELECT l.type,
+              count(*) FILTER (WHERE i.state NOT IN ('requested','permission_review','failed')${rg('i.installed_at')})::int AS installs,
+              count(*) FILTER (WHERE i.state = 'failed'${rg('i.installed_at')})::int AS failed,
+              count(*) FILTER (WHERE i.state IN ${LIVE_INSTALL} AND i.enabled)::int AS active,
+              count(*) FILTER (WHERE i.state IN ${LIVE_INSTALL})::int AS live,
+              count(*) FILTER (WHERE i.state = 'installed')::int AS awaiting_configuration
+            FROM marketplace_installs i JOIN marketplace_listings l ON l.id = i.listing_id GROUP BY l.type`),
+        () => q((rg) => `SELECT l.type, count(*)::int AS n FROM marketplace_install_events e JOIN marketplace_listings l ON l.id = e.listing_id WHERE e.event = 'uninstalled'${rg('e.at')} GROUP BY l.type`),
+        () => q((rg) => `SELECT l.type, count(*) FILTER (WHERE e.event = 'revoked')::int AS revoked, count(*) FILTER (WHERE e.event = 'quarantined')::int AS quarantined
+            FROM marketplace_release_events e JOIN marketplace_listings l ON l.id = e.listing_id WHERE e.event IN ('revoked','quarantined')${rg('e.at')} GROUP BY l.type`),
+        () => q((rg) => `SELECT l.type, i.last_error, count(*)::int AS n FROM marketplace_installs i JOIN marketplace_listings l ON l.id = i.listing_id
+            WHERE i.state = 'failed'${rg('i.installed_at')} GROUP BY l.type, i.last_error ORDER BY n DESC, l.type LIMIT 500`),
+        () => c.query(`SELECT (SELECT count(DISTINCT device_id) FROM marketplace_installs)::int AS reporting, (SELECT count(*) FROM devices)::int AS known`).then((r) => r.rows),
+      ]);
+      const by = <T extends { type: string }>(rows: T[]) => new Map(rows.map((r) => [r.type, r]));
+      const mp = by(published), mi = by(inst), mu = by(uninst), mn = by(incidents);
+      const reasons = new Map<string, Map<string, number>>();
+      for (const r of failed) { const k = sanitizeReason(r.last_error); const m = reasons.get(r.type) ?? new Map<string, number>(); m.set(k, (m.get(k) ?? 0) + r.n); reasons.set(r.type, m); }
+      const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
+      const stateCounts = (t: string) => Object.fromEntries(versions.filter((r) => r.type === t).map((r) => [r.state, r.n]));
+      return {
+        filters: { from, to },
+        byType: LISTING_TYPES.map((t) => {
+          const i = (mi.get(t) as any) ?? { installs: 0, failed: 0, active: 0, live: 0, awaiting_configuration: 0 };
+          const rs = [...(reasons.get(t) ?? new Map<string, number>())].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 10).map(([reason, count]) => ({ reason, count }));
+          return { type: t, publishedListings: (mp.get(t) as any)?.n ?? 0, versionsByState: stateCounts(t), installs: i.installs, failedInstalls: i.failed, failureRate: ratio(i.failed, i.installs + i.failed),
+            activeInstalls: i.active, liveInstalls: i.live, uninstalls: (mu.get(t) as any)?.n ?? 0,
+            revokes: (mn.get(t) as any)?.revoked ?? 0, quarantines: (mn.get(t) as any)?.quarantined ?? 0,
+            awaitingConfiguration: i.awaiting_configuration, awaitingConfigurationRate: ratio(i.awaiting_configuration, i.live), failedReasons: rs };
+        }),
+        telemetryCoverage: { devicesReporting: cov[0].reporting, devicesKnown: cov[0].known, ratio: ratio(cov[0].reporting, cov[0].known) },
+        notCollected: NOT_COLLECTED,
+        notes: ['Counts are rows in the install, release and version tables; they are device-reported and never claim to be complete (see telemetryCoverage).',
+          'installs, failedInstalls, uninstalls, revokes and quarantines are limited to from/to; versionsByState, publishedListings, activeInstalls, liveInstalls and awaitingConfiguration are snapshots.',
+          'awaitingConfiguration counts installs still in the "installed" state (not yet configured or enabled): a server-side proxy for "needs configuration", which only the device knows exactly.',
+          'failedReasons are device-reported text, bucketed after removing hosts, urls, emails, paths, ids and token-like runs.'],
+      };
+    });
+  }
+
+  async function advancedSecurity(adminId: string) {
+    return read(adminId, 'view_security_advanced', null, {}, async (c) => {
+      const select = (cond: string) => `
+        SELECT v.id, v.listing_id, v.version, v.state, v.risk_tier, l.type, l.title, l.publisher_id, l.trust,
+               (SELECT e.detail ->> 'reason' FROM marketplace_release_events e WHERE e.version_id = v.id AND e.event IN ('quarantined','revoked') ORDER BY e.id DESC LIMIT 1) AS reason,
+               (SELECT e.actor FROM marketplace_release_events e WHERE e.version_id = v.id AND e.event IN ('quarantined','revoked') ORDER BY e.id DESC LIMIT 1) AS actor,
+               (SELECT e.at FROM marketplace_release_events e WHERE e.version_id = v.id AND e.event IN ('quarantined','revoked') ORDER BY e.id DESC LIMIT 1) AS at,
+               (SELECT count(*) FROM marketplace_installs i WHERE i.version_id = v.id AND i.state IN ${LIVE_INSTALL})::int AS live_installs,
+               (SELECT count(*) FROM marketplace_reports r WHERE r.listing_id = v.listing_id AND r.state IN ('open','triaged'))::int AS open_reports
+          FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id
+         WHERE l.type = ANY($1::text[]) AND ${cond} ORDER BY v.created_at DESC, v.id ASC LIMIT 100`;
+      const [quar, rev, high, counts] = await series([
+        () => c.query(select(`v.state = 'quarantined'`), [RISKY_TYPES]),
+        () => c.query(select(`v.state = 'revoked'`), [RISKY_TYPES]),
+        () => c.query(select(`v.risk_tier = 'executable' AND v.state IN ('published','deprecated')`), [RISKY_TYPES]),
+        () => c.query(`SELECT l.type, v.state, count(*)::int AS n FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id
+                        WHERE l.type = ANY($1::text[]) AND (v.state IN ('quarantined','revoked') OR (v.risk_tier = 'executable' AND v.state IN ('published','deprecated'))) GROUP BY l.type, v.state`, [RISKY_TYPES]),
+      ]);
+      const item = (r: any) => ({ versionId: r.id, listingId: r.listing_id, name: safeText(r.title, 120), type: r.type, version: r.version, state: r.state, riskTier: r.risk_tier ?? null, publisher: r.publisher_id, trust: r.trust,
+        reason: r.reason ? safeText(r.reason, 300) : null, by: r.actor ?? null, at: r.at ?? null, liveInstalls: r.live_installs, openReports: r.open_reports });
+      return { types: RISKY_TYPES, quarantined: quar.rows.map(item), revoked: rev.rows.map(item), highTierPublished: high.rows.map(item),
+        counts: counts.rows.map((r) => ({ type: r.type, state: r.state, n: r.n })),
+        note: 'Each list shows at most 100 versions, newest first. highTierPublished is every published or deprecated version whose risk tier is executable. Report only: nothing here changes a version; use the version page to quarantine or revoke.' };
+    });
+  }
+
   // ── organization policy and team assignments (Plan 2 Task 7)
   async function orgPolicy(adminId: string) {
     return read(adminId, 'view_org_policy', null, {}, (c) => readPolicy(c, 'org', 'default'));
@@ -932,6 +1130,12 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const vid = (v: string) => { if (!OPAQUE_ID.test(v)) throw fail(404, 'not_found', 'Not found.'); return v; };
 
       if (a === 'submissions' && !id && m === 'POST') { need('marketplace.write'); const r = await submit(adminId, role, req, sp); return send(r.status, r.body), true; }
+      if (a === 'type-policy' && !id && m === 'GET') { need('marketplace.read'); return send(200, await typePolicy(adminId)), true; }
+      if (a === 'type-policy' && id && !sub && m === 'PUT') { need('marketplace.policy'); return send(200, await setTypePolicy(adminId, typeParam(id), await jsonBody(req))), true; }
+      if (a === 'types' && id && sub === 'halt' && m === 'POST') { need('marketplace.moderate'); return send(200, await haltType(adminId, typeParam(id), await jsonBody(req))), true; }
+      if (a === 'analytics' && id === 'advanced' && !sub && m === 'GET') { need('marketplace.read'); return send(200, await advancedAnalytics(adminId, sp)), true; }
+      if (a === 'security' && id === 'advanced' && !sub && m === 'GET') { need('marketplace.read'); return send(200, await advancedSecurity(adminId)), true; }
+      if (a === 'submissions' && id && !sub && m === 'GET') { need('marketplace.read'); return send(200, await submissionDetail(adminId, vid(id))), true; }
       if (a === 'submissions' && !id && m === 'GET') { need('marketplace.read'); return send(200, await queue(adminId, sp)), true; }
       if (a === 'catalog' && !id && m === 'GET') { need('marketplace.read'); return send(200, await catalog(adminId, sp)), true; }
       if (a === 'versions' && id && !sub && m === 'GET') { need('marketplace.read'); return send(200, await versionDetail(adminId, vid(id))), true; }

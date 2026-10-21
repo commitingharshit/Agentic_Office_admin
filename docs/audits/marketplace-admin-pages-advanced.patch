@@ -1,0 +1,618 @@
+diff --git a/src/app/admin/marketplace/actions.ts b/src/app/admin/marketplace/actions.ts
+index 87413fe..fa52774 100644
+--- a/src/app/admin/marketplace/actions.ts
++++ b/src/app/admin/marketplace/actions.ts
+@@ -3,8 +3,8 @@
+ // with the outcome in the address. The API enforces permissions and the state machine again; these only carry the request.
+ import { revalidatePath } from 'next/cache';
+ import { redirect } from 'next/navigation';
+-import { adminApi, AdminApiError } from '../../../lib/admin-api';
+-import { ACTIONS, PUBLISHABLE_TYPES, VISIBILITIES, packValidation } from '../../../lib/marketplace';
++import { adminApi, AdminApiError, load } from '../../../lib/admin-api';
++import { ACTIONS, PUBLISHABLE_TYPES, VISIBILITIES, approvalRequest, haltRequest, packValidation, policyChange } from '../../../lib/marketplace';
+ import { requireAdmin } from '../../../lib/session';
+ 
+ const field = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
+@@ -70,3 +70,33 @@ export async function submitPackage(f: FormData) {
+   revalidatePath('/admin/marketplace', 'layout');
+   return redirect(`${back}?vr=${packValidation(r.validation)}&version=${encodeURIComponent(r.versionId)}&state=${encodeURIComponent(r.state)}`);
+ }
++
++/** Approve a version that needs manual review: only with the box ticked and the summary hash that was on screen. The API compares it with the hash of the stored version again. */
++export async function approveWithAck(f: FormData) {
++  const id = field(f, 'id'), back = `/admin/marketplace/review/${encodeURIComponent(id)}`;
++  const r = approvalRequest({ reviewed: field(f, 'reviewed'), ack: field(f, 'ack') });
++  if (!r.ok) return done(back, 'err', r.error);
++  await act(back, 'Version approved.', (acting) => adminApi(`/admin/marketplace/versions/${encodeURIComponent(id)}/approve`, { acting, method: 'POST', body: r.body }));
++}
++
++/** Quarantine every published version of one type. A typed confirmation and a reason are required here; the API requires the reason and marketplace.moderate. */
++export async function haltTypeAction(f: FormData) {
++  const back = '/admin/marketplace/advanced';
++  const r = haltRequest({ type: field(f, 'type'), confirm: field(f, 'confirm'), reason: field(f, 'reason') });
++  if (!r.ok) return done(back, 'err', r.error);
++  let n = 0;
++  await act(back, 'Halted.', async (acting) => { const x = await adminApi<{ quarantinedVersions: number }>(`/admin/marketplace/types/${encodeURIComponent(r.type)}/halt`, { acting, method: 'POST', body: { reason: r.reason } }); n = x.quarantinedVersions; });
++  return done(back, 'msg', `Halted ${r.type}: ${n} version${n === 1 ? '' : 's'} quarantined.`);
++}
++
++/** Raise a type's policy (superadmin). The floor comes from the API, never from the form. */
++export async function saveTypePolicy(f: FormData) {
++  const back = '/admin/marketplace/policy', type = field(f, 'type');
++  const admin = await requireAdmin(back);
++  const cur = await load<{ items: Array<{ type: string; floor: { riskTier: string; manualReview: boolean; minPublisherTrust: string } }> }>('/admin/marketplace/type-policy', admin.id);
++  const row = cur.ok ? cur.data.items.find((x) => x.type === type) : undefined;
++  if (!row) return done(back, 'err', 'Unknown type.');
++  const r = policyChange(row.floor, { riskTier: field(f, 'riskTier'), manualReview: field(f, 'manualReview'), minPublisherTrust: field(f, 'minPublisherTrust'), reason: field(f, 'reason') });
++  if (!r.ok) return done(back, 'err', r.error);
++  await act(back, `Policy of ${type} saved.`, (acting) => adminApi(`/admin/marketplace/type-policy/${encodeURIComponent(type)}`, { acting, method: 'PUT', body: r.body }));
++}
+diff --git a/src/app/admin/marketplace/advanced/page.tsx b/src/app/admin/marketplace/advanced/page.tsx
+new file mode 100644
+index 0000000..77b2e5a
+--- /dev/null
++++ b/src/app/admin/marketplace/advanced/page.tsx
+@@ -0,0 +1,50 @@
++import Link from 'next/link';
++import { HaltForm } from '../../../../components/admin/HaltForm';
++import { StateBadge } from '../../../../components/admin/marketplace';
++import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, ago, num } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { ADVANCED_TYPES, tierTone } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++import { haltTypeAction } from '../actions';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Advanced Types' };
++
++const Rows = ({ items, empty }: { items: any[]; empty: string }) => (
++  <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Type</th><th>Version</th><th>State</th><th>Risk</th><th>Live installs</th><th>Open reports</th><th>Why</th></tr></thead>
++    <tbody>{items.map((r) => (
++      <tr key={r.versionId}><td><b>{r.name}</b><div className="faint mono">{r.listingId}</div></td><td className="mono">{r.type}</td>
++        <td><Link className="mono" href={`/admin/marketplace/versions/${encodeURIComponent(r.versionId)}`}>{r.version}</Link></td><td><StateBadge state={r.state} /></td>
++        <td>{r.riskTier ? <StatusBadge status={tierTone(r.riskTier)}>{r.riskTier}</StatusBadge> : '—'}</td><td className="right">{num(r.liveInstalls)}</td><td className="right">{num(r.openReports)}</td>
++        <td style={{ maxWidth: 320 }}>{r.reason ?? <span className="faint">—</span>}{r.by ? <div className="faint">by {r.by} {ago(r.at)}</div> : null}</td></tr>))}
++      {!items.length && <tr><td colSpan={8} className="dt-empty">{empty}</td></tr>}</tbody></table></div>
++);
++
++/** Security view for the types that run something or reach outside the app: pulled versions, executable versions still live, and the per-type halt. */
++export default async function AdvancedSecurity({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const res = await load<any>('/admin/marketplace/security/advanced', person.id);
++  const canHalt = permissions.includes('marketplace.moderate');
++  return (
++    <>
++      <PageHeader title="Advanced Types" subtitle="Hooks, bridges, connectors, routines, memory, workflows, agents and bundles: what was pulled, what is live at the highest risk tier, and a per-type emergency stop." />
++      <Flash q={q} />
++      {res.ok ? (
++        <>
++          <Section title="Quarantined" count={res.data.quarantined.length}><Rows items={res.data.quarantined} empty="No advanced-type version is quarantined." /></Section>
++          <Section title="Revoked" count={res.data.revoked.length}><Rows items={res.data.revoked} empty="No advanced-type version is revoked." /></Section>
++          <Section title="Live at the executable tier" count={res.data.highTierPublished.length}><Rows items={res.data.highTierPublished} empty="No published version is at the executable tier." /></Section>
++          <p className="hint">{res.data.note}</p>
++          <Section title="Halt a type">
++            {canHalt ? <Notice tone="warn" icon="alert">Halting quarantines every published or deprecated version of the type at once. Devices pick it up on their next status check.</Notice> : <Notice icon="info">Halting needs marketplace.moderate; your role can read this page only.</Notice>}
++            <div className="table-wrap" style={{ marginTop: 10 }}><table className="dt"><thead><tr><th>Type</th><th>Quarantined</th><th>Revoked</th><th>Live executable</th>{canHalt && <th />}</tr></thead>
++              <tbody>{ADVANCED_TYPES.map((t) => {
++                const n = (state: string) => (res.data.counts as any[]).filter((c) => c.type === t && c.state === state).reduce((a, c) => a + c.n, 0);
++                return <tr key={t}><td className="mono">{t}</td><td className="right">{num(n('quarantined'))}</td><td className="right">{num(n('revoked'))}</td><td className="right">{num(n('published') + n('deprecated'))}</td>{canHalt && <td className="right"><HaltForm action={haltTypeAction} type={t} /></td>}</tr>;
++              })}</tbody></table></div>
++          </Section>
++        </>) : <ErrorState message={res.error} />}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/analytics/page.tsx b/src/app/admin/marketplace/analytics/page.tsx
+index ce16a99..111fab4 100644
+--- a/src/app/admin/marketplace/analytics/page.tsx
++++ b/src/app/admin/marketplace/analytics/page.tsx
+@@ -3,7 +3,7 @@ import { FilterBar } from '../../../../components/admin/DataTable';
+ import { MetricCard } from '../../../../components/admin/MetricCard';
+ import { ErrorState, Notice, PageHeader, Section, num } from '../../../../components/admin/bits';
+ import { load } from '../../../../lib/admin-api';
+-import { LISTING_TYPES, listQuery, pct } from '../../../../lib/marketplace';
++import { LISTING_TYPES, listQuery, pct, typeRows } from '../../../../lib/marketplace';
+ import { adminContext } from '../../../../lib/session';
+ 
+ export const dynamic = 'force-dynamic';
+@@ -12,7 +12,10 @@ export const metadata = { title: 'Marketplace Analytics' };
+ export default async function MarketplaceAnalytics({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+   const q = await searchParams;
+   const { person } = await adminContext();
+-  const res = await load<any>(`/admin/marketplace/analytics${listQuery(q, { type: LISTING_TYPES, publisher: true, from: true, to: true })}`, person.id);
++  const [res, byType] = await Promise.all([
++    load<any>(`/admin/marketplace/analytics${listQuery(q, { type: LISTING_TYPES, publisher: true, from: true, to: true })}`, person.id),
++    load<any>(`/admin/marketplace/analytics/advanced${listQuery(q, { from: true, to: true })}`, person.id),
++  ]);
+   return (
+     <>
+       <PageHeader title="Usage Analytics" subtitle="Derived from install records and reviews the apps report. Nothing here is estimated." />
+@@ -31,6 +34,23 @@ export default async function MarketplaceAnalytics({ searchParams }: { searchPar
+               <MetricCard icon="support" label="Average rating" value={d.averageRating == null ? 'No ratings' : d.averageRating.toFixed(2)} hint={`${num(d.ratingCount)} ratings`} />
+               <MetricCard icon="reliability" label="Security events" value={num(d.securityIncidents)} hint="quarantines and revocations" />
+             </div>
++            <Section title="By type">
++              {byType.ok ? (() => {
++                const rows = typeRows(byType.data);
++                return (
++                  <>
++                    <div className="table-wrap"><table className="dt"><thead><tr><th>Type</th><th className="right">Published</th><th className="right">Installs</th><th className="right">Failed</th><th className="right">Failure rate</th><th className="right">Active</th><th className="right">Awaiting config</th><th className="right">Uninstalled</th><th className="right">Quarantined</th><th className="right">Revoked</th></tr></thead>
++                      <tbody>{rows.map((r) => <tr key={r.type}><td className="mono">{r.type}</td><td className="right">{num(r.publishedListings)}</td><td className="right">{num(r.installs)}</td><td className="right">{num(r.failedInstalls)}</td><td className="right">{pct(r.failureRate)}</td><td className="right">{num(r.activeInstalls)}</td><td className="right">{num(r.awaitingConfiguration)} <span className="faint">({pct(r.awaitingConfigurationRate)})</span></td><td className="right">{num(r.uninstalls)}</td><td className="right">{num(r.quarantines)}</td><td className="right">{num(r.revokes)}</td></tr>)}
++                        {!rows.length && <tr><td colSpan={10} className="dt-empty">No per-type data.</td></tr>}</tbody></table></div>
++                    {rows.some((r) => r.failedReasons.length) && (
++                      <>
++                        <p className="hint" style={{ marginTop: 10 }}><b>Why installs failed</b> (device-reported text with hosts, urls, emails, paths and ids removed):</p>
++                        <ul>{rows.filter((r) => r.failedReasons.length).map((r) => <li key={r.type}><span className="mono">{r.type}</span>: {r.failedReasons.map((x) => `${x.reason} (${num(x.count)})`).join('; ')}</li>)}</ul>
++                      </>)}
++                    {(byType.data.notes as string[] | undefined)?.map((n) => <p key={n} className="hint">{n}</p>)}
++                  </>);
++              })() : <ErrorState message={byType.error} />}
++            </Section>
+             <Section title="Popular categories">
+               {cats.length ? <BarChart data={cats.map((c) => c.installs)} labels={cats.map((c) => c.tag)} /> : <p className="hint">No tagged listings with installs yet.</p>}
+             </Section>
+diff --git a/src/app/admin/marketplace/catalog/page.tsx b/src/app/admin/marketplace/catalog/page.tsx
+index 9a3d5cb..daba344 100644
+--- a/src/app/admin/marketplace/catalog/page.tsx
++++ b/src/app/admin/marketplace/catalog/page.tsx
+@@ -3,7 +3,7 @@ import { DataTable, FilterBar, type Column } from '../../../../components/admin/
+ import { CursorPager, StateBadge, VerdictBadge } from '../../../../components/admin/marketplace';
+ import { ErrorState, Flash, PageHeader, StatusBadge, ago, num } from '../../../../components/admin/bits';
+ import { load } from '../../../../lib/admin-api';
+-import { CATALOG_FILTERS, LISTING_TYPES, VERSION_STATES, VISIBILITIES, listQuery, ratingText } from '../../../../lib/marketplace';
++import { CATALOG_FILTERS, LISTING_TYPES, RISK_TIERS, VERSION_STATES, VISIBILITIES, listQuery, ratingText, tierTone } from '../../../../lib/marketplace';
+ import { adminContext } from '../../../../lib/session';
+ 
+ export const dynamic = 'force-dynamic';
+@@ -23,13 +23,16 @@ export default async function Catalog({ searchParams }: { searchParams: Promise<
+         { name: 'type', label: 'Type', type: 'select', options: opts(LISTING_TYPES, 'Any type') },
+         { name: 'publisher', label: 'Publisher', placeholder: 'publisher id', width: 160 },
+         { name: 'visibility', label: 'Visibility', type: 'select', options: opts(VISIBILITIES, 'Any visibility') },
+-        { name: 'state', label: 'State', type: 'select', options: opts(VERSION_STATES, 'Any state') }]} />
++        { name: 'state', label: 'State', type: 'select', options: opts(VERSION_STATES, 'Any state') },
++        { name: 'riskTier', label: 'Risk tier', type: 'select', options: opts(RISK_TIERS, 'Any tier') },
++        { name: 'manualReview', label: 'Manual review', type: 'select', options: [['', 'Either'], ['true', 'needs manual review'], ['false', 'no manual review']] }]} />
+       {res.ok ? (
+         <>
+           <DataTable<any> base="/admin/marketplace/catalog" query={q} rowKey={(r) => r.id} rows={res.data.items} emptyTitle="No listings match" emptyHint="Nothing is published yet, or the filters exclude everything."
+             columns={[
+               { key: 'name', label: 'Name', render: (r) => <><b>{r.name}</b><div className="faint mono">{r.id}</div></> },
+-              { key: 'type', label: 'Type' },
++              { key: 'type', label: 'Type', render: (r) => <span className="mono">{r.type}</span> },
++              { key: 'risk', label: 'Risk', render: (r) => <>{r.riskTier ? <StatusBadge status={tierTone(r.riskTier)}>{r.riskTier}</StatusBadge> : <span className="faint">—</span>}{r.manualReview ? <div className="faint">manual review</div> : null}</> },
+               { key: 'publisher', label: 'Publisher' },
+               { key: 'visibility', label: 'Visibility', render: (r) => <>{r.visibility} <StatusBadge status={r.trust === 'official' ? 'admin' : r.trust === 'verified' ? 'active' : ''}>{r.trust}</StatusBadge></> },
+               { key: 'state', label: 'State', render: (r) => <StateBadge state={r.state} /> },
+diff --git a/src/app/admin/marketplace/policy/page.tsx b/src/app/admin/marketplace/policy/page.tsx
+new file mode 100644
+index 0000000..806bbbf
+--- /dev/null
++++ b/src/app/admin/marketplace/policy/page.tsx
+@@ -0,0 +1,42 @@
++import { ErrorState, Flash, Notice, PageHeader, StatusBadge, when } from '../../../../components/admin/bits';
++import { load } from '../../../../lib/admin-api';
++import { RISK_TIERS, TRUST_LEVELS } from '../../../../lib/marketplace';
++import { adminContext } from '../../../../lib/session';
++import { saveTypePolicy } from '../actions';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Type Policy' };
++
++export default async function TypePolicy({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const res = await load<any>('/admin/marketplace/type-policy', person.id);
++  const canEdit = permissions.includes('marketplace.policy');
++  return (
++    <>
++      <PageHeader title="Type Policy" subtitle="How strictly each type is reviewed. The built-in floor can be raised here, never lowered." />
++      <Flash q={q} />
++      {!canEdit && <Notice icon="info">Only a superadmin can change a policy; you can read it.</Notice>}
++      {res.ok ? (
++        <div className="table-wrap"><table className="dt"><thead><tr><th>Type</th><th>Floor</th><th>Now</th><th>Supported</th>{canEdit && <th>Raise</th>}</tr></thead>
++          <tbody>{(res.data.items as any[]).map((r) => (
++            <tr key={r.type}>
++              <td className="mono">{r.type}</td>
++              <td>{r.floor.riskTier} · {r.floor.manualReview ? 'manual review' : 'no manual review'} · publisher {r.floor.minPublisherTrust}+</td>
++              <td>{r.riskTier} · {r.manualReview ? 'manual review' : 'no manual review'} · publisher {r.minPublisherTrust}+ {r.raised ? <StatusBadge status="pending">raised</StatusBadge> : null}{r.updatedAt ? <div className="faint">{r.updatedBy} {when(r.updatedAt)}</div> : null}</td>
++              <td>{r.supported ? 'yes' : <span className="faint">not yet</span>}</td>
++              {canEdit && <td>
++                <form action={saveTypePolicy} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
++                  <input type="hidden" name="type" value={r.type} />
++                  <select name="riskTier" defaultValue={r.riskTier} aria-label={`Risk tier of ${r.type}`}>{RISK_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}</select>
++                  <label><input type="checkbox" name="manualReview" defaultChecked={r.manualReview} /> manual review</label>
++                  <select name="minPublisherTrust" defaultValue={r.minPublisherTrust} aria-label={`Minimum publisher trust of ${r.type}`}>{TRUST_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}</select>
++                  <input name="reason" required minLength={3} maxLength={1000} placeholder="Reason (required)" aria-label={`Reason for changing ${r.type}`} />
++                  <button className="btn sm primary">Save</button>
++                </form></td>}
++            </tr>))}</tbody></table></div>
++      ) : <ErrorState message={res.error} />}
++      {res.ok && <p className="hint">{res.data.note}</p>}
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/review/[id]/page.tsx b/src/app/admin/marketplace/review/[id]/page.tsx
+new file mode 100644
+index 0000000..0d6e63c
+--- /dev/null
++++ b/src/app/admin/marketplace/review/[id]/page.tsx
+@@ -0,0 +1,45 @@
++import Link from 'next/link';
++import { AckForm } from '../../../../../components/admin/AckForm';
++import { ValidationReport, VersionActions, StateBadge, VerdictBadge } from '../../../../../components/admin/marketplace';
++import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, ago } from '../../../../../components/admin/bits';
++import { load } from '../../../../../lib/admin-api';
++import { ackState, tierTone } from '../../../../../lib/marketplace';
++import { adminContext } from '../../../../../lib/session';
++import { approveWithAck } from '../../actions';
++
++export const dynamic = 'force-dynamic';
++export const metadata = { title: 'Marketplace Review' };
++
++/** One submission in full: the summary the SERVER built from the stored version (nothing here is computed from the package in the browser) and the acknowledgement step. */
++export default async function ReviewDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
++  const { id } = await params;
++  const q = await searchParams;
++  const { person, permissions } = await adminContext();
++  const res = await load<any>(`/admin/marketplace/submissions/${encodeURIComponent(id)}`, person.id);
++  if (!res.ok) return <><PageHeader title="Review" /><ErrorState message={res.error} /></>;
++  const d = res.data, ack = ackState(d, permissions), back = `/admin/marketplace/review/${encodeURIComponent(id)}`;
++  const sections = (d.summary?.sections ?? []) as Array<{ title: string; lines: string[] }>;
++  return (
++    <>
++      <PageHeader title={d.name} subtitle={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><StateBadge state={d.state} /><VerdictBadge verdict={d.scanVerdict} /><StatusBadge status={tierTone(d.riskTier)}>{d.riskTier}</StatusBadge><span className="mono">{d.listingId} {d.version}</span><span className="faint">{d.type} · {d.publisher} · submitted {ago(d.submittedAt)}{d.submittedBy ? ` by ${d.submittedBy}` : ''}</span></span>}
++        actions={<VersionActions versionId={d.versionId} state={d.state} permissions={permissions} back={back} ackRequired={d.manualReview === true} />} />
++      <Flash q={q} />
++      {Array.isArray(d.highRisk) && d.highRisk.length > 0 && (
++        <Notice tone="warn" icon="alert"><span><b>High-risk items ({d.highRisk.length}):</b> {(d.highRisk as string[]).join('; ')}.</span></Notice>)}
++      {d.summary?.truncated && <Notice tone="bad" icon="alert">This summary was cut to its size limit. Treat the package as unsafe: it cannot be approved from here.</Notice>}
++      {sections.map((s) => (
++        <Section key={s.title} title={s.title}>
++          <div className="card"><div className="card-body"><pre className="mono" style={{ whiteSpace: 'pre-wrap', margin: 0, overflowWrap: 'anywhere' }}>{s.lines.join('\n')}</pre></div></div>
++        </Section>))}
++      <Section title="Automated checks"><ValidationReport report={{ ok: !((d.summary?.validation ?? []) as Array<{ ok: boolean }>).some((c) => !c.ok), verified: d.verified === true, checks: d.summary?.validation ?? [] }} /></Section>
++      <Section title="Acknowledgement">
++        <p className="hint">Policy for {d.type}: risk tier at least <b>{d.policy?.floor?.riskTier ?? '—'}</b>{d.policy?.effective && JSON.stringify(d.policy.effective) !== JSON.stringify(d.policy.floor) ? <> (raised to <b>{d.policy.effective.riskTier}</b>)</> : null}, manual review {d.manualReview ? 'required' : 'not required'}.
++          {' '}The summary hash is <code className="mono">{d.summarySha256}</code>.</p>
++        {ack.offer
++          ? <AckForm action={approveWithAck} id={d.versionId} hash={d.summarySha256} />
++          : <Notice icon="info">{ack.reason}</Notice>}
++      </Section>
++      <p><Link className="btn" href="/admin/marketplace/review">Back to the queue</Link> <Link className="btn" href={`/admin/marketplace/versions/${encodeURIComponent(d.versionId)}`}>Raw manifest and events</Link></p>
++    </>
++  );
++}
+diff --git a/src/app/admin/marketplace/review/page.tsx b/src/app/admin/marketplace/review/page.tsx
+index 6fa64ab..9c72f4b 100644
+--- a/src/app/admin/marketplace/review/page.tsx
++++ b/src/app/admin/marketplace/review/page.tsx
+@@ -2,7 +2,7 @@ import Link from 'next/link';
+ import { VersionActions, StateBadge, VerdictBadge } from '../../../../components/admin/marketplace';
+ import { ErrorState, Flash, Notice, PageHeader, StatusBadge, ago } from '../../../../components/admin/bits';
+ import { load } from '../../../../lib/admin-api';
+-import { allowedActions } from '../../../../lib/marketplace';
++import { allowedActions, riskPreview, tierTone } from '../../../../lib/marketplace';
+ import { adminContext } from '../../../../lib/session';
+ 
+ export const dynamic = 'force-dynamic';
+@@ -15,19 +15,25 @@ export default async function ReviewQueue({ searchParams }: { searchParams: Prom
+   const canReview = permissions.includes('marketplace.review');
+   return (
+     <>
+-      <PageHeader title="Review Queue" subtitle="Claim, approve, reject and publish. Approving or publishing needs a verified security scan." />
++      <PageHeader title="Review Queue" subtitle="Claim, approve, reject and publish. Approving or publishing needs a verified security scan; a type that needs manual review is approved from its review page, after you read its permission summary." />
+       <Flash q={q} />
+       {!canReview && <Notice tone="warn" icon="alert">Your role can read the queue but not decide on it (needs marketplace.review).</Notice>}
+       {res.ok ? (
+-        <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Version</th><th>State</th><th>Security</th><th>Submitted</th><th>Actions</th></tr></thead>
+-          <tbody>{(res.data.items as any[]).map((r) => (
+-            <tr key={r.versionId}>
+-              <td><Link href={`/admin/marketplace/versions/${r.versionId}`}><b>{r.name}</b></Link> <span className="faint">{r.type} · {r.publisher}</span></td>
+-              <td className="mono">{r.version}</td><td><StateBadge state={r.state} /></td>
+-              <td><VerdictBadge verdict={r.scanVerdict} /> {!r.verified && <StatusBadge status="pending">not verified</StatusBadge>}</td>
+-              <td>{ago(r.submittedAt)}</td>
+-              <td>{allowedActions(r.state, permissions).length || permissions.includes('marketplace.write') ? <VersionActions versionId={r.versionId} state={r.state} permissions={permissions} back="/admin/marketplace/review" /> : <span className="faint">—</span>}</td></tr>))}
+-            {!res.data.items.length && <tr><td colSpan={6} className="dt-empty">Nothing is waiting for review.</td></tr>}</tbody></table></div>
++        <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Version</th><th>Risk</th><th>State</th><th>Security</th><th>Submitted</th><th>Actions</th></tr></thead>
++          <tbody>{(res.data.items as any[]).map((r) => {
++            const risks = riskPreview(r.highRisk, 3);
++            return (
++              <tr key={r.versionId}>
++                <td><Link href={`/admin/marketplace/review/${encodeURIComponent(r.versionId)}`}><b>{r.name}</b></Link> <span className="faint">{r.type} · {r.publisher}</span></td>
++                <td className="mono">{r.version}</td>
++                <td>{r.riskTier ? <StatusBadge status={tierTone(r.riskTier)}>{r.riskTier}</StatusBadge> : <span className="faint">—</span>} {r.manualReview && <StatusBadge status="pending">manual review</StatusBadge>}
++                  {risks.shown.length > 0 && <div className="faint" style={{ maxWidth: 280 }}>{risks.shown.join('; ')}{risks.more ? `; +${risks.more} more` : ''}</div>}</td>
++                <td><StateBadge state={r.state} /></td>
++                <td><VerdictBadge verdict={r.scanVerdict} /> {!r.verified && <StatusBadge status="pending">not verified</StatusBadge>}</td>
++                <td>{ago(r.submittedAt)}</td>
++                <td>{allowedActions(r.state, permissions).length || permissions.includes('marketplace.write') ? <VersionActions versionId={r.versionId} state={r.state} permissions={permissions} back="/admin/marketplace/review" ackRequired={r.manualReview === true} /> : <span className="faint">—</span>}</td></tr>);
++          })}
++            {!res.data.items.length && <tr><td colSpan={7} className="dt-empty">Nothing is waiting for review.</td></tr>}</tbody></table></div>
+       ) : <ErrorState message={res.error} />}
+     </>
+   );
+diff --git a/src/components/admin/AckForm.tsx b/src/components/admin/AckForm.tsx
+new file mode 100644
+index 0000000..1498c62
+--- /dev/null
++++ b/src/components/admin/AckForm.tsx
+@@ -0,0 +1,20 @@
++'use client';
++import { useState } from 'react';
++
++/** The approval step for a version that needs manual review: the button stays disabled until the box is ticked, and the hash posted is the one rendered on this page. */
++export function AckForm({ action, id, hash }: { action: (f: FormData) => void | Promise<void>; id: string; hash: string }) {
++  const [ok, setOk] = useState(false);
++  return (
++    <form action={action} className="card" style={{ marginTop: 12 }}>
++      <input type="hidden" name="id" value={id} />
++      <input type="hidden" name="ack" value={hash} />
++      <div className="card-body" style={{ display: 'grid', gap: 10 }}>
++        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
++          <input type="checkbox" name="reviewed" checked={ok} onChange={(e) => setOk(e.target.checked)} style={{ marginTop: 4 }} />
++          <span><b>I reviewed this summary.</b> I understand that approving acknowledges exactly this version, with summary hash <code className="mono">{hash.slice(0, 16)}…</code>. If the version changes, the server will refuse this approval.</span>
++        </label>
++        <div><button className="btn primary" disabled={!ok}>Approve this version</button></div>
++      </div>
++    </form>
++  );
++}
+diff --git a/src/components/admin/HaltForm.tsx b/src/components/admin/HaltForm.tsx
+new file mode 100644
+index 0000000..81ea2b2
+--- /dev/null
++++ b/src/components/admin/HaltForm.tsx
+@@ -0,0 +1,30 @@
++'use client';
++import { useRef, useState } from 'react';
++
++/** Halt a whole type: quarantine every published version of it. Needs the type name typed back and a written reason. */
++export function HaltForm({ action, type }: { action: (f: FormData) => void | Promise<void>; type: string }) {
++  const ref = useRef<HTMLDialogElement>(null);
++  const [confirm, setConfirm] = useState(''), [reason, setReason] = useState('');
++  const ready = confirm.trim() === type && reason.trim().length >= 3;
++  return (
++    <>
++      <button type="button" className="btn sm danger" onClick={() => { setConfirm(''); setReason(''); ref.current?.showModal(); }}>Halt {type}</button>
++      <dialog ref={ref} aria-label={`Halt ${type}`}>
++        <form action={action}>
++          <input type="hidden" name="type" value={type} />
++          <div className="dialog-body">
++            <h3>Halt every published {type}?</h3>
++            <div className="muted">Every published or deprecated version of type <b>{type}</b> is quarantined at once. Devices stop using them on their next status check. Submissions are not blocked.</div>
++            <label className="field"><span>Type “{type}” to confirm</span><input name="confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" autoFocus /></label>
++            <label className="field"><span>Reason (required, kept in the release history and audit log)</span>
++              <textarea name="reason" required minLength={3} maxLength={1000} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
++          </div>
++          <div className="dialog-foot">
++            <button type="button" className="btn" onClick={() => ref.current?.close()}>Cancel</button>
++            <button className="btn danger" disabled={!ready}>Halt {type}</button>
++          </div>
++        </form>
++      </dialog>
++    </>
++  );
++}
+diff --git a/src/components/admin/marketplace.tsx b/src/components/admin/marketplace.tsx
+index df4991d..fefdb48 100644
+--- a/src/components/admin/marketplace.tsx
++++ b/src/components/admin/marketplace.tsx
+@@ -51,12 +51,14 @@ const COPY: Record<MarketAction, { label: string; title: string; body: string; t
+ };
+ 
+ /** Only the buttons the state machine allows AND the viewer's permissions cover. The API checks both again. */
+-export function VersionActions({ versionId, state, permissions, back }: { versionId: string; state: string; permissions: readonly string[]; back: string }) {
+-  const acts = allowedActions(state, permissions);
++export function VersionActions({ versionId, state, permissions, back, ackRequired = false }: { versionId: string; state: string; permissions: readonly string[]; back: string; /** a version that needs manual review is approved from its review page, with the summary acknowledgement */ ackRequired?: boolean }) {
++  const acts = allowedActions(state, permissions).filter((a) => !(ackRequired && a === 'approve'));
+   const rescan = canRescan(state, permissions);
+-  if (!acts.length && !rescan) return <span className="faint">No actions available{permissions.some((p) => p.startsWith('marketplace.')) ? ' in this state for your role' : ''}.</span>;
++  const reviewLink = ackRequired && allowedActions(state, permissions).includes('approve') ? <Link className="btn sm primary" href={`/admin/marketplace/review/${encodeURIComponent(versionId)}`}>Review summary</Link> : null;
++  if (!acts.length && !rescan && !reviewLink) return <span className="faint">No actions available{permissions.some((p) => p.startsWith('marketplace.')) ? ' in this state for your role' : ''}.</span>;
+   return (
+     <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
++      {reviewLink}
+       {acts.map((a) => {
+         const c = COPY[a], fields = { id: versionId, action: a, back };
+         return c.reason
+diff --git a/src/components/admin/nav.ts b/src/components/admin/nav.ts
+index 8f50f89..ff97942 100644
+--- a/src/components/admin/nav.ts
++++ b/src/components/admin/nav.ts
+@@ -30,6 +30,8 @@ export const NAV: NavGroup[] = [
+     { href: '/admin/marketplace/collections', label: 'Collections & Bundles', icon: 'gift', perm: 'marketplace.read', soon: true },
+     { href: '/admin/marketplace/releases', label: 'Versions & Releases', icon: 'clock', perm: 'marketplace.read' },
+     { href: '/admin/marketplace/security', label: 'Security Reports', icon: 'reliability', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/advanced', label: 'Advanced Types', icon: 'alert', perm: 'marketplace.read' },
++    { href: '/admin/marketplace/policy', label: 'Type Policy', icon: 'settings', perm: 'marketplace.policy' },
+     { href: '/admin/marketplace/settings', label: 'Settings', icon: 'settings', perm: 'marketplace.read' },
+   ] },
+   { label: 'Intelligence', items: [
+diff --git a/src/lib/admin-api.ts b/src/lib/admin-api.ts
+index f8772e9..2408f0b 100644
+--- a/src/lib/admin-api.ts
++++ b/src/lib/admin-api.ts
+@@ -9,7 +9,7 @@ export class AdminApiError extends Error {
+   constructor(status: number, message: string, body?: Record<string, any>) { super(message); this.status = status; this.body = body; }
+ }
+ 
+-export async function adminApi<T = any>(path: string, o: { acting: string; method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; bytes?: { data: Uint8Array; contentType: string } }): Promise<T> {
++export async function adminApi<T = any>(path: string, o: { acting: string; method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; bytes?: { data: Uint8Array; contentType: string } }): Promise<T> {
+   const token = process.env.AO_ADMIN_API_TOKEN;
+   if (!base() || !token) throw new AdminApiError(503, 'The admin API is not configured (AO_ADMIN_API_URL, AO_ADMIN_API_TOKEN).');
+   const r = await fetch(`${base()}${path}`, {
+diff --git a/src/lib/marketplace.ts b/src/lib/marketplace.ts
+index 10916a1..b0e822d 100644
+--- a/src/lib/marketplace.ts
++++ b/src/lib/marketplace.ts
+@@ -1,7 +1,11 @@
+ // Pure helpers for the Marketplace admin pages: no Next, no fetch, so they are unit-tested directly (test/marketplace.test.ts).
+ // The API (accounts-sync /admin/marketplace/*) is the authority on every rule below; these mirror it only to decide what to SHOW.
+ 
+-export const LISTING_TYPES = ['template', 'skill', 'agent', 'workflow', 'extension', 'theme'] as const;
++export const LISTING_TYPES = ['template', 'skill', 'agent', 'memory', 'connector', 'bridge', 'surface', 'workflow', 'hook', 'routine', 'bundle'] as const;
++/** Types whose installs run something or reach outside the app: they get the advanced review, security and analytics views. */
++export const ADVANCED_TYPES = LISTING_TYPES.filter((t) => t !== 'template' && t !== 'skill');
++export const RISK_TIERS = ['data', 'declarative', 'executable'] as const;
++export const TRUST_LEVELS = ['private', 'community', 'verified', 'official'] as const;
+ /** Types the publish wizard accepts in this release (the API's validators exist for these two only). */
+ export const PUBLISHABLE_TYPES: readonly string[] = ['template', 'skill'];
+ export const VISIBILITIES = ['public', 'org', 'team', 'private'] as const;
+@@ -66,7 +70,7 @@ export function listQuery(raw: Record<string, string | undefined>, allow: Record
+   const s = p.toString();
+   return s ? `?${s}` : '';
+ }
+-export const CATALOG_FILTERS = { q: true, type: LISTING_TYPES, publisher: true, visibility: VISIBILITIES, state: VERSION_STATES, page: true } as const;
++export const CATALOG_FILTERS = { q: true, type: LISTING_TYPES, publisher: true, visibility: VISIBILITIES, state: VERSION_STATES, riskTier: RISK_TIERS, manualReview: ['true', 'false'], page: true } as const;
+ 
+ /** Link to the same list with a different cursor, preserving the other filters. */
+ export function withParams(base: string, q: Record<string, string | undefined>, patch: Record<string, string | undefined>): string {
+@@ -98,3 +102,78 @@ export function unpackValidation(s: string | undefined): { ok: boolean; verified
+     return { ok: d.ok === true, verified: d.verified === true, checks: d.checks.filter((c: any) => c && typeof c.name === 'string').map((c: any) => ({ name: c.name, ok: !!c.ok, skipped: !!c.skipped, required: !!c.required, detail: typeof c.detail === 'string' ? c.detail : undefined })) };
+   } catch { return null; }
+ }
++
++// ── advanced types (Plan 3 Task 12)
++
++export interface ReviewDetail { versionId?: string; state?: string; manualReview?: boolean; summarySha256?: string; summary?: { truncated?: boolean } }
++const SHA256 = /^[0-9a-f]{64}$/;
++export const isSha256 = (v: unknown): v is string => typeof v === 'string' && SHA256.test(v);
++
++/**
++ * Whether the acknowledgement step may be offered for this version, and if not why. Mirrors the API (which decides): a version that
++ * needs manual review is approved only with the exact summary hash, and a summary too large to read in full cannot be approved at all.
++ */
++export function ackState(d: ReviewDetail | null | undefined, permissions: readonly string[]): { offer: boolean; required: boolean; reason?: string } {
++  if (!d) return { offer: false, required: false, reason: 'No review detail is available.' };
++  const required = d.manualReview === true;
++  if (!permissions.includes('marketplace.review')) return { offer: false, required, reason: 'Your role cannot decide on submissions (needs marketplace.review).' };
++  if (!['submitted', 'in_review'].includes(String(d.state))) return { offer: false, required, reason: `This version is ${String(d.state).replace(/_/g, ' ')}; only submitted or in-review versions can be approved.` };
++  if (!required) return { offer: false, required, reason: 'This type does not need an acknowledgement: approve it from the version page.' };
++  if (d.summary?.truncated === true) return { offer: false, required, reason: 'The review summary is larger than can be shown. It cannot be approved from here.' };
++  if (!isSha256(d.summarySha256)) return { offer: false, required, reason: 'The server did not return a valid summary hash.' };
++  return { offer: true, required };
++}
++
++/** The body the approve action posts, or why it must not post. The checkbox is not optional and the hash must be the one that was on screen. */
++export function approvalRequest(f: { reviewed?: string; ack?: string }): { ok: true; body: { ack_summary_sha256: string } } | { ok: false; error: string } {
++  if (f.reviewed !== 'on' && f.reviewed !== 'true') return { ok: false, error: 'Tick "I reviewed this summary" first.' };
++  const ack = (f.ack ?? '').trim().toLowerCase();
++  if (!isSha256(ack)) return { ok: false, error: 'The summary hash is missing or malformed; reload the page.' };
++  return { ok: true, body: { ack_summary_sha256: ack } };
++}
++
++/** At most `n` risk labels, then "+k more", so a long list never pushes a table out of shape. */
++export function riskPreview(list: readonly string[] | null | undefined, n = 3): { shown: string[]; more: number } {
++  const xs = Array.isArray(list) ? list.filter((x) => typeof x === 'string') : [];
++  return { shown: xs.slice(0, n), more: Math.max(0, xs.length - n) };
++}
++export const tierTone = (t: string | null | undefined) => (t === 'executable' ? 'failed' : t === 'declarative' ? 'pending' : t === 'data' ? 'active' : '');
++
++/** A halt needs moderate, a typed confirmation of the type name and a reason; the API requires the reason and the permission again. */
++export function haltRequest(f: { type?: string; confirm?: string; reason?: string }): { ok: true; type: string; reason: string } | { ok: false; error: string } {
++  const type = (f.type ?? '').trim();
++  if (!(LISTING_TYPES as readonly string[]).includes(type)) return { ok: false, error: 'Unknown type.' };
++  if ((f.confirm ?? '').trim() !== type) return { ok: false, error: `Type "${type}" in the confirmation box to halt it.` };
++  const reason = (f.reason ?? '').trim();
++  if (reason.length < 3) return { ok: false, error: 'A reason of at least 3 characters is required.' };
++  if (reason.length > 1000) return { ok: false, error: 'The reason is too long (1000 characters at most).' };
++  return { ok: true, type, reason };
++}
++
++const TIER_RANK: Record<string, number> = { data: 0, declarative: 1, executable: 2 };
++const TRUST_RANK: Record<string, number> = { private: 0, community: 1, verified: 2, official: 3 };
++/** What a policy form may submit: values at or above the floor the server reported. The API enforces the floor; this only avoids offering the impossible. */
++export function policyChange(floor: { riskTier: string; manualReview: boolean; minPublisherTrust: string }, f: { riskTier?: string; manualReview?: string; minPublisherTrust?: string; reason?: string }):
++  { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
++  const reason = (f.reason ?? '').trim();
++  if (reason.length < 3) return { ok: false, error: 'A reason of at least 3 characters is required.' };
++  const riskTier = f.riskTier ?? '', trust = f.minPublisherTrust ?? '';
++  if (!(riskTier in TIER_RANK) || !(trust in TRUST_RANK)) return { ok: false, error: 'Choose a risk tier and a minimum publisher trust.' };
++  const manualReview = f.manualReview === 'on' || f.manualReview === 'true';
++  if (TIER_RANK[riskTier] < TIER_RANK[floor.riskTier]) return { ok: false, error: `The risk tier cannot be below ${floor.riskTier}.` };
++  if (floor.manualReview && !manualReview) return { ok: false, error: 'Manual review cannot be switched off for this type.' };
++  if (TRUST_RANK[trust] < TRUST_RANK[floor.minPublisherTrust]) return { ok: false, error: `The minimum publisher trust cannot be below ${floor.minPublisherTrust}.` };
++  return { ok: true, body: { riskTier, manualReview, minPublisherTrust: trust, reason } };
++}
++
++export interface TypeStats { type: string; installs: number; failedInstalls: number; failureRate: number | null; activeInstalls: number; uninstalls: number; revokes: number; quarantines: number; awaitingConfiguration: number; awaitingConfigurationRate: number | null; publishedListings: number; failedReasons: Array<{ reason: string; count: number }> }
++/** Rows for the by-type table. Types with no activity are kept (a zero is a fact); the order is the API's. Malformed rows are dropped, never guessed. */
++export function typeRows(d: { byType?: unknown } | null | undefined): TypeStats[] {
++  if (!d || !Array.isArray(d.byType)) return [];
++  return (d.byType as any[]).filter((r) => r && typeof r.type === 'string').map((r) => ({
++    type: r.type, installs: Number(r.installs) || 0, failedInstalls: Number(r.failedInstalls) || 0, failureRate: r.failureRate == null ? null : Number(r.failureRate), activeInstalls: Number(r.activeInstalls) || 0,
++    uninstalls: Number(r.uninstalls) || 0, revokes: Number(r.revokes) || 0, quarantines: Number(r.quarantines) || 0, awaitingConfiguration: Number(r.awaitingConfiguration) || 0,
++    awaitingConfigurationRate: r.awaitingConfigurationRate == null ? null : Number(r.awaitingConfigurationRate), publishedListings: Number(r.publishedListings) || 0,
++    failedReasons: Array.isArray(r.failedReasons) ? r.failedReasons.filter((x: any) => x && typeof x.reason === 'string').map((x: any) => ({ reason: x.reason, count: Number(x.count) || 0 })) : [],
++  }));
++}
+diff --git a/test/marketplace-advanced.test.ts b/test/marketplace-advanced.test.ts
+new file mode 100644
+index 0000000..4809dfc
+--- /dev/null
++++ b/test/marketplace-advanced.test.ts
+@@ -0,0 +1,63 @@
++// Pure helpers behind the advanced-type pages (Plan 3 Task 12). `node --import tsx --test test/marketplace-advanced.test.ts`.
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { ADVANCED_TYPES, CATALOG_FILTERS, LISTING_TYPES, ackState, approvalRequest, haltRequest, isSha256, listQuery, policyChange, riskPreview, tierTone, typeRows } from '../src/lib/marketplace.ts';
++
++const H = 'a'.repeat(64);
++const REVIEWER = ['marketplace.read', 'marketplace.review'];
++
++test('the console knows the same 11 types as the API; advanced excludes template and skill', () => {
++  assert.deepEqual([...LISTING_TYPES].sort(), ['agent', 'bridge', 'bundle', 'connector', 'hook', 'memory', 'routine', 'surface', 'template', 'skill', 'workflow'].sort());
++  assert.ok(!ADVANCED_TYPES.includes('template' as never) && !ADVANCED_TYPES.includes('skill' as never)); assert.equal(ADVANCED_TYPES.length, 9);
++});
++
++test('catalog filters accept the new type, risk tier and manual-review values and drop invented ones', () => {
++  assert.equal(listQuery({ type: 'hook', riskTier: 'executable', manualReview: 'true' }, CATALOG_FILTERS), '?type=hook&riskTier=executable&manualReview=true');
++  assert.equal(listQuery({ type: 'extension', riskTier: 'extreme', manualReview: 'maybe' }, CATALOG_FILTERS), '');
++});
++
++test('ackState: offered only to a reviewer, for a submitted manual-review version with a readable summary and a real hash', () => {
++  const base = { state: 'submitted', manualReview: true, summarySha256: H, summary: { truncated: false } };
++  assert.deepEqual(ackState(base, REVIEWER), { offer: true, required: true });
++  assert.equal(ackState({ ...base, state: 'in_review' }, REVIEWER).offer, true);
++  assert.equal(ackState(base, ['marketplace.read']).offer, false);                                   // analyst
++  for (const state of ['approved', 'published', 'rejected', 'quarantined', 'revoked']) assert.equal(ackState({ ...base, state }, REVIEWER).offer, false, state);
++  assert.equal(ackState({ ...base, summary: { truncated: true } }, REVIEWER).offer, false);           // cannot approve what cannot be read
++  assert.match(ackState({ ...base, summary: { truncated: true } }, REVIEWER).reason!, /larger than can be shown/);
++  for (const bad of [undefined, '', 'zz', 'A'.repeat(64), H.slice(1), H + 'a']) assert.equal(ackState({ ...base, summarySha256: bad as never }, REVIEWER).offer, false, String(bad));
++  assert.equal(ackState({ ...base, manualReview: false }, REVIEWER).offer, false);
++  assert.equal(ackState(null, REVIEWER).offer, false);
++});
++
++test('approvalRequest: the box must be ticked and the hash well formed; the hash is lower-cased, nothing else is passed through', () => {
++  assert.deepEqual(approvalRequest({ reviewed: 'on', ack: H }), { ok: true, body: { ack_summary_sha256: H } });
++  assert.deepEqual(approvalRequest({ reviewed: 'true', ack: ` ${H.toUpperCase()} ` }), { ok: true, body: { ack_summary_sha256: H } });
++  for (const f of [{}, { ack: H }, { reviewed: '', ack: H }, { reviewed: 'off', ack: H }, { reviewed: 'on' }, { reviewed: 'on', ack: 'nope' }, { reviewed: 'on', ack: H + '0' }]) assert.equal(approvalRequest(f).ok, false, JSON.stringify(f));
++  assert.ok(isSha256(H) && !isSha256(null) && !isSha256(5));
++});
++
++test('haltRequest: a known type, the type typed back, and a reason of 3..1000 characters', () => {
++  assert.deepEqual(haltRequest({ type: 'hook', confirm: 'hook', reason: 'CVE-1' }), { ok: true, type: 'hook', reason: 'CVE-1' });
++  for (const f of [{ type: 'nope', confirm: 'nope', reason: 'abc' }, { type: 'hook', confirm: 'Hook', reason: 'abc' }, { type: 'hook', confirm: '', reason: 'abc' }, { type: 'hook', confirm: 'hook', reason: 'ab' }, { type: 'hook', confirm: 'hook', reason: 'x'.repeat(1001) }, { type: '', confirm: '', reason: 'abc' }]) assert.equal(haltRequest(f).ok, false, JSON.stringify(f));
++});
++
++test('policyChange: only at or above the floor; manual review cannot be switched off when the floor demands it', () => {
++  const floor = { riskTier: 'declarative', manualReview: true, minPublisherTrust: 'community' };
++  assert.deepEqual(policyChange(floor, { riskTier: 'executable', manualReview: 'on', minPublisherTrust: 'verified', reason: 'tightening' }), { ok: true, body: { riskTier: 'executable', manualReview: true, minPublisherTrust: 'verified', reason: 'tightening' } });
++  for (const f of [{ riskTier: 'data', manualReview: 'on', minPublisherTrust: 'community' }, { riskTier: 'declarative', manualReview: '', minPublisherTrust: 'community' }, { riskTier: 'declarative', manualReview: 'on', minPublisherTrust: 'private' },
++    { riskTier: 'declarative', manualReview: 'on', minPublisherTrust: 'community', reason: 'x' }, { riskTier: 'wild', manualReview: 'on', minPublisherTrust: 'community', reason: 'okay' }, { manualReview: 'on', reason: 'okay' }])
++    assert.equal(policyChange(floor, { reason: 'because', ...f }).ok, false, JSON.stringify(f));
++  assert.equal(policyChange({ riskTier: 'data', manualReview: false, minPublisherTrust: 'community' }, { riskTier: 'data', manualReview: '', minPublisherTrust: 'community', reason: 'relax' }).ok, true);
++});
++
++test('riskPreview and tierTone', () => {
++  assert.deepEqual(riskPreview(['a', 'b', 'c', 'd', 'e'], 3), { shown: ['a', 'b', 'c'], more: 2 }); assert.deepEqual(riskPreview(undefined), { shown: [], more: 0 }); assert.deepEqual(riskPreview([1, 'x'] as never), { shown: ['x'], more: 0 });
++  assert.equal(tierTone('executable'), 'failed'); assert.equal(tierTone('data'), 'active'); assert.equal(tierTone(null), '');
++});
++
++test('typeRows: keeps zero rows, coerces numbers, drops malformed rows and never invents data', () => {
++  assert.deepEqual(typeRows(null), []); assert.deepEqual(typeRows({ byType: 'x' }), []);
++  const r = typeRows({ byType: [{ type: 'hook', installs: 3, failedInstalls: 2, failureRate: 0.4, failedReasons: [{ reason: 'boom <url>', count: 2 }, { nope: 1 }] }, null, { installs: 9 }, { type: 'skill' }] });
++  assert.equal(r.length, 2); assert.equal(r[0].installs, 3); assert.equal(r[0].failureRate, 0.4); assert.deepEqual(r[0].failedReasons, [{ reason: 'boom <url>', count: 2 }]);
++  assert.equal(r[1].installs, 0); assert.equal(r[1].failureRate, null); assert.equal(r[1].awaitingConfigurationRate, null);
++});
