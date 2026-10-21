@@ -228,6 +228,21 @@ export function extractOne(bytes: Uint8Array, path: string, opts: { maxBytes: nu
 
 const S_IFMT = 0o170000, S_IFLNK = 0o120000;
 
+/**
+ * Collision key for entry names. A case-insensitive, normalisation-insensitive file system (APFS, NTFS) treats names that
+ * fold equal as one file, so they must not both be in a package. NFD first (a precomposed and a combining form meet), then
+ * an upper/lower round trip, which unlike lower-casing alone also folds sharp s (ss) and long s (s), then NFC.
+ * Same function in apps/desktop/.../safeUnzip.ts; the Hermes reader uses unicodedata (see zip-differential known divergences).
+ */
+export const foldName = (s: string) => s.normalize('NFD').toUpperCase().toLowerCase().normalize('NFC');
+
+/**
+ * Per-type cap on body files (the manifest is not counted); mirrors apps/desktop MAX_FILES_BY_TYPE. The skill cap of 50 is
+ * enforced by the skill validator (validate/skill.ts, 'size-limits') and is deliberately not repeated here: the compare
+ * endpoint unpacks stored versions that predate the cap. Templates had no cap anywhere on the server.
+ */
+export const MAX_FILES_BY_TYPE: Readonly<Record<string, number>> = { template: 200 };
+
 function checkEntryPath(rel: string): void {
   if (rel.startsWith('/') || /^[A-Za-z]:/.test(rel) || rel.includes('\\') || rel.split('/').includes('..'))
     throw new UnpackError('zip-slip', `unsafe path in archive: ${JSON.stringify(rel)}`);
@@ -238,7 +253,7 @@ function checkEntryPath(rel: string): void {
 /**
  * Reads a package zip into memory. Throws UnpackError. Every check on names, modes, counts and declared sizes
  * runs on the central directory BEFORE any inflation; inflation is bounded per entry by its declared size.
- * Deferred (minor): full Unicode case folding for collision detection (NFC + toLowerCase only).
+ * Collisions are detected on foldName() (NFD + case round trip + NFC).
  */
 export function unpack(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: number } = {}): UnpackedPackage {
   const maxTotal = opts.maxTotal ?? MAX_ARTIFACT_BYTES, maxFiles = opts.maxFiles ?? 1000;
@@ -253,13 +268,20 @@ export function unpack(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: 
     const rel = isDir ? e.name.slice(0, -1) : e.name;
     checkEntryPath(rel);
     if ((e.mode & S_IFMT) === S_IFLNK) throw new UnpackError('symlink', `symlink entry in archive: ${JSON.stringify(e.name)}`);
-    const key = rel.normalize('NFC').toLowerCase();
+    const key = foldName(rel);
     if (seen.has(key)) throw new UnpackError('duplicate', `duplicate entry (or case/Unicode collision): ${JSON.stringify(e.name)}`);
     seen.add(key);
     if (isDir) continue;
     declaredTotal += e.declared;
     if (declaredTotal > maxTotal) throw new UnpackError('too-large', `archive declares more than ${maxTotal} bytes uncompressed`);
     wanted.push(e);
+  }
+
+  // A file may not also be a directory prefix of another entry (a, a/b): it cannot be written to a file system.
+  const fileKeys = new Set(wanted.map((e) => foldName(e.name)));
+  for (const e of wanted) {
+    const parts = foldName(e.name).split('/');
+    for (let i = 1; i < parts.length; i++) if (fileKeys.has(parts.slice(0, i).join('/'))) throw new UnpackError('duplicate', `entry ${JSON.stringify(e.name)} is below a path that is also a file`);
   }
 
   const files = new Map<string, Uint8Array>();
@@ -271,8 +293,12 @@ export function unpack(bytes: Uint8Array, opts: { maxTotal?: number; maxFiles?: 
   if (!manifestRaw) throw new UnpackError('missing-manifest', `${MANIFEST_NAME} not found at the package root`);
   try {
     const json = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestRaw));
-    return { files, manifest: parseManifest(json) };
+    const manifest = parseManifest(json);
+    const cap = MAX_FILES_BY_TYPE[manifest.type];
+    if (cap !== undefined && files.size > cap) throw new UnpackError('too-many-files', `a ${manifest.type} package may have ${cap} files at most, this has ${files.size}`);
+    return { files, manifest };
   } catch (e) {
+    if (e instanceof UnpackError) throw e;
     const why = e instanceof ManifestError ? e.message : `${MANIFEST_NAME} is not valid JSON: ${(e as Error).message}`;
     throw new UnpackError('bad-manifest', why, e);
   }
