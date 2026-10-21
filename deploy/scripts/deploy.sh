@@ -21,12 +21,15 @@ ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && sed 
 echo "3/6 ship the code (first remove growth files that earlier test runs left on the host: the old 0020/0021 and 0021/0022 migration names and src/growth)"
 ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && rm -f db/migrations/0020_growth.sql db/migrations/0021_releases_email.sql db/migrations/0021_growth.sql db/migrations/0022_releases_email.sql test/growth-*.test.ts && rm -rf src/growth'
 COPYFILE_DISABLE=1 tar --exclude=node_modules --exclude=.next --exclude=.DS_Store --no-xattrs -czf - \
-  accounts-sync/db accounts-sync/src accounts-sync/deploy/docker-compose.yml accounts-sync/deploy/media-worker.Dockerfile accounts-sync/deploy/Dockerfile.marketplace accounts-sync/deploy/api-gate.conf accounts-sync/deploy/.env.example accounts-sync/package.json \
+  accounts-sync/db accounts-sync/src accounts-sync/deploy/docker-compose.yml accounts-sync/deploy/media-worker.Dockerfile accounts-sync/deploy/Dockerfile.marketplace accounts-sync/deploy/api-gate.conf accounts-sync/deploy/.env.example accounts-sync/package.json accounts-sync/package-lock.json \
   control-plane/src control-plane/public control-plane/package.json control-plane/Dockerfile \
   | ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane && tar xzf - 2>/dev/null; find . -name "._*" -not -path "*/node_modules/*" -delete'
 
 echo "3b/6 the sign-in page look (Keycloak theme, with the app logo)"
 COPYFILE_DISABLE=1 tar --no-xattrs -czf - keycloak/theme | ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane && tar xzf - 2>/dev/null; find keycloak -name "._*" -delete; docker restart ao-keycloak-keycloak-1 >/dev/null && echo keycloak-restarted'
+
+echo "3c/6 runtime packages on the host (the API mounts accounts-sync/node_modules; new code can import a package the host does not have yet, and then the API cannot start)"
+ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && docker run --rm -v "$PWD":/w -w /w node:24.15.0-alpine npm install --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null && ls node_modules | tr "\n" " " && echo'
 
 echo "4/6 migrate"
 ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && (set -a; . deploy/.env; set +a; docker run --rm --network ao-live_default -v "$PWD":/w -w /w -e DATABASE_URL="postgres://ao_owner:${PG_OWNER_PASSWORD}@postgres:5432/agentic_office" -e AO_APP_PASSWORD -e AO_READONLY_PASSWORD -e AO_ADMIN_PASSWORD -e AO_AUTH_PASSWORD -e AO_BILLING_PASSWORD node:24.15.0-alpine node db/migrate.ts)'
