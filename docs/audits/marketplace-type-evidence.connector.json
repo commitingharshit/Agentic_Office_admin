@@ -1,0 +1,40 @@
+{
+  "type": "connector",
+  "mode": "api_key",
+  "script": "scripts/e2e/plan/marketplace-connector-flow.mjs",
+  "commit": "4f0de983aa63ae928e633bcb51040c5e34ad6fc3",
+  "workingTreeDirty": true,
+  "passedAt": "2026-10-21T11:21:19.625Z",
+  "result": "pass",
+  "steps": [
+    "elevated install without the native confirmation is refused and installs nothing",
+    "the plan is elevated and lists the network and secret permissions (consent is for exactly these)",
+    "install lands \"installed - needs configuration\" naming the missing fields; nothing is configured, written or exposed",
+    "verify with nothing configured says \"needs configuration\", never ok, and reaches no service",
+    "installed is NOT configured or granted: the agent sees no tool and a direct call by name is blocked on the device",
+    "a wrong key is accepted by Hermes but verify reports it failed (the service rejected it): success is never faked",
+    "reconfiguring the same instance with the right key verifies ok (the service accepted it)",
+    "the credential is in the keychain and the managed .env block only: never in config, ledger, instances.json, lockfile or any sync body",
+    "still not granted after configuring: the agent sees no tool",
+    "after grant the agent sees exactly the granted tool and calling it reaches the service WITH the API key header",
+    "the same connector installed for another agent stays invisible and uncallable, even after it is configured",
+    "production mode refuses the loopback service (nothing is applied)",
+    "a device restart re-materialises the env block from the keychain; verify is ok again",
+    "ungrant removes the tool from the agent and blocks the call",
+    "a RUNNING agent can call the granted tool",
+    "server-side revoke reaches the device through reconcile",
+    "revoke blocks the very next call in the RUNNING process (no restart) and nothing reaches the service",
+    "revoke removed the server entry, the env block, the keychain entry and the local grants; instances are marked withdrawn",
+    "uninstall removes the server entry, the env block, the ledger entry, the instance, the keychain entry and the lockfile entry"
+  ],
+  "toolCallsThatReachedTheServer": [
+    "search_issues",
+    "search_issues"
+  ],
+  "healthChecksAcceptedByTheService": [
+    false,
+    true,
+    true
+  ],
+  "notes": "loopback accepted only under AGENTICOFFICE_DEV_MODE=1 (asserted refused without it); capabilities reported connector supported by the e2e server stand-in, not by OPERATIONAL (Task 15 flips that)"
+}
