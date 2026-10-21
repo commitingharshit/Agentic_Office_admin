@@ -125,6 +125,18 @@ machine lives; approve and publish require the latest overall scan to be ok AND 
 Each transition also writes a `marketplace_release_events` row naming the actor, which is what
 `marketplace_installed_status()` reads to tell installed devices a version was quarantined or revoked.
 
+Verification results (migration `0021_marketplace_verifications.sql`, `src/marketplace/verifyStore.ts`): the
+append-only `marketplace_verifications` table is keyed to the artifact sha256 (a trigger refuses a result for
+other bytes), stages are explicit pass|fail|skipped with evidence references, never a score. Only ao_admin
+inserts (`POST /admin/marketplace/versions/:id/verification` records a worker's result, strictly validated with
+the verdict recomputed; `POST .../verify` runs the registered pipeline now; `GET .../verification` reads).
+Readers get `GET /v1/marketplace/versions/:id/verification` and `.../evidence/:sha256` under the version's own RLS
+visibility (one uniform 404). The approval gate: for each type in `marketplace_settings.verification_required_types`
+(empty by default; an operator enables a type once its pipeline exists) approve and publish need the latest
+result for the version's current sha to be `pass` (409 `verification_required` / `verification_failed`), or
+`incomplete` plus `acknowledgeIncomplete` text recorded in `admin_audit` (`marketplace.approve_incomplete`). A
+separate DB trigger (`marketplace_verification_gate`) enforces the same, composing with the 0016/0018/0019 guards.
+
 Analytics are computed from rows only. Metrics this release does not collect (`invocations`,
 `workflow_completions`, `first_use_activation`) are listed in `notCollected`, and `telemetryCoverage`
 reports devices with install rows against devices known, so partial telemetry is visible as partial.

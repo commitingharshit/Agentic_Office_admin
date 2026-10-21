@@ -125,4 +125,32 @@ describe('every rule of every marketplace migration holds after all are applied'
     await assert.rejects(() => o.query(`UPDATE marketplace_artifacts SET storage_key = 'moved' WHERE sha256 = $1`, [H('c')]), /referenced by a published version/);
     await assert.rejects(() => o.query(`UPDATE marketplace_artifacts SET size = 99 WHERE sha256 = $1`, [H('c')]), /referenced by a published version/);
   });
+  // 0021 adds NEW functions only (its gate is a separate trigger), so every rule above must still hold with it enabled.
+  test('0021: the verification gate composes with the 0016/0018/0019 guards (all fire; none replaced)', async () => {
+    await o.query(`UPDATE marketplace_settings SET verification_required_types = '{template}'`);
+    try {
+      // gate: no verification -> refused; a pass for this exact sha -> allowed
+      const { vid } = await mk({ state: 'submitted', sha: H('b') });
+      await assert.rejects(() => upd(vid, `state = 'approved'`), /no verification/);
+      await o.query(`INSERT INTO marketplace_verifications(id, version_id, sha256, pipeline, pipeline_version, verdict, stages, result_sha256, started_at, finished_at, run_by)
+        VALUES ('cv1', $1, $2, 'p', 1, 'pass', '[]', $3, now(), now(), 'x')`, [vid, H('b'), H('1')]);
+      await upd(vid, `state = 'approved'`);
+      // 0016 scan rule still fires on a verified version
+      const s = await mk({ state: 'submitted', verdict: 'blocked', sha: H('b') });
+      await o.query(`INSERT INTO marketplace_verifications(id, version_id, sha256, pipeline, pipeline_version, verdict, stages, result_sha256, started_at, finished_at, run_by)
+        VALUES ('cv2', $1, $2, 'p', 1, 'pass', '[]', $3, now(), now(), 'x')`, [s.vid, H('b'), H('2')]);
+      await assert.rejects(() => upd(s.vid, `state = 'approved'`), /scan verdict/);
+      // 0018 manual review (hook type is not in the gate list) still fires
+      const hk = await mk({ type: 'hook', state: 'approved', tier: 'executable' });
+      await assert.rejects(() => upd(hk.vid, `state = 'published'`), /manual review/);
+      // 0019 terminal state still fires
+      await o.query(`UPDATE marketplace_settings SET verification_required_types = '{}'`);
+      const t = await mk({ state: 'published' });
+      await upd(t.vid, `state = 'revoked'`);
+      await assert.rejects(() => upd(t.vid, `state = 'published'`), /terminal/);
+      // 0021 swap guard
+      await assert.rejects(() => o.query(`INSERT INTO marketplace_verifications(id, version_id, sha256, pipeline, pipeline_version, verdict, stages, result_sha256, started_at, finished_at, run_by)
+        VALUES ('cv3', $1, $2, 'p', 1, 'pass', '[]', $3, now(), now(), 'x')`, [vid, H('9'), H('3')]), /carries/);
+    } finally { await o.query(`UPDATE marketplace_settings SET verification_required_types = '{}'`); }
+  });
 });
