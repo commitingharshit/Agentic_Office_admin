@@ -1,0 +1,29 @@
+{
+  "type": "memory",
+  "mode": null,
+  "script": "scripts/e2e/plan/marketplace-memory-flow.mjs",
+  "commit": "388014324d889c30caaf54ee012ff5fb798245b7",
+  "tree": "dirty",
+  "passedAt": "2026-10-21T08:55:25.986Z",
+  "result": "pass",
+  "tests": {
+    "passing": 5,
+    "failing": 0,
+    "pending": 0
+  },
+  "covers": [
+    "publish through the real admin handler (submit, acknowledged approval by a different reviewer, publish) on embedded Postgres",
+    "hostile packages refused by the publish gate and not installable",
+    "desktop install service -> real hermes CLI in a throwaway HERMES_HOME: config.yaml memory.provider bound, `hermes memory status` and `marketplace status --verify` agree",
+    "replacing another provider fails closed without consent; with consent the previous provider is recorded",
+    "uninstall and revoke restore the previous provider; a revoked item cannot be re-enabled",
+    "needs-configuration is reported (not enabled) for a provider whose key is missing",
+    "a memory store on disk is never read or deleted",
+    "export info is hermes backup only"
+  ],
+  "notExercised": [
+    "server-side revoke delivery to the Hermes binding (Plan 3 Task 14)",
+    "native confirmation dialog and consent UI (Plan 3 Task 11)",
+    "a running gateway picking the new provider up (restart_required is reported, not simulated)"
+  ]
+}
