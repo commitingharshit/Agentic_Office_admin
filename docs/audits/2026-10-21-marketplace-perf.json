@@ -1,0 +1,430 @@
+{
+  "task": "marketplace plan 4 task 15",
+  "date": "2026-10-21",
+  "machine": {
+    "os": "darwin 25.5.0",
+    "cores": 10,
+    "ramGb": 24,
+    "node": "v24.16.0",
+    "loadAverageAtStart": [
+      51.729,
+      42.872,
+      33.729
+    ],
+    "uptime": "14:32  up 5 days, 13:30, 12 users, load averages: 51.73 42.87 33.73",
+    "loadAverageAtEnd": [
+      44.864,
+      42.688,
+      34.156
+    ]
+  },
+  "mode": {
+    "strict": false,
+    "multiplier": 2,
+    "runs": 15,
+    "warmup": 3,
+    "requests": 120,
+    "items": 200
+  },
+  "metrics": {
+    "lockfile.parse200.ms": {
+      "value": 0.65,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 60,
+      "max": 47.454
+    },
+    "lockfile.parse2000.ms": {
+      "value": 4.935,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 30,
+      "max": 65.58
+    },
+    "installed200.ms": {
+      "value": 0.779,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 30,
+      "max": 252.768
+    },
+    "reconcile200.offlineSignedIn.ms": {
+      "value": 3.479,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 15,
+      "max": 95.039
+    },
+    "reconcile200.offlineAnonymous.ms": {
+      "value": 2.162,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 15,
+      "max": 34.813
+    },
+    "startup.networkCalls": {
+      "value": 0,
+      "unit": "count",
+      "kind": "structural"
+    },
+    "startup.fsCallsAtConstruction": {
+      "value": 0,
+      "unit": "count",
+      "kind": "structural"
+    },
+    "startup.processesSpawned": {
+      "value": 0,
+      "unit": "count",
+      "kind": "structural"
+    },
+    "startup.storeFilesRead": {
+      "value": 0,
+      "unit": "count",
+      "kind": "structural"
+    },
+    "installed.storeFilesRead": {
+      "value": 0,
+      "unit": "count",
+      "kind": "structural"
+    },
+    "lockfile.readsForInstalled": {
+      "value": 1,
+      "unit": "count",
+      "kind": "structural"
+    },
+    "reconcileSchedule.initialDelayMs": {
+      "value": 30000,
+      "unit": "ms",
+      "kind": "structural"
+    },
+    "memory.moduleImport.heapMB": {
+      "value": 1.065,
+      "unit": "MB",
+      "kind": "memory",
+      "note": "heapUsed growth from importing the installer, lockfile and adapters modules"
+    },
+    "memory.installed200.heapDeltaMB": {
+      "value": 0.247,
+      "unit": "MB",
+      "kind": "memory",
+      "note": "heapUsed for constructing the service and calling installed() with 200 items minus the same with 0 items"
+    },
+    "memory.installed200.rssDeltaMB": {
+      "value": 0.141,
+      "unit": "MB",
+      "kind": "memory",
+      "note": "RSS is page-granular and noisy: informational, not budgeted",
+      "informational": true
+    },
+    "server.list24.coldFirstRequest.ms": {
+      "value": 108.061,
+      "unit": "ms",
+      "kind": "timing",
+      "note": "first request after server start, includes connection setup",
+      "informational": true
+    },
+    "server.list24.p50.ms": {
+      "value": 6.994,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 120,
+      "max": 81.74
+    },
+    "server.list24.p95.ms": {
+      "value": 20.704,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 1,
+      "max": 20.704
+    },
+    "server.search.p50.ms": {
+      "value": 4.903,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 40,
+      "max": 41.968
+    },
+    "server.search.p95.ms": {
+      "value": 11.818,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 1,
+      "max": 11.818
+    },
+    "server.detail.p50.ms": {
+      "value": 2.945,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 30,
+      "max": 11.116
+    },
+    "server.detail.p95.ms": {
+      "value": 4.879,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 1,
+      "max": 4.879
+    },
+    "server.preview.p50.ms": {
+      "value": 2.377,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 30,
+      "max": 9.733
+    },
+    "server.preview.p95.ms": {
+      "value": 7.686,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 1,
+      "max": 7.686
+    },
+    "server.compare.p50.ms": {
+      "value": 8.891,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 20,
+      "max": 31.448
+    },
+    "server.compare.p95.ms": {
+      "value": 14.752,
+      "unit": "ms",
+      "kind": "timing",
+      "n": 1,
+      "max": 14.752
+    },
+    "server.rateLimited429": {
+      "value": 0,
+      "unit": "count",
+      "kind": "timing",
+      "note": "requests answered 429 and retried after Retry-After (the in-process read limiter allows 300/min per client); retried requests are not in the samples",
+      "informational": true
+    }
+  },
+  "results": [
+    {
+      "name": "startup.networkCalls",
+      "kind": "structural",
+      "value": 0,
+      "unit": "count",
+      "budget": 0,
+      "effective": 0,
+      "cmp": "lte",
+      "status": "PASS"
+    },
+    {
+      "name": "startup.fsCallsAtConstruction",
+      "kind": "structural",
+      "value": 0,
+      "unit": "count",
+      "budget": 0,
+      "effective": 0,
+      "cmp": "lte",
+      "status": "PASS"
+    },
+    {
+      "name": "startup.processesSpawned",
+      "kind": "structural",
+      "value": 0,
+      "unit": "count",
+      "budget": 0,
+      "effective": 0,
+      "cmp": "lte",
+      "status": "PASS"
+    },
+    {
+      "name": "startup.storeFilesRead",
+      "kind": "structural",
+      "value": 0,
+      "unit": "count",
+      "budget": 0,
+      "effective": 0,
+      "cmp": "lte",
+      "status": "PASS"
+    },
+    {
+      "name": "installed.storeFilesRead",
+      "kind": "structural",
+      "value": 0,
+      "unit": "count",
+      "budget": 0,
+      "effective": 0,
+      "cmp": "lte",
+      "status": "PASS"
+    },
+    {
+      "name": "reconcileSchedule.initialDelayMs",
+      "kind": "structural",
+      "value": 30000,
+      "unit": "ms",
+      "budget": 30000,
+      "effective": 30000,
+      "cmp": "gte",
+      "status": "PASS"
+    },
+    {
+      "name": "lockfile.readsForInstalled",
+      "kind": "structural",
+      "value": 1,
+      "unit": "count",
+      "budget": 1,
+      "effective": 1,
+      "cmp": "lte",
+      "status": "PASS"
+    },
+    {
+      "name": "lockfile.parse200.ms",
+      "kind": "timing",
+      "value": 0.65,
+      "unit": "ms",
+      "budget": 1.52,
+      "effective": 20,
+      "status": "PASS"
+    },
+    {
+      "name": "lockfile.parse2000.ms",
+      "kind": "timing",
+      "value": 4.935,
+      "unit": "ms",
+      "budget": 5.85,
+      "effective": 20,
+      "status": "PASS"
+    },
+    {
+      "name": "installed200.ms",
+      "kind": "timing",
+      "value": 0.779,
+      "unit": "ms",
+      "budget": 4.14,
+      "effective": 20,
+      "status": "PASS"
+    },
+    {
+      "name": "reconcile200.offlineSignedIn.ms",
+      "kind": "timing",
+      "value": 3.479,
+      "unit": "ms",
+      "budget": 3.68,
+      "effective": 20,
+      "status": "PASS"
+    },
+    {
+      "name": "reconcile200.offlineAnonymous.ms",
+      "kind": "timing",
+      "value": 2.162,
+      "unit": "ms",
+      "budget": 3.48,
+      "effective": 20,
+      "status": "PASS"
+    },
+    {
+      "name": "memory.moduleImport.heapMB",
+      "kind": "memory",
+      "value": 1.065,
+      "unit": "MB",
+      "budget": 1.58,
+      "effective": 3.16,
+      "status": "PASS"
+    },
+    {
+      "name": "memory.installed200.heapDeltaMB",
+      "kind": "memory",
+      "value": 0.247,
+      "unit": "MB",
+      "budget": 0.42,
+      "effective": 0.84,
+      "status": "PASS"
+    },
+    {
+      "name": "server.list24.p50.ms",
+      "kind": "timing",
+      "value": 6.994,
+      "unit": "ms",
+      "budget": 31.16,
+      "effective": 62.32,
+      "status": "PASS"
+    },
+    {
+      "name": "server.list24.p95.ms",
+      "kind": "timing",
+      "value": 20.704,
+      "unit": "ms",
+      "budget": 27.28,
+      "effective": 54.56,
+      "status": "PASS"
+    },
+    {
+      "name": "server.search.p50.ms",
+      "kind": "timing",
+      "value": 4.903,
+      "unit": "ms",
+      "budget": 19.94,
+      "effective": 39.88,
+      "status": "PASS"
+    },
+    {
+      "name": "server.search.p95.ms",
+      "kind": "timing",
+      "value": 11.818,
+      "unit": "ms",
+      "budget": 12.18,
+      "effective": 24.36,
+      "status": "PASS"
+    },
+    {
+      "name": "server.detail.p50.ms",
+      "kind": "timing",
+      "value": 2.945,
+      "unit": "ms",
+      "budget": 10.25,
+      "effective": 20.5,
+      "status": "PASS"
+    },
+    {
+      "name": "server.detail.p95.ms",
+      "kind": "timing",
+      "value": 4.879,
+      "unit": "ms",
+      "budget": 9.91,
+      "effective": 20,
+      "status": "PASS"
+    },
+    {
+      "name": "server.preview.p50.ms",
+      "kind": "timing",
+      "value": 2.377,
+      "unit": "ms",
+      "budget": 9.74,
+      "effective": 20,
+      "status": "PASS"
+    },
+    {
+      "name": "server.preview.p95.ms",
+      "kind": "timing",
+      "value": 7.686,
+      "unit": "ms",
+      "budget": 13.02,
+      "effective": 26.04,
+      "status": "PASS"
+    },
+    {
+      "name": "server.compare.p50.ms",
+      "kind": "timing",
+      "value": 8.891,
+      "unit": "ms",
+      "budget": 73.75,
+      "effective": 147.5,
+      "status": "PASS"
+    },
+    {
+      "name": "server.compare.p95.ms",
+      "kind": "timing",
+      "value": 14.752,
+      "unit": "ms",
+      "budget": 53.01,
+      "effective": 106.02,
+      "status": "PASS"
+    }
+  ],
+  "ok": true
+}
