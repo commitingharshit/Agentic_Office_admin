@@ -1,0 +1,30 @@
+{
+  "type": "bridge",
+  "mode": null,
+  "script": "scripts/e2e/plan/marketplace-bridge-flow.mjs",
+  "commit": "388014324d889c30caaf54ee012ff5fb798245b7",
+  "workingTreeDirty": true,
+  "passedAt": "2026-10-21T09:22:24.530Z",
+  "result": "pass",
+  "steps": [
+    "elevated install without the native confirmation is refused and installs nothing",
+    "the plan is elevated and lists the network and secret permissions (consent is for exactly these)",
+    "install lands \"configured\" and enabled in the lockfile, not exposed",
+    "Hermes holds a grant-only managed server whose config carries a reference, never the secret",
+    "installed is NOT granted: the agent sees no bridge tool and a direct call by name is blocked on the device",
+    "after grant the agent sees exactly the granted tool, and calling it reaches the server with the secret header",
+    "the same package installed for another agent without a grant stays invisible and uncallable",
+    "production mode refuses the loopback server (nothing is applied)",
+    "ungrant removes the tool from the agent and blocks the call",
+    "a RUNNING agent can call the granted tool",
+    "server-side revoke reaches the device through reconcile",
+    "revoke blocks the very next call in the RUNNING process (no restart) and nothing reaches the server",
+    "revoke removed the server entry, the env block and the local grants",
+    "uninstall removes the server entry, the env block, the ledger entry and the lockfile entry"
+  ],
+  "toolCallsThatReachedTheServer": [
+    "search_issues",
+    "search_issues"
+  ],
+  "notes": "loopback accepted only under AGENTICOFFICE_DEV_MODE=1 (asserted refused without it); capabilities reported bridge supported by the e2e server stand-in, not by OPERATIONAL (Task 15 flips that)"
+}
