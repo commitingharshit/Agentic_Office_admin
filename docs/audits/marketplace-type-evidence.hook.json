@@ -2,9 +2,9 @@
   "type": "hook",
   "mode": "declarative",
   "script": "scripts/e2e/plan/marketplace-hook-flow.mjs",
-  "commit": "002a275ec8ebd35595457c0b2685f70342e614e2",
+  "commit": "a1db3568a19ac47ab29904cb119c4cc18bdcb38e",
   "workingTreeDirty": false,
-  "passedAt": "2026-10-21T09:42:21.140Z",
+  "passedAt": "2026-10-21T11:06:15.561Z",
   "result": "pass",
   "layers": [
     "accounts-sync admin+public handlers on embedded Postgres (RLS)",

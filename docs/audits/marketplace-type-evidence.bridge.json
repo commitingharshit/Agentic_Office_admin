@@ -2,9 +2,9 @@
   "type": "bridge",
   "mode": null,
   "script": "scripts/e2e/plan/marketplace-bridge-flow.mjs",
-  "commit": "002a275ec8ebd35595457c0b2685f70342e614e2",
+  "commit": "a1db3568a19ac47ab29904cb119c4cc18bdcb38e",
   "workingTreeDirty": true,
-  "passedAt": "2026-10-21T10:52:39.514Z",
+  "passedAt": "2026-10-21T11:08:12.577Z",
   "result": "pass",
   "steps": [
     "elevated install without the native confirmation is refused and installs nothing",
