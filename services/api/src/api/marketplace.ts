@@ -160,6 +160,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         const bytes = await zipBody(req, maxUpload);
         return send(201, await creator.createListing(cd, uid, bytes, { visibility, team })), true;
       }
+      if (rest === 'me' && m === 'GET') { needAuth(); return send(200, { userId: uid, publisherId: creator.publisherIdFor(uid) }), true; }
       if (rest === 'me/listings' && m === 'GET') { needAuth(); return send(200, { items: await q((c) => store.listMine(c)) }), true; }
       if (rest === 'me/teams' && m === 'GET') { needAuth(); return send(200, { items: await q((c) => store.listMyTeams(c)) }), true; }
       if (rest === 'teams' && m === 'POST') {

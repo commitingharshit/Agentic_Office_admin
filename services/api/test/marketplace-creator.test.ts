@@ -603,6 +603,13 @@ describe('marketplace creator API (real Postgres)', { skip }, () => {
     assert.equal(alone.status, 409); assert.equal(alone.json.code, 'last_owner');
   });
 
+  test('me_returns_the_callers_user_and_publisher_id', async () => {
+    const me = await call('/v1/marketplace/me', { user: 'u1' });
+    assert.equal(me.status, 200);
+    assert.deepEqual(me.json, { userId: 'u1', publisherId: publisherIdFor('u1') });
+    assert.equal((await call('/v1/marketplace/me')).status, 401);
+  });
+
   test('me_lists_my_creations_with_their_latest_version_and_my_teams', async () => {
     const mine = await call('/v1/marketplace/me/listings', { user: 'u1' });
     assert.equal(mine.status, 200);
