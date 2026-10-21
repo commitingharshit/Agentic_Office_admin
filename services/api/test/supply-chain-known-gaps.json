@@ -1,0 +1,12 @@
+{
+  "gaps": {
+    "zip-device-bits": {
+      "description": "unpack() (src/marketplace/artifacts.ts) refuses a symlink mode (0o120000) but accepts block/char device, FIFO and socket file-type bits in an entry's unix mode. The entry is still extracted as an ordinary byte blob in memory and no server code creates a node, but the bits are not refused and any extractor that honours the mode (an unzip run as root, a naive client) would create a device node.",
+      "fix": "In unpack(), readZipFiles() and extractOne(): reject any (mode & S_IFMT) that is not 0 (unset), S_IFREG (0o100000) or S_IFDIR (0o040000). Owner: Task 9 (zip hardening) or Task 10 (server hardening backlog); out of Task 8's test-only ownership."
+    },
+    "db-resurrect-revoked": {
+      "description": "The marketplace_versions_guard trigger (db/migrations/0016_marketplace.sql) blocks a locked version from returning to draft/submitted/in_review/approved/rejected, but NOT from going revoked -> published or quarantined -> published. The API state machine (transition() in marketplace-admin.ts) makes revoked terminal and quarantined publishable only via approve paths that do not exist, so only a direct SQL write as ao_admin (compromised admin pool, SQL injection in an admin route, a careless operator) can resurrect a pulled version. The scan-verdict backstop still applies, so the resurrected version must carry a clean verdict, which a pulled-for-malware version often still does. Installers would then see it published again (installed_status shows published, no revoked update).",
+      "fix": "New migration: in marketplace_versions_guard(), when OLD.state IN ('revoked','quarantined') RAISE unless NEW.state = OLD.state or (OLD.state = 'quarantined' AND NEW.state = 'revoked'). Migration numbering is assigned by the controller (Plan 4 Global Constraints), so out of Task 8's test-only ownership. Task 10 (server hardening backlog) is the natural owner."
+    }
+  }
+}
