@@ -31,8 +31,7 @@ Needs: Node 24 (`apps/desktop/.nvmrc`), `npm ci` in `services/accounts-sync`, op
 
 Public items are published by an admin through the API `/admin/marketplace/*` (token-driven): submit the zip, a different admin approves (with the
 permission summary hash for manual-review types: routine, memory, hook, bridge, connector, workflow, surface), then publish. The demo server's seeding
-code (`scripts/marketplace-dev-server.ts`, `--advanced`) is a working example of the whole sequence. Admin web pages exist only as a patch for the
-control-plane tree: `docs/audits/marketplace-admin-pages.patch` (see `docs/audits/marketplace-admin-pages.md`); that tree is not in this repo.
+code (`scripts/marketplace-dev-server.ts`, `--advanced`) is a working example of the whole sequence. The admin web pages are in `services/control-plane` (see `docs/audits/marketplace-admin-pages.md`).
 Pass `--admin` to the demo script to also serve the admin API for that console, as one dev admin.
 
 ## Evals and acceptance

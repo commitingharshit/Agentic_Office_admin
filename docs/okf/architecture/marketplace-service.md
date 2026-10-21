@@ -179,12 +179,10 @@ reports devices with install rows against devices known, so partial telemetry is
 
 The Marketplace section of the Next.js control-plane console (Overview, Catalog, Publish New, Submissions, Review
 Queue, Installations, Usage Analytics, Ratings & Reviews, Publishers, Versions & Releases, Security Reports,
-Settings, a Marketplace tab on the user page; Collections & Bundles is an honest placeholder until Plan 2) is
-delivered as an **overlay patch**, not as files in this tree, because `services/control-plane` is not committed on
-this branch: apply [`docs/audits/marketplace-admin-pages.patch`](/../docs/audits/marketplace-admin-pages.patch)
-once the control-plane code is merged (command, env and what was verified are in
+Settings, a Marketplace tab on the user page; Agents & Bundles, Team Assignments and Install Policy for Plan 2) is
+committed in `services/control-plane` (what each page shows, env and what was verified are in
 [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)). The pages call only the
-routes above; the console shows nav items by `marketplace.*` permission and the API enforces them again.
+routes above; the console shows nav items by the `marketplace.*` permissions that `GET /admin/marketplace/me` returns (the same table the API enforces) and the API enforces them again.
 
 # Citations
 
