@@ -510,7 +510,7 @@ describe('marketplace admin API (real Postgres)', { skip }, () => {
     assert.equal((await one(`SELECT count(*)::int AS n FROM marketplace_versions WHERE listing_id = 'acme/race2'`)).n, 3);
   });
 
-  test('minors: reject from approved updates the submission row; extra path segments are 404; a visibility rewrite records the previous one', async () => {
+  test('minors: reject from approved updates the submission row; extra path segments are 404; a resubmission never rewrites visibility', async () => {
     const vid = (await submit(templateZip({ id: 'acme/minor' }))).json.versionId;
     assert.equal((await act(vid, 'approve')).status, 200);
     assert.equal((await act(vid, 'reject', { reason: 'changed my mind' })).status, 200);
@@ -519,7 +519,8 @@ describe('marketplace admin API (real Postgres)', { skip }, () => {
     assert.equal((await act(`${v2}/approve/anything`, 'x')).status, 404);
     assert.equal((await call(`/admin/marketplace/versions/${v2}/approve/anything`, { as: 'root', method: 'POST', body: {} })).status, 404);
     assert.equal(await vstate(v2), 'submitted');
-    assert.equal((await auditFor(v2))[0].detail.previousVisibility, 'public');
+    assert.equal((await one(`SELECT visibility FROM marketplace_listings WHERE id = 'acme/minor'`)).visibility, 'public');   // ?visibility=private did not touch the existing listing
+    assert.equal((await auditFor(v2))[0].detail.previousVisibility, undefined);
   });
 
   test('catalog SQL injection attempts are inert', async () => {

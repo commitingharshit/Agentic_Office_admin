@@ -7,6 +7,7 @@ import type pg from 'pg';
 import { ArtifactCorruptError, extractOne, openArtifact, UnpackError, type ArtifactStore } from '../marketplace/artifacts.ts';
 import * as creator from '../marketplace/creator.ts';
 import { ByteLru } from '../marketplace/lru.ts';
+import { createGate, type Gate } from '../marketplace/limits.ts';
 import { createLimiter, type Limiter } from '../marketplace/ratelimit.ts';
 import { BadQuery, parseListParams } from '../marketplace/search.ts';
 import * as store from '../marketplace/store.ts';
@@ -32,6 +33,14 @@ export interface MarketplaceDeps {
   limits?: Partial<import('../marketplace/limits.ts').Limits>;
   /** Adding team members: 10 per minute per owner by default, to blunt user-id enumeration. */
   memberAddLimiter?: Limiter;
+  /** Process-wide gate around compare, artifact downloads and preview/doc cache misses (default 4 at once, 16 queued, else 429 busy). */
+  heavyGate?: Gate;
+  /** Bytes of upload bodies allowed in flight at once across the process (default 256 MiB; AO_MKT_UPLOAD_BUDGET). */
+  uploadBudgetBytes?: number;
+  /** How long a request that does not fit the upload budget waits before the 429 (default 1500 ms). */
+  uploadWaitMs?: number;
+  /** False while the skill scanner is unavailable (startup self-check): creator uploads answer 503 scanner_unavailable. */
+  scannerOk?: () => boolean;
 }
 
 const MAX_PREVIEW = 2 * 1024 * 1024, MAX_DOC = 256 * 1024;
@@ -64,19 +73,45 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
 const object = (v: unknown, what: string) => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad(`${what} must be an object.`); return v as Record<string, unknown>; };
 
 /** A package upload: a zip body (never JSON), read with a hard cap. An empty body is a 400, an oversized one a 413. */
-async function zipBody(req: IncomingMessage, max: number): Promise<Uint8Array> {
+async function zipBody(req: IncomingMessage, max: number, budget?: UploadBudget): Promise<Uint8Array> {
   const ct = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
   if (!ZIP_TYPES.includes(ct)) throw new HttpError(400, 'Send the package as application/zip.');
-  if (Number(req.headers['content-length'] ?? 0) > max) throw new HttpError(413, `The package is over the ${max} byte limit.`);
-  const chunks: Buffer[] = [];
-  let n = 0;
-  for await (const c of req) {
-    n += (c as Buffer).length;
-    if (n > max) throw new HttpError(413, `The package is over the ${max} byte limit.`);
-    chunks.push(c as Buffer);
-  }
-  if (!n) throw new HttpError(400, 'The body is empty.');
-  return new Uint8Array(Buffer.concat(chunks));
+  const declared = Number(req.headers['content-length'] ?? 0);
+  if (declared > max) throw new HttpError(413, `The package is over the ${max} byte limit.`);
+  // reserve BEFORE buffering a byte: the declared length, or the cap when the length is not declared (chunked)
+  const release = budget ? await budget.reserve(declared > 0 ? declared : max) : () => {};
+  try {
+    const chunks: Buffer[] = [];
+    let n = 0;
+    for await (const c of req) {
+      n += (c as Buffer).length;
+      if (n > max) throw new HttpError(413, `The package is over the ${max} byte limit.`);
+      chunks.push(c as Buffer);
+    }
+    if (!n) throw new HttpError(400, 'The body is empty.');
+    return new Uint8Array(Buffer.concat(chunks));
+  } finally { release(); }
+}
+/** A process-wide budget of upload bytes in flight. A request that does not fit waits briefly, then gets 429 `busy`. */
+export interface UploadBudget { reserve(bytes: number): Promise<() => void> }
+export function createUploadBudget(total: number, waitMs: number): UploadBudget {
+  let used = 0;
+  const waiters: Array<() => void> = [];
+  const wake = () => { for (const w of waiters.splice(0)) w(); };
+  return {
+    async reserve(bytes) {
+      const need = Math.min(bytes, total);   // a single request bigger than the whole budget can still go alone
+      const deadline = Date.now() + waitMs;
+      while (used > 0 && used + need > total) {
+        const left = deadline - Date.now();
+        if (left <= 0) throw new store.StoreError(429, 'The server is busy receiving other uploads. Try again shortly.', 'busy');
+        await new Promise<void>((r) => { const t = setTimeout(r, left); waiters.push(() => { clearTimeout(t); r(); }); });
+      }
+      used += need;
+      let done = false;
+      return () => { if (!done) { done = true; used -= need; wake(); } };
+    },
+  };
 }
 
 /** image/png | jpeg | gif | webp by magic bytes; undefined for anything else. */
@@ -94,6 +129,9 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
   const cache = deps.cache ?? new ByteLru();
   const maxUpload = deps.maxUploadBytes ?? MAX_UPLOAD;
   const memberAddLimiter = deps.memberAddLimiter ?? createLimiter({ limit: 10 });
+  const heavy = deps.heavyGate ?? createGate(Number(process.env.AO_MKT_HEAVY_CONCURRENCY) || 4, Number(process.env.AO_MKT_HEAVY_QUEUE) || 16);
+  const budget = createUploadBudget(deps.uploadBudgetBytes ?? (Number(process.env.AO_MKT_UPLOAD_BUDGET) || 256 * 1024 * 1024), deps.uploadWaitMs ?? 1500);
+  const scannerOk = deps.scannerOk ?? (() => true);
   const creatorShared = deps.admin ? creator.creatorDeps(deps.app, deps.admin, deps.store, deps.limits) : undefined;
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
@@ -116,7 +154,9 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       const m = req.method ?? 'GET';
       let rest: string;
       try { rest = decodeURIComponent(url.pathname.slice('/v1/marketplace'.length)).replace(/^\/+/, ''); } catch { throw bad('Malformed path.'); }
-      const mutating = m !== 'GET' && m !== 'HEAD';
+      // POST versions/status is a READ (states only), open to signed-out clients so they too learn about revocations
+      const anonStatus = m === 'POST' && rest === 'versions/status';
+      const mutating = m !== 'GET' && m !== 'HEAD' && !anonStatus;
       // No Authorization header: an anonymous reader. A header that does not verify is a 401, never a downgrade.
       const signedIn = !!req.headers.authorization;
       if (mutating && !signedIn) throw new HttpError(401, 'Sign in first.');
@@ -126,10 +166,19 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       if (!lim.allow(key)) throw new HttpError(429, 'Too many requests. Try again in a minute.', { retryAfter: lim.retryAfter(key) });
       const q = <T>(fn: (c: pg.PoolClient) => Promise<T>) => store.withUser(deps.app, uid, fn);
       const needAuth = () => { if (!signedIn) throw new HttpError(401, 'Sign in first.'); };
+      const uploadsOpen = () => { if (!scannerOk()) throw new store.StoreError(503, 'Uploads are paused: the package security scanner is unavailable on this server.', 'scanner_unavailable'); };
       const cdeps = (): creator.CreatorDeps => {
         if (!creatorShared) throw new HttpError(503, 'Creating and sharing is not configured on this server.');
         return creatorShared;
       };
+
+      if (anonStatus) {
+        const d = await body(req);
+        if (!Array.isArray(d.versionIds) || d.versionIds.length > 200) throw bad('versionIds must be an array of at most 200 ids.');
+        if (!d.versionIds.every((v) => typeof v === 'string' && OPAQUE_ID.test(v))) throw bad('versionIds contains an invalid id.');
+        const st = await q((c) => store.versionStatuses(c, d.versionIds as string[]));
+        return send(200, { statuses: st.map((x) => ({ versionId: x.versionId, state: x.state, ...(x.reason && (x.state === 'revoked' || x.state === 'quarantined') ? { reason: x.reason } : {}) })) }), true;
+      }
 
       // ── catalog
       if (rest === 'listings' && m === 'GET') {
@@ -150,6 +199,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       }
       // ── creating: a package upload becomes a private (or team) listing
       if (rest === 'listings' && m === 'POST') {
+        uploadsOpen();
         const cd = cdeps();
         const visibility = url.searchParams.get('visibility') ?? 'private';
         if (visibility === 'public' || visibility === 'org') throw new store.StoreError(403, 'Public and organization visibility are granted by review.', 'public_requires_review');
@@ -157,7 +207,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         const team = url.searchParams.get('team');
         if (team !== null && !TEAM_ID.test(team)) throw bad('team is not a valid team id.');
         await creator.precheckCreate(cd, uid, { visibility, team });   // team membership before the body is read
-        const bytes = await zipBody(req, maxUpload);
+        const bytes = await zipBody(req, maxUpload, budget);
         return send(201, await creator.createListing(cd, uid, bytes, { visibility, team })), true;
       }
       if (rest === 'me/listings' && m === 'GET') { needAuth(); return send(200, { items: await q((c) => store.listMine(c)) }), true; }
@@ -198,19 +248,26 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         }
       }
 
+      const wm = /^listings\/([^/]+\/[^/]+)\/versions\/([^/]+)$/.exec(rest);
+      if (wm && m === 'DELETE') {
+        if (!LISTING_ID.test(wm[1]) || !OPAQUE_ID.test(wm[2])) throw notFound();
+        return send(200, await creator.withdrawVersion(cdeps(), uid, wm[1], wm[2])), true;
+      }
       const lm = /^listings\/([^/]+\/[^/]+)(?:\/(favorite|review|reviews|versions|visibility|fork|compare))?$/.exec(rest);
       if (lm) {
         const [, id, sub] = lm;
         if (!LISTING_ID.test(id)) throw notFound();
+        if (!sub && m === 'DELETE') return send(200, await creator.deleteListing(cdeps(), uid, id)), true;
         if (!sub && m === 'GET') {
           const l = await q((c) => store.getListing(c, id));
           if (!l) throw notFound();
           return send(200, l), true;
         }
         if (sub === 'versions' && m === 'POST') {
+          uploadsOpen();
           const cd = cdeps();
           await creator.checkCanAddVersion(cd, uid, id);   // 404 / 403 before a byte of the body is read
-          const bytes = await zipBody(req, maxUpload);
+          const bytes = await zipBody(req, maxUpload, budget);
           return send(201, await creator.addVersion(cd, uid, id, bytes)), true;
         }
         if (sub === 'visibility' && m === 'PUT') {
@@ -221,14 +278,16 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
           return send(200, await creator.setVisibility(cd, uid, id, typeof d.visibility === 'string' ? d.visibility : '', team)), true;
         }
         if (sub === 'fork' && m === 'POST') {
+          uploadsOpen();
           const cd = cdeps();
           const d = await body(req);
           return send(201, await creator.forkListing(cd, uid, id, text(d.slug, 'slug', 64))), true;
         }
         if (sub === 'compare' && m === 'GET') {
+          needAuth();
           const cd = cdeps();
           const opt = (k: string) => { const v = url.searchParams.get(k); if (v === null || v === '') return null; if (!OPAQUE_ID.test(v)) throw notFound(); return v; };
-          return send(200, await creator.compareVersions(cd, uid, id, opt('base'), opt('head'))), true;
+          return send(200, await heavy.run(() => creator.compareVersions(cd, uid, id, opt('base'), opt('head')))), true;
         }
         if (sub === 'versions' && m === 'GET') {
           return send(200, await q(async (c) => {
@@ -273,7 +332,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (access === 'gone') throw new HttpError(410, 'This version was withdrawn and can no longer be downloaded.');
         // a draft, submitted or rejected version (a creator's own upload) is visible to its owner but is not installable
         if (!(await q((c) => store.versionInstallable(c, vid)))) throw new store.StoreError(409, 'This version is not published and cannot be installed.', 'not_installable');
-        const a = await openArtifact(deps.app, deps.store, { userId: uid }, vid);
+        const a = await heavy.run(() => openArtifact(deps.app, deps.store, { userId: uid }, vid));
         if (!a) throw notFound();
         res.writeHead(200, { 'content-type': 'application/zip', 'content-length': a.bytes.length, 'x-content-sha256': a.sha256, 'cache-control': 'private, no-store' });
         res.end(Buffer.from(a.bytes.buffer, a.bytes.byteOffset, a.bytes.byteLength));
@@ -301,14 +360,18 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         const key = `${view.sha256}\0${path}`;
         let file = cache.get(key);
         if (!file) {
-          const a = await openArtifact(deps.app, deps.store, { userId: uid }, vid);
-          if (!a) throw notFound();
-          try { file = extractOne(a.bytes, path, { maxBytes: cap }); }
-          catch (e) {
-            if (e instanceof UnpackError) throw e.code === 'too-large' ? new HttpError(413, 'That file is too large to preview.') : notFound();
-            throw e;
-          }
-          if (!file) throw notFound();
+          file = await heavy.run(async () => {
+            const a = await openArtifact(deps.app, deps.store, { userId: uid }, vid);
+            if (!a) throw notFound();
+            let f: Uint8Array | undefined;
+            try { f = extractOne(a.bytes, path as string, { maxBytes: cap }); }
+            catch (e) {
+              if (e instanceof UnpackError) throw e.code === 'too-large' ? new HttpError(413, 'That file is too large to preview.') : notFound();
+              throw e;
+            }
+            if (!f) throw notFound();
+            return f;
+          });
           cache.set(key, file);
         }
         const type = isDoc ? 'text/markdown; charset=utf-8' : imageType(file);
@@ -371,6 +434,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       if (e instanceof HttpError) { status = e.status; message = e.message; if (status === 429) extra = { 'retry-after': String(e.extra?.retryAfter ?? 60) }; }
       else if (e instanceof BadQuery) { status = 400; message = e.message; }
       else if (e instanceof store.StoreError) { status = e.status; message = e.message; fields = { ...(e.code ? { code: e.code } : {}), ...e.extra }; }
+      else if ((e as any)?.code === 'ECONNRESET' || (e as Error)?.message === 'aborted') status = 499;   // the client went away mid-upload: nothing to log
       else console.error(e instanceof ArtifactCorruptError ? `marketplace: ${e.message}` : e);
       // an upload refused for size may still be arriving: do not keep the connection waiting for the rest of it
       if (status === 413) extra = { ...extra, connection: 'close' };

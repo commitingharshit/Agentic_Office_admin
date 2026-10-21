@@ -207,10 +207,34 @@ export interface InstallItem { listingId: string; versionId: string | null; stat
 /** One entry per request item: a parsed item, or null when the item failed validation. */
 export interface InstallEntry { listingId: string; item: InstallItem | null }
 export interface InstallResult { listingId: string; ok: boolean; code?: 'not_found' | 'invalid' | 'rejected' }
-export interface InstallUpdate { listingId: string; installedVersion: string; latest?: string; state: string; reason?: string; detail?: string; revoked?: true }
+export interface InstallUpdate { listingId: string; versionId?: string; installedVersion?: string; latest?: string; state: string; reason?: string; detail?: string; revoked?: true }
 export const MAX_UPDATES = 500;
 
-async function applyInstall(c: pg.PoolClient, uid: string, deviceId: string, it: InstallItem) {
+export const ERROR_CODES = ['download_failed', 'hash_mismatch', 'blocked_by_scan', 'unsupported_type', 'hermes_failed', 'permission_denied', 'disk_error', 'other'] as const;
+/** Strips what must never be stored from a client-supplied error detail: absolute paths, home dirs, tokens. At most 120 characters. */
+export function sanitizeErrorDetail(s: string): string {
+  const out = s
+    .replace(/\bBearer\s+\S+/gi, '[redacted]')
+    .replace(/\b(?:aod|sk|pk|ghp|gho|xox[abp])_[A-Za-z0-9_-]{8,}/g, '[redacted]')
+    .replace(/[A-Za-z]:\\[^\s"']*/g, '[path]')
+    .replace(/(?:~|\$HOME)(?:\/[^\s"']*)?/g, '[path]')
+    .replace(/(?<![\w.])\/(?:[\w.@+-]+\/)+[\w.@+-]*/g, '[path]')
+    .replace(/(?<![\w.])\/(?:Users|home|root|var|tmp|etc|opt|private)\b[^\s"']*/g, '[path]')
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[redacted]')
+    .replace(/\s+/g, ' ').trim();
+  return out.length > 120 ? out.slice(0, 117) + '...' : out;
+}
+/** `code` or `code: detail` with the code from a fixed list; old free text becomes `other: <sanitized text>`. */
+export function clampLastError(raw: string | null): string | null {
+  if (raw === null || raw.trim() === '') return null;
+  const m = /^([a-z_]+)(?::\s*([\s\S]*))?$/.exec(raw.trim());
+  const code = m && (ERROR_CODES as readonly string[]).includes(m[1]) ? m[1] : 'other';
+  const detail = sanitizeErrorDetail(m && code === m[1] ? (m[2] ?? '') : raw);
+  return detail ? `${code}: ${detail}` : code;
+}
+
+async function applyInstall(c: pg.PoolClient, uid: string, deviceId: string, raw: InstallItem) {
+  const it = { ...raw, lastError: clampLastError(raw.lastError) };
   const ex = (await c.query(`SELECT id, version_id, state FROM marketplace_installs WHERE user_id = $1 AND device_id = $2 AND listing_id = $3`, [uid, deviceId, it.listingId])).rows[0];
   // a version that is not published (draft, submitted, rejected ...) is never installable, not even by its owner
   if (it.versionId && it.versionId !== ex?.version_id
@@ -255,7 +279,7 @@ export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: stri
   }
   // What the device should do next, for every live install on it: pulled versions and newer releases.
   const rows = (await c.query(`
-    SELECT i.listing_id, i.state AS install_state, st.version AS installed_version, st.state AS version_state, st.reason, lv.version AS latest
+    SELECT i.listing_id, i.version_id, i.state AS install_state, st.version AS installed_version, st.state AS version_state, st.reason, lv.version AS latest
       FROM marketplace_installs i
       JOIN marketplace_installed_status() st ON st.version_id = i.version_id AND st.listing_id = i.listing_id
       LEFT JOIN LATERAL ${latestPublished('i.listing_id')} lv ON true
@@ -263,14 +287,31 @@ export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: stri
      ORDER BY i.listing_id
      LIMIT ${MAX_UPDATES}`, [deviceId, uid])).rows;
   const updates = rows.flatMap((r): InstallUpdate[] => {
-    const base = { listingId: r.listing_id, installedVersion: r.installed_version, ...(r.latest ? { latest: r.latest } : {}) };
+    const base = { listingId: r.listing_id, versionId: r.version_id as string, installedVersion: r.installed_version, ...(r.latest ? { latest: r.latest } : {}) };
     if (r.version_state === 'revoked' || r.version_state === 'quarantined') {
       return [{ ...base, state: 'update_available', reason: r.version_state, ...(r.reason ? { detail: r.reason } : {}), revoked: true }];
     }
     if (r.latest && compareSemver(r.latest, r.installed_version) > 0) return [{ ...base, state: 'update_available', reason: 'newer_version' }];
     return [];
   });
+  // A device with NO install row for a version it reports (its first sync failed, or it was rejected as not_found) still learns
+  // that the version was pulled: the status comes from the versions themselves, not from the install rows.
+  const reported = [...new Set(entries.flatMap((e) => (e.item?.versionId ? [e.item.versionId] : [])))];
+  if (reported.length) {
+    const covered = new Set(updates.filter((u) => u.revoked).map((u) => `${u.listingId}\0${u.versionId}`));
+    for (const st of await versionStatuses(c, reported)) {
+      if ((st.state !== 'revoked' && st.state !== 'quarantined') || covered.has(`${st.listingId}\0${st.versionId}`)) continue;
+      if (!entries.some((e) => e.item?.versionId === st.versionId && e.item.listingId === st.listingId)) continue;
+      updates.push({ listingId: st.listingId, versionId: st.versionId, state: st.state, revoked: true, ...(st.reason ? { reason: st.reason } : {}) });
+    }
+  }
   return { results, updates };
+}
+
+/** Pull state of up to 200 version ids (marketplace_version_status: SECURITY DEFINER, states only). */
+export async function versionStatuses(c: pg.PoolClient, ids: string[]): Promise<Array<{ versionId: string; listingId: string; state: string; reason: string | null }>> {
+  return (await c.query(`SELECT version_id, listing_id, state, reason FROM marketplace_version_status($1::text[])`, [ids.slice(0, 200)])).rows
+    .map((r) => ({ versionId: r.version_id as string, listingId: r.listing_id as string, state: r.state as string, reason: (r.reason as string | null) ?? null }));
 }
 
 // ---------------------------------------------------------------- my creations and teams

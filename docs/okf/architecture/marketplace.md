@@ -1,14 +1,16 @@
 ---
 type: Reference
 title: "Extension marketplace"
-description: "The 11-type taxonomy, the version and install state machines, and the existing infrastructure each type reuses; only templates and skills are in the first plan."
+description: "The 11-type taxonomy, the version and install state machines, what is built (templates and skills only) and the infrastructure each type reuses."
 tags: [marketplace, hermes, mcp, accounts]
 timestamp: 2026-10-21T00:00:00Z
 ---
 
-Status: **planned, not yet operational.** Plan 1 builds templates and skills end to end with the
-admin console; every other type is planned and is not operational. The desktop must show unbuilt
-categories as "not yet available", never as empty or fake listings.
+Status: **built for templates and skills only.** The public, creator and admin APIs, the database
+and the desktop Marketplace tab exist for those two types; the other nine types in the table below are
+planned, and the desktop shows them as "not yet available", never as empty or fake listings. The API
+refuses to create them (400 `type_not_supported`). There are **no admin web pages** yet: the admin API
+(`/admin/marketplace/*`) is driven by tokens and scripts.
 
 One listing identity with immutable, content-hashed versions lives in the accounts-sync Postgres
 ([service](/architecture/marketplace-service.md)). The desktop gets one Marketplace editor tab and a local
@@ -34,9 +36,32 @@ adds no second loader, scheduler or identity system.
 # Version states
 
 `draft`, `validating`, `testing`, `submitted`, `in_review`, `approved`, `published`, `rejected`,
-`deprecated`, `quarantined`, `revoked`. Publishing is only valid from `approved`. A published
-version is immutable (identity is its `sha256`); `quarantined` and `revoked` are reported to
-installed clients on the next sync.
+`deprecated`, `quarantined`, `revoked`. A published version is immutable (identity is its `sha256`).
+Two ways to `published`:
+
+- **Creator path** (private or team audience): the server validates the upload and, when the report is
+  verified (the skill scanner ran), publishes it automatically to the owner or team. No admin looks at it.
+  Without a scanner it stays `submitted`; a failed check stores it `rejected`.
+- **Admin review path**: `submitted` -> (claim) -> `approved` -> `published`, each step by an admin. This is
+  the only way a listing becomes public: the `publish` action with `visibility: "public"` flips an existing
+  listing, and only when every installable version of it has an admin `approved` event (409
+  `unreviewed_versions` otherwise). An admin submission never changes an existing listing's visibility.
+
+`deprecated` versions stay installable (they are only de-emphasised). `quarantined` and `revoked` versions
+are not installable and download as 410.
+
+# Revocation: what is actually built
+
+A pulled version reaches clients in three ways: (1) `POST installs/sync` returns `updates` entries with
+`revoked: true` for every install row of the device whose version is `revoked` or `quarantined`; (2) the same
+response also carries such an entry for every `versionId` the device reported in the request even if it has no
+install row (a failed first sync), derived from `marketplace_version_status()`; (3) a signed-out client may
+`POST versions/status` with up to 200 ids and gets states only. The desktop checks when the user opens the
+Marketplace and on sync; Hermes does not re-check by itself. A device that never syncs and never opens the
+tab keeps running its local copy until it does. Known limitation: when a team member loses access (removal or
+leaving), their installed copies persist locally; only the listing's visibility changes. An owner can withdraw
+a version (state `revoked`, reason "withdrawn by owner") or delete a private or team listing nobody else has
+installed.
 
 # Install states
 
@@ -61,9 +86,8 @@ The local index is `~/.agentic-office/marketplace/installed.lock.json`.
 
 # Not built yet
 
-Everything in this concept is a design; no marketplace code, table or route exists. Plan 1 will
-add the first slice (templates and skills); agents, bundles, memory, connectors, bridges, surfaces,
-workflows, hooks and routines are planned in later plans.
+Agents, bundles, memory, connectors, bridges, surfaces, workflows, hooks and routines (later plans), admin
+web pages, org visibility, payments, and automatic revocation of running skills in Hermes.
 
 # Citations
 

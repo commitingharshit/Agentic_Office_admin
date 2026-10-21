@@ -296,6 +296,23 @@ function checkSizes(entry: string, files: Map<string, Uint8Array>): ValidationCh
   return bad.length ? fail('size-limits', list(bad)) : ok('size-limits');
 }
 
+/** A markdown image or HTML <img> whose URL is remote (http, https or protocol-relative) is a tracking beacon: data: and relative paths are fine. */
+function noRemoteImages(files: Map<string, Uint8Array>): ValidationCheck {
+  const remote = (u: string) => /^\s*<?\s*(?:https?:|\/\/)/i.test(u);
+  const bad: string[] = [];
+  for (const [f, b] of files) {
+    if (extOf(f) !== '.md' && extOf(f) !== '.markdown') continue;
+    const t = new TextDecoder('utf-8').decode(b);
+    const hits: string[] = [];
+    for (const m of t.matchAll(/!\[[^\]]*\]\(\s*(<[^>\n]*>|[^)\s]*)/g)) if (remote(m[1])) hits.push(m[1]);
+    for (const m of t.matchAll(/<img\b[^>]*?\bsrc(?:set)?\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) { const u = m[1] ?? m[2] ?? m[3] ?? ''; if (remote(u)) hits.push(u); }
+    const labels = new Set([...t.matchAll(/!\[[^\]]*\]\[([^\]]*)\]/g)].map((m) => m[1].toLowerCase()));
+    for (const m of t.matchAll(/^ {0,3}\[([^\]\n]+)\]:\s*(<[^>\n]*>|\S+)/gm)) if (labels.has(m[1].toLowerCase()) && remote(m[2])) hits.push(m[2]);
+    for (const h of hits) bad.push(`${f}: ${q(h)}`);
+  }
+  return bad.length ? fail('no-remote-images', `remote images load from a third party when the document is viewed: ${list(bad)}`) : ok('no-remote-images');
+}
+
 const isExecMagic = (b: Uint8Array) => b.length >= 2 && ((b[0] === 0x23 && b[1] === 0x21) || (b[0] === 0x4d && b[1] === 0x5a) || (b.length >= 4 && ((b[0] === 0x7f && b[1] === 0x45 && b[2] === 0x4c && b[3] === 0x46)
   || (b[0] === 0xfe && b[1] === 0xed && b[2] === 0xfa && (b[3] === 0xce || b[3] === 0xcf)) || (b[3] === 0xfe && b[2] === 0xed && b[1] === 0xfa && (b[0] === 0xce || b[0] === 0xcf))
   || (b[0] === 0xca && b[1] === 0xfe && b[2] === 0xba && b[3] === 0xbe))));
@@ -312,7 +329,7 @@ export function createSkillValidator(opts: SkillValidatorOptions = {}) {
       checks.push(fail('payload-shape', shape.join('; ')));
       for (const n of ['skill-md-present', 'frontmatter', 'references-resolve']) checks.push(skip(n, 'payload-shape failed'));
       checks.push(checkSizes('SKILL.md', pkg.files));
-      checks.push(skip('file-policy', 'payload-shape failed'), skip('hidden-unicode', 'payload-shape failed'), skip('no-hidden-executables', 'payload-shape failed'), skip('no-scan-ignore-files', 'payload-shape failed'), skip('permissions-declared', 'payload-shape failed'));
+      checks.push(skip('file-policy', 'payload-shape failed'), skip('hidden-unicode', 'payload-shape failed'), skip('no-hidden-executables', 'payload-shape failed'), skip('no-remote-images', 'payload-shape failed'), skip('no-scan-ignore-files', 'payload-shape failed'), skip('permissions-declared', 'payload-shape failed'));
       checks.push(skip('security-scan', 'payload-shape failed', { required: true }));
       return checks;
     }
@@ -352,11 +369,23 @@ export function createSkillValidator(opts: SkillValidatorOptions = {}) {
     // executables and scripts
     const scriptsPrefix = (dir ? dir + '/' : '') + 'scripts/';
     const scripts = [...pkg.files.keys()].filter((f) => f.startsWith(scriptsPrefix));
-    const hidden = [...pkg.files].filter(([f, b]) => !f.startsWith(scriptsPrefix) && (EXEC_EXT.test(f) || isExecMagic(b))).map(([f]) => f);
+    // Anything executable-looking (extension, magic bytes, a shebang in ANY file) is consent-gated: the manifest must declare
+    // exec.script and its scope must list the paths, otherwise the install dialog would not show that code runs.
+    const execFiles = [...pkg.files].filter(([f, b]) => EXEC_EXT.test(f) || isExecMagic(b)).map(([f]) => f);
+    const execScopes = pkg.manifest.permissions.filter((x) => x.capability === 'exec.script').flatMap((x) => String(x.scope).split(/[\s,]+/).filter(Boolean));
+    const rel = (f: string) => (dir && f.startsWith(dir + '/') ? f.slice(dir.length + 1) : f);
+    const covered = (f: string) => execScopes.some((sc) => sc === '**' || sc === '*' || sc === f || sc === rel(f)
+      || (sc.endsWith('/') && (f.startsWith(sc) || rel(f).startsWith(sc))) || (sc.endsWith('/**') && (f.startsWith(sc.slice(0, -2)) || rel(f).startsWith(sc.slice(0, -2)))));
     const detail: string[] = [];
     if (scripts.length) detail.push(`scripts: ${list(scripts)}`);
-    if (hidden.length) detail.push(`warning: executable-looking files outside scripts/: ${list(hidden)}`);
-    checks.push(ok('no-hidden-executables', detail.length ? { detail: detail.join('; ') } : {}));
+    if (execFiles.length && !execScopes.length) {
+      checks.push(fail('no-hidden-executables', `executable-looking files (${list(execFiles)}) but the manifest does not declare the exec.script permission`));
+    } else {
+      const uncovered = execFiles.filter((f) => !covered(f));
+      if (uncovered.length) checks.push(fail('no-hidden-executables', `the exec.script scope does not list: ${list(uncovered)}`));
+      else checks.push(ok('no-hidden-executables', detail.length || execFiles.length ? { detail: [...detail, ...(execFiles.length ? [`executables: ${list(execFiles)}`] : [])].join('; ') } : {}));
+    }
+    checks.push(noRemoteImages(pkg.files));
     const ignoreFiles = [...pkg.files.keys()].filter(isIgnoreName);
     checks.push(ignoreFiles.length ? fail('no-scan-ignore-files', `${list(ignoreFiles)}: a skill must not ship a scanner ignore file (it would hide files from the security scan)`) : ok('no-scan-ignore-files'));
     if (scripts.length && !pkg.manifest.permissions.some((x) => x.capability === 'exec.script'))
