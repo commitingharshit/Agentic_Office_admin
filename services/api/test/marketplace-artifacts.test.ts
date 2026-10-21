@@ -206,7 +206,8 @@ describe('putArtifact', () => {
     const store = memoryArtifactStore();
     const z = pkg({ 'a.md': enc('a') });
     const a = await putArtifact(store, z), b = await putArtifact(store, new Uint8Array(z));
-    assert.deepEqual(a, b);
+    assert.deepEqual({ ...a, wrote: 0 }, { ...b, wrote: 0 });
+    assert.equal(a.wrote, true); assert.equal(b.wrote, false);   // only the first call wrote the blob
     assert.equal(a.sha256, sha256Hex(z));
     assert.equal(a.size, z.length);
     assert.equal(store.blobs.size, 1);

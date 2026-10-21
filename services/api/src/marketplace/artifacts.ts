@@ -11,6 +11,17 @@ const MiB = 1024 * 1024;
 export const MAX_ARTIFACT_BYTES = 64 * MiB;
 
 export const sha256Hex = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
+const HASH_CHUNK = 4 * MiB, HASH_YIELD_OVER = 8 * MiB;
+/** The same digest, but a big buffer is hashed in chunks with a yield to the event loop between them. */
+export async function sha256HexAsync(b: Uint8Array): Promise<string> {
+  if (b.byteLength <= HASH_YIELD_OVER) return sha256Hex(b);
+  const h = createHash('sha256');
+  for (let i = 0; i < b.byteLength; i += HASH_CHUNK) {
+    h.update(b.subarray(i, Math.min(b.byteLength, i + HASH_CHUNK)));
+    await new Promise<void>((r) => setImmediate(r));
+  }
+  return h.digest('hex');
+}
 
 // ---------------------------------------------------------------- storage
 
@@ -51,11 +62,13 @@ export function s3ArtifactStore(s3: S3, bucket: string): ArtifactStore {
  * Content-addressed and idempotent: the same bytes always land under the same key. An already-stored blob
  * is not re-verified here; openArtifact re-hashes whatever it reads, which is where integrity is enforced.
  */
-export async function putArtifact(store: ArtifactStore, bytes: Uint8Array, maxSize = MAX_ARTIFACT_BYTES): Promise<{ sha256: string; size: number }> {
+export async function putArtifact(store: ArtifactStore, bytes: Uint8Array, maxSize = MAX_ARTIFACT_BYTES): Promise<{ sha256: string; size: number; wrote: boolean }> {
   if (bytes.byteLength > maxSize) throw new UnpackError('too-large', `artifact is ${bytes.byteLength} bytes, over the ${maxSize} limit`);
-  const sha256 = sha256Hex(bytes);
-  if (!(await store.has(sha256))) await store.put(sha256, bytes);
-  return { sha256, size: bytes.byteLength };
+  const sha256 = await sha256HexAsync(bytes);
+  // `wrote` is true only when THIS call stored the blob: a failure path may delete a blob it wrote, never one it found.
+  const wrote = !(await store.has(sha256));
+  if (wrote) await store.put(sha256, bytes);
+  return { sha256, size: bytes.byteLength, wrote };
 }
 
 // ---------------------------------------------------------------- secure retrieval
@@ -102,7 +115,7 @@ export async function openArtifact(db: Queryable, store: ArtifactStore, actor: {
   if (!sha) return undefined;
   const bytes = await store.get(sha);
   if (!bytes) throw new ArtifactCorruptError(versionId, sha, 'missing');
-  const actual = sha256Hex(bytes);
+  const actual = await sha256HexAsync(bytes);
   if (actual !== sha) throw new ArtifactCorruptError(versionId, sha, actual);
   return { bytes, sha256: sha };
 }

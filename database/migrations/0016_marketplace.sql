@@ -362,6 +362,36 @@ REVOKE EXECUTE ON FUNCTION marketplace_bump(text, int, int), marketplace_count_f
   marketplace_count_installs(), marketplace_installed_status(), marketplace_versions_guard(),
   marketplace_listings_search_update(), marketplace_append_only(), marketplace_installs_version_check() FROM PUBLIC;
 
+
+-- State of up to 200 version ids, for revocation delivery: a device whose install row does not exist (its first sync failed)
+-- or a signed-out client still learns that a version was pulled. Only states and the pull reason are returned, never artifact data.
+-- Draft / review / rejected states are not reported (they are not installable and not the caller's to know).
+CREATE FUNCTION marketplace_version_status(version_ids text[])
+  RETURNS TABLE (version_id text, listing_id text, state text, reason text)
+  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+  IF coalesce(array_length(version_ids, 1), 0) > 200 THEN RAISE EXCEPTION 'marketplace_version_status: at most 200 ids' USING ERRCODE = 'invalid_parameter_value'; END IF;
+  RETURN QUERY
+  SELECT v.id, v.listing_id, v.state,
+         (SELECT e.detail ->> 'reason' FROM marketplace_release_events e
+           WHERE e.version_id = v.id AND e.event IN ('revoked','quarantined') ORDER BY e.at DESC, e.id DESC LIMIT 1)
+    FROM marketplace_versions v
+   WHERE v.id = ANY(version_ids) AND v.state IN ('published','deprecated','quarantined','revoked');
+END $$;
+REVOKE EXECUTE ON FUNCTION marketplace_version_status(text[]) FROM PUBLIC;
+
+-- Backstop for "review before public": the application role can never make a listing public or org-wide, whatever the API does.
+CREATE FUNCTION marketplace_visibility_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.visibility IN ('public','org') AND (TG_OP = 'INSERT' OR OLD.visibility IS DISTINCT FROM NEW.visibility)
+     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ao_app') AND pg_has_role(current_user, 'ao_app', 'member') THEN
+    RAISE EXCEPTION 'marketplace_listings: only the server (ao_admin) can make a listing %', NEW.visibility USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER trg_mkt_visibility_guard BEFORE INSERT OR UPDATE OF visibility ON marketplace_listings
+  FOR EACH ROW EXECUTE FUNCTION marketplace_visibility_guard();
+
 -- ---------------------------------------------------------------------------------------------
 -- Roles, grants and row-level security. Guarded so the file loads where the roles do not exist.
 -- ---------------------------------------------------------------------------------------------
@@ -489,7 +519,7 @@ BEGIN
         marketplace_collection_items, marketplace_security_scans, marketplace_submissions, marketplace_reports,
         marketplace_listing_counters, marketplace_listing_stats TO ao_app;
   GRANT INSERT (id, type, publisher_id, owner_user_id, visibility, team_id, title, summary, tags, forked_from, forked_from_version, forked_base_sha256) ON marketplace_listings TO ao_app;
-  GRANT UPDATE (title, summary, tags, visibility, team_id) ON marketplace_listings TO ao_app;
+  GRANT UPDATE (title, summary, tags) ON marketplace_listings TO ao_app;   -- visibility/team_id change only through the server (ao_admin), after the API's authorization
   GRANT INSERT (id, listing_id, version, semver_major, semver_minor, semver_patch, manifest, sha256, size, compat) ON marketplace_versions TO ao_app;
   GRANT UPDATE (state, manifest, sha256, size, compat) ON marketplace_versions TO ao_app;
   GRANT INSERT, DELETE ON marketplace_dependencies TO ao_app;
@@ -503,6 +533,7 @@ BEGIN
   GRANT SELECT, INSERT ON marketplace_install_events, marketplace_usage_events TO ao_app;
   GRANT USAGE ON SEQUENCE marketplace_usage_events_id_seq TO ao_app;
   GRANT EXECUTE ON FUNCTION marketplace_installed_status() TO ao_app;
+  GRANT EXECUTE ON FUNCTION marketplace_version_status(text[]) TO ao_app;
 END $$;
 
 DO $$

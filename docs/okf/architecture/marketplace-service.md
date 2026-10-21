@@ -52,7 +52,7 @@ version, dependencies) are still inserted as `ao_app` under row-level security.
   review (403 `public_requires_review`, also for new versions of a public listing). A verified, ok
   version is auto-published to its private audience by the server; a failed required check stores
   it `rejected` with the report in `marketplace_security_scans`; with no scanner it stays
-  `submitted`. Only `published` versions are installable (`installs/sync` and the artifact route
+  `submitted`. Only `published` and `deprecated` versions are installable (`installs/sync` and the artifact route
   refuse the rest; the owner can still diff them).
 - `PUT listings/:id/visibility`, `POST listings/:id/fork`, `GET listings/:id/compare`,
   `GET me/listings`, `GET me/teams`, `POST teams`, `GET teams/:id`, `POST teams/:id/members`,
@@ -66,7 +66,25 @@ version, dependencies) are still inserted as `ao_app` under row-level security.
   written. `GET listings/:id` of a fork carries `upstream: {listingId, latestVersion,
   newerThanBase}`, computed from upstream versions the caller can see; `compare` defaults a fork to
   base = the recorded upstream version, head = its latest, and returns per-file status, hashes and a
-  unified diff for text files up to 256 KB (20 KB cap per file).
+  unified diff for text files up to 64 KB, each diff cut at 20 000 characters.
+
+Fix-wave additions (2026-10-21 review): `POST versions/status` (anonymous, states only, 200 ids);
+`DELETE listings/:id` and `DELETE listings/:id/versions/:versionId` (owner delete / withdraw; 409 `has_installs`);
+compare needs a signed-in user; process-wide gates (4 concurrent, 16 queued, else 429 `busy` + `Retry-After`) around
+compare, artifact downloads and preview/doc cache misses, and a 256 MiB in-flight upload budget reserved from
+`Content-Length` before the body is buffered. `lastError` in `installs/sync` is stored as a code
+(`download_failed`, `hash_mismatch`, `blocked_by_scan`, `unsupported_type`, `hermes_failed`, `permission_denied`,
+`disk_error`, `other`) plus a sanitized detail of at most 120 characters (paths and tokens stripped).
+Visibility is changed only by the server as `ao_admin` (the `ao_app` role has no UPDATE on it, and a trigger
+refuses public/org from that role). The skill validator fails `no-hidden-executables` when any
+executable-looking file lacks a matching `exec.script` scope, and `no-remote-images` for remote images.
+On start `main.ts` runs the scanner on a built-in package (`selfcheck.ts`); if it fails, skill uploads (creator and
+admin) answer 503 `scanner_unavailable` while browsing keeps working. The scanner needs `python3` and a
+`vendor/hermes-agent` tree at `/srv/vendor/hermes-agent`: `deploy/Dockerfile.marketplace` adds python3 and
+`deploy/docker-compose.yml` mounts the tree and passes `AO_MARKETPLACE_BUCKET`, `AO_MARKETPLACE_ROLES` and
+`OFFICECLI_BIN` (unset: templates cannot reach `verified`). `POST /admin/marketplace/versions/:id/rescan`
+(`marketplace.write`) re-validates the stored bytes and writes a fresh `validation` scan row, which is how a
+creator version left `submitted` is approved. Creator and admin ingest write the same `validation` scan shape.
 
 Limits (`src/marketplace/limits.ts`, env `AO_MKT_*` or handler `limits`): 100 listings per user, 50
 versions per listing, 1 GiB of stored versions per user (409 `quota_exceeded` with `quota`), and an

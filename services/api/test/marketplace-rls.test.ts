@@ -55,11 +55,11 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
 
   test('cannot_create_listing_under_another_publisher', async () => {
     await assert.rejects(asUser('u1', () => app.query(
-      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pb/steal','skill','pb','u1','public','t')`)), /row-level security/);
+      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pb/steal','skill','pb','u1','public','t')`)), /row-level security|only the server/);
     await assert.rejects(asUser('u1', () => app.query(
-      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pb/steal','skill','pa','u1','public','t')`)), /check/i);
+      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pb/steal','skill','pa','u1','public','t')`)), /check|only the server/i);
     await asUser('u1', async () => { await app.query(
-      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pa/ok','skill','pa','u1','public','t')`); });
+      `INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pa/ok','skill','pa','u1','private','t')`); });
   });
 
   test('submissions_and_reports_are_private', async () => {
@@ -180,8 +180,9 @@ describe('marketplace RLS and grants (real Postgres)', { skip }, () => {
     assert.equal((await asUser('u3', () => app.query(`SELECT 1 FROM marketplace_listings WHERE id = 'pb/teamed'`))).rowCount, 0);
     // an owner may attach a listing only to a team they belong to
     await owner.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title) VALUES ('pb/mine','skill','pb','u2','private','t'),('pa/mine3','skill','pa','u3','private','t')`).catch(() => {});
-    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_listings SET visibility = 'team', team_id = 't1' WHERE id = 'pa/open'`)), /row-level security/);
-    await asUser('u2', async () => { const r = await app.query(`UPDATE marketplace_listings SET visibility = 'team', team_id = 't1' WHERE id = 'pb/mine'`); assert.equal(r.rowCount, 1); });
+    await assert.rejects(asUser('u1', () => app.query(`UPDATE marketplace_listings SET visibility = 'team', team_id = 't1' WHERE id = 'pa/open'`)), /row-level security|permission denied/);
+    // visibility/team moves only through the server (ao_admin), after the API checked membership: ao_app has no UPDATE on those columns
+    await assert.rejects(asUser('u2', () => app.query(`UPDATE marketplace_listings SET visibility = 'team', team_id = 't1' WHERE id = 'pb/mine'`)), /permission denied/);
   });
 
   test('reviews_cannot_be_moved_to_another_listing', async () => {

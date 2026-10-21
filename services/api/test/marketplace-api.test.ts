@@ -305,7 +305,7 @@ describe('marketplace API (real Postgres)', { skip }, () => {
     const rows = (await admin.query(`SELECT listing_id, version_id, state, enabled, last_error FROM marketplace_installs WHERE user_id = 'u3' ORDER BY listing_id`)).rows;
     assert.deepEqual(rows, [
       { listing_id: 'pa/rated', version_id: 'v_rated', state: 'enabled', enabled: true, last_error: null },
-      { listing_id: 'pa/unrated', version_id: null, state: 'failed', enabled: false, last_error: 'disk full' }]);
+      { listing_id: 'pa/unrated', version_id: null, state: 'failed', enabled: false, last_error: 'other: disk full' }]);
     assert.equal((await call('/v1/marketplace/listings/pa/rated')).json.stats.installCount, 1);   // a failure is not an install
     assert.equal((await admin.query(`SELECT count(*)::int AS n FROM marketplace_install_events WHERE user_id = 'u3'`)).rows[0].n, 2);
     // re-sending changes the same row; uninstall drops the count

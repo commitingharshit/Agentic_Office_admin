@@ -111,7 +111,7 @@ const quota = (which: string, limit: number, what: string) => err(409, 'quota_ex
 async function checkQuota(d: CreatorDeps, uid: string, listingId: string | null, addBytes: number): Promise<void> {
   const r = await withUser(d.app, uid, async (c) => ({
     listings: Number((await c.query(`SELECT count(*) n FROM marketplace_listings WHERE owner_user_id = current_setting('app.user_id', true)`)).rows[0].n),
-    bytes: Number((await c.query(`SELECT coalesce(sum(v.size), 0) n FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id WHERE l.owner_user_id = current_setting('app.user_id', true)`)).rows[0].n),
+    bytes: Number((await c.query(`SELECT coalesce(sum(v.size), 0) n FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id WHERE l.owner_user_id = current_setting('app.user_id', true) AND v.state <> 'revoked'`)).rows[0].n),
     versions: listingId ? Number((await c.query(`SELECT count(*) n FROM marketplace_versions WHERE listing_id = $1`, [listingId])).rows[0].n) : 0,
   }));
   if (listingId === null && r.listings >= d.limits.maxListings) throw quota('listings', d.limits.maxListings, 'too many listings');
@@ -124,7 +124,9 @@ async function checkQuota(d: CreatorDeps, uid: string, listingId: string | null,
  * REJECTED version keeps its blob on purpose: the version row references it (and the owner can still diff it); its size
  * counts against the owner's byte quota, which is what bounds garbage.
  */
-async function cleanupBlob(d: CreatorDeps, sha256: string): Promise<void> {
+async function cleanupBlob(d: CreatorDeps, sha256: string, wrote: boolean): Promise<void> {
+  // A blob this request did not write (it was already there, e.g. a concurrent upload of identical bytes) is never ours to delete.
+  if (!wrote) return;
   try {
     await d.admin.query(`DELETE FROM marketplace_artifacts a WHERE a.sha256 = $1 AND NOT EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.sha256 = a.sha256)`, [sha256]);
     if (!(await d.admin.query(`SELECT 1 FROM marketplace_artifacts WHERE sha256 = $1`, [sha256])).rowCount) await d.store.delete?.(sha256);
@@ -149,7 +151,7 @@ export interface Committed { listingId: string; versionId: string; version: stri
 async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewListing | { id: string },
   prepare?: (c: pg.PoolClient) => Promise<void>): Promise<Committed> {
   const m = ing.pkg.manifest, out = outcomeOf(ing.report);
-  const { sha256, size } = await putArtifact(d.store, ing.bytes);
+  const { sha256, size, wrote } = await putArtifact(d.store, ing.bytes);
   await d.admin.query(`INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1,$2,$3) ON CONFLICT (sha256) DO NOTHING`, [sha256, size, artifactKey(sha256)]);
   const versionId = newId('ver'), isNew = 'type' in listing;
   const [major, minor, patch] = m.version.split('-')[0].split('.').map(Number);
@@ -166,7 +168,7 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
       for (const dep of m.dependencies) await c.query(`INSERT INTO marketplace_dependencies(version_id, depends_on_listing, range) VALUES ($1,$2,$3)`, [versionId, dep.id, dep.range]);
     });
   } catch (e: any) {
-    await cleanupBlob(d, sha256);
+    await cleanupBlob(d, sha256, wrote);
     if (e?.code === '23505') {
       if (/versions_listing_id_version_key/.test(e.constraint ?? '')) throw err(409, 'version_not_greater', `Version ${m.version} already exists.`);
       throw err(409, 'listing_exists', `${listing.id} already exists.`);
@@ -176,8 +178,9 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
   try {
     await withAdmin(d.admin, async (c) => {
       await c.query(`UPDATE marketplace_versions SET state = $2, scan_verdict = $3 WHERE id = $1`, [versionId, out.state, out.scan]);
-      await c.query(`INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,'creator-validation',$3,$4)`,
-        [newId('scan'), versionId, out.scan, JSON.stringify(ing.report.checks)]);
+      // the SAME record the admin path writes and requireScan reads: scanner 'validation', findings {ok, verified, checks}
+      await c.query(`INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,'validation',$3,$4)`,
+        [newId('scn'), versionId, out.scan, JSON.stringify({ ok: ing.report.ok, verified: ing.report.verified === true && ing.report.ok, checks: ing.report.checks })]);
       if (isNew) await c.query(`UPDATE marketplace_listings SET trust = 'private' WHERE id = $1`, [listing.id]);
       await c.query(`UPDATE marketplace_listings SET updated_at = now() WHERE id = $1`, [listing.id]);
       if (out.state === 'published') {
@@ -188,7 +191,7 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
   } catch (e) {
     // do not leave a half-made draft (or listing) behind
     await d.admin.query(isNew ? `DELETE FROM marketplace_listings WHERE id = $1` : `DELETE FROM marketplace_versions WHERE id = $1 AND state = 'draft'`, [isNew ? listing.id : versionId]).catch(() => {});
-    await cleanupBlob(d, sha256);
+    await cleanupBlob(d, sha256, wrote);
     throw e;
   }
   return { listingId: listing.id, versionId, version: m.version, state: out.state, scanVerdict: out.scan, installable: out.state === 'published', validation: ing.report };
@@ -252,7 +255,8 @@ export async function setVisibility(d: CreatorDeps, uid: string, id: string, vis
   await ownedListing(d.app, uid, id);
   if (visibility === 'team') await requireTeamMember(d.app, uid, team!);
   const teamId = visibility === 'team' ? team : null;
-  await withUser(d.app, uid, (c) => c.query(`UPDATE marketplace_listings SET visibility = $2, team_id = $3 WHERE id = $1`, [id, visibility, teamId]));
+  // ao_app cannot change visibility (column grant + trigger): the server does it, after the authorization above
+  await withAdmin(d.admin, (c) => c.query(`UPDATE marketplace_listings SET visibility = $2, team_id = $3, updated_at = now() WHERE id = $1 AND owner_user_id = $4`, [id, visibility, teamId, uid]));
   return { id, visibility, teamId };
 }
 
@@ -295,6 +299,41 @@ export async function forkListing(d: CreatorDeps, uid: string, id: string, slug:
   const r = await commit(d, uid, ing, { id: forkId, type: src.type, publisherId, visibility: 'private', teamId: null, title: m.title, summary: m.summary,
     fork: { from: id, versionId: src.vid, sha256: src.sha256 } });
   return { listingId: forkId, versionId: r.versionId, forkedFrom: id, base: { versionId: src.vid, sha256: src.sha256 }, state: r.state, installable: r.installable, validation: r.validation };
+}
+
+// ---------------------------------------------------------------- withdrawing and deleting (owner)
+
+/** The owner pulls one version of their private/team listing: state -> revoked (terminal) with a release event; installers are told by the next sync. */
+export async function withdrawVersion(d: CreatorDeps, uid: string, id: string, versionId: string): Promise<{ listingId: string; versionId: string; state: 'revoked' }> {
+  await ownedListing(d.app, uid, id);
+  await withAdmin(d.admin, async (c) => {
+    const v = (await c.query(`SELECT state FROM marketplace_versions WHERE id = $1 AND listing_id = $2 FOR UPDATE`, [versionId, id])).rows[0];
+    if (!v) throw new StoreError(404, 'Version not found.');
+    if (v.state === 'revoked') throw err(409, 'already_withdrawn', 'This version is already withdrawn.');
+    await c.query(`UPDATE marketplace_versions SET state = 'revoked' WHERE id = $1`, [versionId]);
+    await c.query(`INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,'revoked',$3,$4)`,
+      [id, versionId, uid, JSON.stringify({ reason: 'withdrawn by owner', from: v.state, to: 'revoked' })]);
+  });
+  return { listingId: id, versionId, state: 'revoked' };
+}
+
+/** The owner deletes a private/team listing (rows, scans, artifacts no longer referenced, blobs), only if nobody else installed it. */
+export async function deleteListing(d: CreatorDeps, uid: string, id: string): Promise<{ deleted: string }> {
+  await ownedListing(d.app, uid, id);
+  const orphans = await withAdmin(d.admin, async (c) => {
+    await c.query(`SELECT 1 FROM marketplace_listings WHERE id = $1 AND owner_user_id = $2 FOR UPDATE`, [id, uid]);
+    if ((await c.query(`SELECT 1 FROM marketplace_installs WHERE listing_id = $1 AND user_id <> $2 LIMIT 1`, [id, uid])).rowCount)
+      throw err(409, 'has_installs', 'Other people have installed this listing. Withdraw its versions instead of deleting it.');
+    const shas = (await c.query(`SELECT DISTINCT sha256 FROM marketplace_versions WHERE listing_id = $1`, [id])).rows.map((r) => r.sha256 as string);
+    await c.query(`DELETE FROM marketplace_listings WHERE id = $1`, [id]);   // versions, scans, deps, submissions, installs, reviews cascade
+    const gone: string[] = [];
+    for (const sha of shas) {
+      if ((await c.query(`DELETE FROM marketplace_artifacts a WHERE a.sha256 = $1 AND NOT EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.sha256 = a.sha256) RETURNING 1`, [sha])).rowCount) gone.push(sha);
+    }
+    return gone;
+  });
+  for (const sha of orphans) await d.store.delete?.(sha).catch((e) => console.error(`marketplace: could not delete blob ${sha}:`, e));
+  return { deleted: id };
 }
 
 // ---------------------------------------------------------------- compare

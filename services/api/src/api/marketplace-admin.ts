@@ -26,6 +26,8 @@ export interface MarketplaceAdminDeps {
   validate?(type: ListingType, pkg: UnpackedPackage): Promise<ValidationReport>;
   /** Package upload cap in bytes, enforced while reading; default 64 MiB. */
   maxSubmissionBytes?: number;
+  /** False while the skill scanner is unavailable (startup self-check): skill submissions answer 503 scanner_unavailable. */
+  scannerOk?: () => boolean;
 }
 
 export class ApiError extends Error {
@@ -185,7 +187,11 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
   async function submit(adminId: string, role: AdminRole, req: IncomingMessage, sp: URLSearchParams) {
     const ct = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
     if (ct !== 'application/zip') throw fail(415, 'unsupported_media_type', 'Send the package as application/zip.');
-    const visibility = oneOf(sp.get('visibility'), VISIBILITIES, 'visibility') ?? 'public';
+    // A submission never changes an EXISTING listing's visibility (that is the publish action's job, after review). For a NEW listing
+    // only a reviewer may ask for public/org; everyone else gets private or team.
+    const canReview = can(role, 'marketplace.review');
+    const visibility = oneOf(sp.get('visibility'), VISIBILITIES, 'visibility') ?? (canReview ? 'public' : 'private');
+    if ((visibility === 'public' || visibility === 'org') && !canReview) throw fail(403, 'forbidden', 'Your role cannot create a public listing; submit it private or team and have a reviewer publish it.');
     const wantPublisher = idParam(sp.get('publisher'), PUBLISHER_ID, 'publisher');
     const teamId = idParam(sp.get('team'), OPAQUE_ID, 'team');
     if (visibility === 'team' && !teamId) throw fail(400, 'bad_request', 'visibility=team needs team=<id>.');
@@ -200,6 +206,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     const m = pkg.manifest;
     const publisherId = m.id.split('/')[0];
     if (wantPublisher && wantPublisher !== publisherId) throw fail(400, 'publisher_mismatch', `The manifest id belongs to publisher ${publisherId}, not ${wantPublisher}.`);
+    if (m.type === 'skill' && deps.scannerOk && !deps.scannerOk()) throw fail(503, 'scanner_unavailable', 'Skill submissions are paused: the package security scanner is unavailable on this server.');
     const report = await validate(m.type, pkg);
     const verified = report.verified === true && report.ok;
     const state: VersionState = report.ok ? 'submitted' : 'rejected';
@@ -237,9 +244,6 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
             // (POST publishers; new publishers start unverified). A submission can therefore never raise its own trust.
             [m.id, m.type, publisherId, owner, visibility, visibility === 'team' ? teamId : null, await publisherTrust(c, publisherId), m.title, m.summary]);
         }
-        if (ex && sp.has('visibility')) {
-          await c.query('UPDATE marketplace_listings SET visibility = $2, team_id = $3 WHERE id = $1', [m.id, visibility, visibility === 'team' ? teamId : null]);
-        }
         await c.query('INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1,$2,$3) ON CONFLICT (sha256) DO NOTHING', [stored.sha256, stored.size, artifactKey(stored.sha256)]);
         await c.query(
           `INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size, compat, scan_verdict)
@@ -261,8 +265,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
           await c.query('INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,$3,$4,$5)',
             [m.id, versionId, 'rejected', adminId, JSON.stringify({ reason: 'automatic: validation failed', failed: report.checks.filter((k) => !k.ok).map((k) => k.name) })]);
         }
-        await audit(c, adminId, 'submit', null, { listingId: m.id, versionId, version: m.version, type: m.type, state, ok: report.ok, verified, sha256: stored.sha256, size: stored.size, visibility,
-          ...(ex && sp.has('visibility') && ex.visibility !== visibility ? { previousVisibility: ex.visibility } : {}) });
+        await audit(c, adminId, 'submit', null, { listingId: m.id, versionId, version: m.version, type: m.type, state, ok: report.ok, verified, sha256: stored.sha256, size: stored.size, visibility: ex ? ex.visibility : visibility });
       });
     } catch (e: any) {
       if (e?.code === '23505' && e?.constraint === 'marketplace_versions_listing_id_version_key') throw fail(409, 'version_exists', `${m.id} ${m.version} already exists.`);
@@ -295,9 +298,25 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       if (NEEDS_SCAN.has(action)) await requireScan(c, versionId);
       try { await c.query('UPDATE marketplace_versions SET state = $2 WHERE id = $1', [versionId, to]); }
       catch (e: any) { if (typeof e?.code === 'string' && e.code.startsWith('23')) throw fail(409, 'invalid_transition', 'The database refused that transition (the version is immutable once published).'); throw e; }
+      let madePublic = false;
       if (action === 'publish') {
         // the listing shows what the newly published version says about itself
         await c.query('UPDATE marketplace_listings SET title = $2, summary = $3, updated_at = now() WHERE id = $1', [v.listing_id, v.manifest?.title ?? '', v.manifest?.summary ?? '']);
+        if (body.visibility !== undefined) {
+          if (body.visibility !== 'public') throw fail(400, 'bad_request', 'visibility, when given on publish, must be "public".');
+          // The ONLY way an existing listing becomes public. Every version that people can install from it must have been through an admin's
+          // approval: a creator's auto-published (private-audience) versions have not, and would be exposed unreviewed.
+          const l = (await c.query('SELECT visibility, publisher_id FROM marketplace_listings WHERE id = $1 FOR UPDATE', [v.listing_id])).rows[0];
+          if (l.visibility !== 'public') {
+            const unreviewed = (await c.query(`
+              SELECT v2.id FROM marketplace_versions v2 WHERE v2.listing_id = $1 AND v2.state IN ('published','deprecated')
+                 AND NOT EXISTS (SELECT 1 FROM marketplace_release_events e WHERE e.version_id = v2.id AND e.event = 'approved' AND e.actor IS NOT NULL AND e.actor <> 'auto')
+               ORDER BY v2.id`, [v.listing_id])).rows.map((r) => r.id as string);
+            if (unreviewed.length) throw fail(409, 'unreviewed_versions', 'Some published versions of this listing were never reviewed by an admin; approve or quarantine them before making the listing public.', { versionIds: unreviewed });
+            await c.query(`UPDATE marketplace_listings SET visibility = 'public', team_id = NULL, trust = $2, updated_at = now() WHERE id = $1`, [v.listing_id, await publisherTrust(c, l.publisher_id)]);
+            madePublic = true;
+          }
+        }
       }
       const subState = action === 'claim' ? 'in_review' : action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : null;
       if (subState) {
@@ -306,8 +325,34 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       }
       await c.query('INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,$3,$4,$5)',
         [v.listing_id, versionId, EVENT[action], adminId, JSON.stringify({ reason, from: v.state, to })]);
-      await audit(c, adminId, action, null, { listingId: v.listing_id, versionId, version: v.version, from: v.state, to, reason });
+      await audit(c, adminId, action, null, { listingId: v.listing_id, versionId, version: v.version, from: v.state, to, reason, ...(madePublic ? { madePublic: true } : {}) });
       return { versionId, listingId: v.listing_id, state: to };
+    });
+  }
+
+  /** Re-validates the STORED bytes with the configured scanner and writes a fresh 'validation' scan row, so a creator version left 'submitted' (no scanner at upload) can be approved. */
+  async function rescan(adminId: string, versionId: string) {
+    const v = (await pool.query('SELECT id, listing_id, state, sha256, manifest FROM marketplace_versions WHERE id = $1', [versionId])).rows[0];
+    if (!v) throw fail(404, 'not_found', 'No such version.');
+    if (!['submitted', 'in_review', 'approved'].includes(v.state)) throw fail(409, 'invalid_state', `Cannot rescan a version that is ${v.state}.`);
+    const type = v.manifest?.type as ListingType;
+    if (type === 'skill' && deps.scannerOk && !deps.scannerOk()) throw fail(503, 'scanner_unavailable', 'The package security scanner is unavailable on this server.');
+    const bytes = await deps.store.get(v.sha256);
+    if (!bytes) throw fail(409, 'artifact_missing', 'The stored artifact is missing.');
+    let pkg: UnpackedPackage;
+    try { pkg = unpack(bytes); } catch (e) { if (e instanceof UnpackError) throw fail(409, 'artifact_unreadable', e.message); throw e; }
+    const report = await validate(type, pkg);
+    const verified = report.verified === true && report.ok;
+    const verdict = !report.ok ? 'blocked' : verified ? 'clean' : 'pending';
+    const checks = report.checks.map((k) => ({ name: k.name, ok: k.ok, skipped: k.skipped === true, required: k.required === true, ...(k.detail ? { detail: clip(k.detail) } : {}) }));
+    return tx(async (c) => {
+      const cur = (await c.query('SELECT state FROM marketplace_versions WHERE id = $1 FOR UPDATE', [versionId])).rows[0];
+      if (!cur || cur.state !== v.state) throw fail(409, 'invalid_state', 'The version changed while it was being rescanned.');
+      await c.query('INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,$3,$4,$5)',
+        [newId('scn'), versionId, OVERALL, verdict, JSON.stringify({ ok: report.ok, verified, checks })]);
+      await c.query('UPDATE marketplace_versions SET scan_verdict = $2 WHERE id = $1', [versionId, verdict]);
+      await audit(c, adminId, 'rescan', null, { listingId: v.listing_id, versionId, ok: report.ok, verified, verdict });
+      return { versionId, listingId: v.listing_id, state: v.state as string, validation: { ok: report.ok, verified, checks: report.checks } };
     });
   }
 
@@ -629,6 +674,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
         need(ACTION_PERMISSION[action]);
         return send(200, await act(adminId, role, vid(id), action, await jsonBody(req))), true;
       }
+      if (a === 'versions' && id && sub === 'rescan' && m === 'POST') { need('marketplace.write'); return send(200, await rescan(adminId, vid(id))), true; }
       if (a === 'installations' && !id && m === 'GET') { need('marketplace.read'); return send(200, await installations(adminId, sp)), true; }
       if (a === 'users' && id && sub === 'installs' && m === 'GET') { need('marketplace.read'); return send(200, await userInstalls(adminId, vid(id))), true; }
       if (a === 'reviews' && !id && m === 'GET') { need('marketplace.read'); return send(200, await reviews(adminId, sp)), true; }
