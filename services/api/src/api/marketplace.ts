@@ -49,6 +49,8 @@ export interface MarketplaceDeps {
   uploadWaitMs?: number;
   /** False while the skill scanner is unavailable (startup self-check): creator uploads answer 503 scanner_unavailable. */
   scannerOk?: () => boolean;
+  /** True while the blueprint compiler passed its startup self-check (src/marketplace/agents.ts). Absent: agent and bundle uploads answer 503 and capabilities says unsupported. */
+  agentsOk?: () => boolean;
 }
 
 const MAX_PREVIEW = 2 * 1024 * 1024, MAX_DOC = 256 * 1024;
@@ -144,7 +146,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
   const heavy = deps.heavyGate ?? createGate(Number(process.env.AO_MKT_HEAVY_CONCURRENCY) || 4, Number(process.env.AO_MKT_HEAVY_QUEUE) || 16);
   const budget = createUploadBudget(deps.uploadBudgetBytes ?? (Number(process.env.AO_MKT_UPLOAD_BUDGET) || 256 * 1024 * 1024), deps.uploadWaitMs ?? 1500);
   const scannerOk = deps.scannerOk ?? (() => true);
-  const creatorShared = deps.admin ? creator.creatorDeps(deps.app, deps.admin, deps.store, deps.limits, deps.verifyTools) : undefined;
+  const creatorShared = deps.admin ? creator.creatorDeps(deps.app, deps.admin, deps.store, deps.limits, deps.verifyTools, { agentsOk: deps.agentsOk }) : undefined;
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -201,7 +203,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
 
       // ── what is operational: the single source the nav, installer and publish gate read. Nothing user-specific; safe to cache briefly.
       if (rest === 'capabilities' && m === 'GET') {
-        return send(200, { schema: 'agentic.marketplace.capabilities/1', types: typeSupport() }, { 'cache-control': 'public, max-age=60' }), true;
+        return send(200, { schema: 'agentic.marketplace.capabilities/1', types: typeSupport(deps.agentsOk ? { bridge: deps.agentsOk() } : {}) }, { 'cache-control': 'public, max-age=60' }), true;
       }
 
       // ── catalog

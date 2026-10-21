@@ -11,9 +11,11 @@ import { artifactKey, putArtifact, UnpackError, unpack, MAX_ARTIFACT_BYTES, type
 import { can, type AdminRole, type MarketplacePermission } from '../marketplace/permissions.ts';
 import { LIVE_INSTALL, latestPublished } from '../marketplace/search.ts';
 import { INSTALL_STATES } from '../marketplace/store.ts';
-import { TYPE_POLICY, maxTier, trustAtLeast } from '../marketplace/support.ts';
+import { BRIDGE_TYPES, TYPE_POLICY, maxTier, needsManualReview, trustAtLeast } from '../marketplace/support.ts';
 import { LISTING_TYPES, type ListingType, type ValidationReport, type UnpackedPackage, type VersionState, type Visibility } from '../marketplace/types.ts';
-import { validateArtifact } from '../marketplace/validate/index.ts';
+import { validateArtifact, type ValidateContext } from '../marketplace/validate/index.ts';
+import { audienceCatalog } from '../marketplace/catalog.ts';
+import { parsePolicyDoc, readPolicy, type PolicyDoc } from './marketplace-teams.ts';
 import { storeEvidenceSink } from '../marketplace/verify/evidence.ts';
 import { runPipeline } from '../marketplace/verify/runner.ts';
 import { MAX_RESULT_BYTES, type PipelineTools } from '../marketplace/verify/types.ts';
@@ -28,11 +30,13 @@ export interface MarketplaceAdminDeps {
   roleOf?(adminId: string): AdminRole | Promise<AdminRole>;
   store: ArtifactStore;
   /** Validation with the real injected scanner/renderers; defaults to the global registry (validate/index.ts). */
-  validate?(type: ListingType, pkg: UnpackedPackage): Promise<ValidationReport>;
+  validate?(type: ListingType, pkg: UnpackedPackage, ctx?: ValidateContext): Promise<ValidationReport>;
   /** Package upload cap in bytes, enforced while reading; default 64 MiB. */
   maxSubmissionBytes?: number;
   /** False while the skill scanner is unavailable (startup self-check): skill submissions answer 503 scanner_unavailable. */
   scannerOk?: () => boolean;
+  /** True while the blueprint compiler passed its startup self-check (src/marketplace/agents.ts). Absent: agent and bundle submissions answer 503 compiler_unavailable (fail closed). */
+  agentsOk?: () => boolean;
   /** Tools the in-process verification run may use (light stages only; heavy stages belong to the out-of-process worker, which POSTs its result to .../verification). Absent tools make their stages 'skipped'. */
   verifyTools?: PipelineTools;
 }
@@ -161,11 +165,35 @@ type Client = pg.PoolClient;
 const series = async <T>(fns: Array<() => Promise<T>>): Promise<T[]> => { const out: T[] = []; for (const f of fns) out.push(await f()); return out; };
 const semverParts = (v: string) => { const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v)!; return [+m[1], +m[2], +m[3]]; };
 
+/**
+ * What a reviewer needs to see for an agent or bundle without opening the package: the components it uses, the permission union it
+ * declares, the dependency pins, and the result of each automated check (compile, dry run, escalation, unsupported components).
+ * Everything comes from the stored manifest and the recorded scan; nothing here is computed from request input.
+ */
+function reviewSummary(r: { type: string; manifest: any; overall: any }) {
+  const checks: Array<{ name: string; ok: boolean; skipped?: boolean; detail?: string }> = Array.isArray(r.overall?.checks) ? r.overall.checks : [];
+  const pick = (n: string) => { const c = checks.find((k) => k.name === n); return c ? { ok: c.ok, skipped: c.skipped === true, detail: c.detail ?? null } : null; };
+  return {
+    audience: r.overall?.audience ?? null,
+    components: Array.isArray(r.manifest?.payload?.components) ? r.manifest.payload.components : null,
+    permissions: Array.isArray(r.manifest?.permissions) ? r.manifest.permissions : [],
+    dependencies: Array.isArray(r.manifest?.dependencies) ? r.manifest.dependencies : [],
+    compile: pick('compiles'), dryRun: pick('dry-run'), escalation: pick('permissions-subset'), unsupported: pick('unsupported-reported')?.detail ?? null,
+    ...(r.type === 'bundle' ? { permissionsUnion: pick('permissions-union'), closure: pick('closure-complete'), memberReview: pick('manual-review-required') } : {}),
+  };
+}
+
 // ───────────────────────────────────────────── the handler
 
 export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
   const validate = deps.validate ?? validateArtifact;
   const pool = deps.admin;
+  const agentsOpen = (type: string) => {
+    if ((BRIDGE_TYPES as readonly string[]).includes(type) && !(deps.agentsOk?.() ?? false)) throw fail(503, 'compiler_unavailable', 'Agent and bundle submissions are paused: the blueprint compiler is unavailable on this server.');
+  };
+  /** Agent and bundle validation resolves references against the audience of the listing (no caller on the admin path), never against private listings. */
+  const validateCtx = (type: string, audience: { visibility: Visibility; teamId: string | null }): ValidateContext =>
+    (BRIDGE_TYPES as readonly string[]).includes(type) ? { catalog: audienceCatalog(pool, deps.store), audience } : {};
 
   async function tx<T>(fn: (c: Client) => Promise<T>): Promise<T> {
     const c = await pool.connect();
@@ -221,12 +249,17 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     const publisherId = m.id.split('/')[0];
     if (wantPublisher && wantPublisher !== publisherId) throw fail(400, 'publisher_mismatch', `The manifest id belongs to publisher ${publisherId}, not ${wantPublisher}.`);
     if (m.type === 'skill' && deps.scannerOk && !deps.scannerOk()) throw fail(503, 'scanner_unavailable', 'Skill submissions are paused: the package security scanner is unavailable on this server.');
-    const report = await validate(m.type, pkg);
+    agentsOpen(m.type);
+    // the audience the version is validated for: an existing listing's own, else the one asked for
+    const exL = (BRIDGE_TYPES as readonly string[]).includes(m.type) ? (await pool.query('SELECT visibility, team_id FROM marketplace_listings WHERE id = $1', [m.id])).rows[0] : undefined;
+    const audience = exL ? { visibility: exL.visibility as Visibility, teamId: (exL.team_id ?? null) as string | null } : { visibility, teamId: visibility === 'team' ? teamId : null };
+    const report = await validate(m.type, pkg, validateCtx(m.type, audience));
     const verified = report.verified === true && report.ok;
     const state: VersionState = report.ok ? 'submitted' : 'rejected';
     const verdict = !report.ok ? 'blocked' : verified ? 'clean' : 'pending';
     const policy = TYPE_POLICY[m.type];
     const riskTier = maxTier(policy?.riskTier ?? 'executable', report.riskTier ?? 'data');
+    const manualReview = needsManualReview(m.type, riskTier, report.checks);
     const stored = await putArtifact(deps.store, bytes);   // content addressed; the bytes never reach a log or an audit row
     const versionId = newId('ver');
     const [major, minor, patch] = semverParts(m.version);
@@ -276,7 +309,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
             [newId('scn'), versionId, k.name.slice(0, 120), !k.ok ? 'blocked' : k.skipped ? 'pending' : 'clean', JSON.stringify([k])]);
         }
         await c.query('INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,$3,$4,$5)',
-          [newId('scn'), versionId, OVERALL, verdict, JSON.stringify({ ok: report.ok, verified, checks })]);
+          [newId('scn'), versionId, OVERALL, verdict, JSON.stringify({ ok: report.ok, verified, checks, ...((BRIDGE_TYPES as readonly string[]).includes(m.type) ? { audience } : {}) })]);
         await c.query(`INSERT INTO marketplace_submissions(id, version_id, submitted_by, state, notes, decided_at) VALUES ($1,$2,$3,$4,$5,$6)`,
           [newId('sub'), versionId, owner, state, report.ok ? null : 'Rejected automatically: a required validation check failed.', report.ok ? null : new Date()]);
         await c.query('INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,$3,$4,$5)',
@@ -291,7 +324,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       if (e?.code === '23505' && e?.constraint === 'marketplace_versions_listing_id_version_key') throw fail(409, 'version_exists', `${m.id} ${m.version} already exists.`);
       throw e;
     }
-    return { status: 201, body: { listingId: m.id, versionId, state, riskTier, manualReview: policy?.manualReview ?? true, ...(report.ok && (policy?.manualReview ?? true) ? { summarySha256: summaryHash(m, stored.sha256, riskTier) } : {}), validation: { ok: report.ok, verified, checks: report.checks } } };
+    return { status: 201, body: { listingId: m.id, versionId, state, riskTier, manualReview, ...(report.ok && manualReview ? { summarySha256: summaryHash(m, stored.sha256, riskTier) } : {}), validation: { ok: report.ok, verified, checks: report.checks } } };
   }
 
   // ── lifecycle
@@ -312,7 +345,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const to = transition(v.state, action);
       // A type that needs manual review (unknown types count as needing it): NO role is exempt from separation of duties, and the
       // reviewer must acknowledge the exact permission summary the server computes from the stored version.
-      const manual = TYPE_POLICY[v.manifest?.type as ListingType]?.manualReview ?? true;
+      const scanChecks = (action === 'approve' || action === 'publish') ? (((await latestScan(c, versionId))?.findings?.checks ?? []) as Array<{ name: string }>) : [];
+      const manual = needsManualReview(String(v.manifest?.type), v.risk_tier ?? null, scanChecks);
       if (manual && (action === 'approve' || action === 'publish')) {
         const sub = (await c.query(`SELECT actor FROM marketplace_release_events WHERE version_id = $1 AND event = 'submitted' ORDER BY id LIMIT 1`, [versionId])).rows[0];
         const owner = (await c.query(`SELECT l.owner_user_id FROM marketplace_listings l WHERE l.id = $1`, [v.listing_id])).rows[0]?.owner_user_id;
@@ -348,6 +382,11 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
         await c.query('UPDATE marketplace_listings SET title = $2, summary = $3, updated_at = now() WHERE id = $1', [v.listing_id, v.manifest?.title ?? '', v.manifest?.summary ?? '']);
         if (body.visibility !== undefined) {
           if (body.visibility !== 'public') throw fail(400, 'bad_request', 'visibility, when given on publish, must be "public".');
+          // An agent or bundle was validated for one audience (recorded with its scan): it may not be published to a wider one than it was checked for.
+          if ((BRIDGE_TYPES as readonly string[]).includes(String(v.manifest?.type))) {
+            const aud = (await latestScan(c, versionId))?.findings?.audience;
+            if (aud?.visibility !== 'public') throw fail(409, 'audience_mismatch', 'This version was validated for a narrower audience than public; submit it again as a public listing so its references are checked against public listings.');
+          }
           // The ONLY way an existing listing becomes public. Every version that people can install from it must have been through an admin's
           // approval: a creator's auto-published (private-audience) versions have not, and would be exposed unreviewed.
           const l = (await c.query('SELECT visibility, publisher_id FROM marketplace_listings WHERE id = $1 FOR UPDATE', [v.listing_id])).rows[0];
@@ -381,11 +420,16 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     if (!['submitted', 'in_review', 'approved'].includes(v.state)) throw fail(409, 'invalid_state', `Cannot rescan a version that is ${v.state}.`);
     const type = v.manifest?.type as ListingType;
     if (type === 'skill' && deps.scannerOk && !deps.scannerOk()) throw fail(503, 'scanner_unavailable', 'The package security scanner is unavailable on this server.');
+    agentsOpen(type);
     const bytes = await deps.store.get(v.sha256);
     if (!bytes) throw fail(409, 'artifact_missing', 'The stored artifact is missing.');
     let pkg: UnpackedPackage;
     try { pkg = unpack(bytes); } catch (e) { if (e instanceof UnpackError) throw fail(409, 'artifact_unreadable', e.message); throw e; }
-    const report = await validate(type, pkg);
+    const lst = (await pool.query('SELECT visibility, team_id FROM marketplace_listings WHERE id = $1', [v.listing_id])).rows[0];
+    // the audience of the last scan (what the reviewer was shown) when it recorded one, else the listing's own
+    const prevAud = (await pool.query(`SELECT findings -> 'audience' AS a FROM marketplace_security_scans WHERE version_id = $1 AND scanner = $2 ORDER BY at DESC, id DESC LIMIT 1`, [versionId, OVERALL])).rows[0]?.a;
+    const audience = prevAud?.visibility ? { visibility: prevAud.visibility as Visibility, teamId: (prevAud.teamId ?? null) as string | null } : { visibility: (lst?.visibility ?? 'public') as Visibility, teamId: (lst?.team_id ?? null) as string | null };
+    const report = await validate(type, pkg, validateCtx(type, audience));
     const verified = report.verified === true && report.ok;
     const verdict = !report.ok ? 'blocked' : verified ? 'clean' : 'pending';
     const checks = report.checks.map((k) => ({ name: k.name, ok: k.ok, skipped: k.skipped === true, required: k.required === true, ...(k.detail ? { detail: clip(k.detail) } : {}) }));
@@ -393,7 +437,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const cur = (await c.query('SELECT state FROM marketplace_versions WHERE id = $1 FOR UPDATE', [versionId])).rows[0];
       if (!cur || cur.state !== v.state) throw fail(409, 'invalid_state', 'The version changed while it was being rescanned.');
       await c.query('INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,$3,$4,$5)',
-        [newId('scn'), versionId, OVERALL, verdict, JSON.stringify({ ok: report.ok, verified, checks })]);
+        [newId('scn'), versionId, OVERALL, verdict, JSON.stringify({ ok: report.ok, verified, checks, ...((BRIDGE_TYPES as readonly string[]).includes(type) ? { audience } : {}) })]);
       await c.query('UPDATE marketplace_versions SET scan_verdict = $2 WHERE id = $1', [versionId, verdict]);
       await audit(c, adminId, 'rescan', null, { listingId: v.listing_id, versionId, ok: report.ok, verified, verdict });
       return { versionId, listingId: v.listing_id, state: v.state as string, validation: { ok: report.ok, verified, checks: report.checks } };
@@ -456,6 +500,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     const visibility = oneOf(sp.get('visibility'), VISIBILITIES, 'visibility');
     const state = oneOf(sp.get('state'), VERSION_STATES, 'state');
     const publisher = idParam(sp.get('publisher'), PUBLISHER_ID, 'publisher');
+    const tier = oneOf(sp.get('tier'), ['data', 'declarative', 'executable'] as const, 'tier');
     const q = sp.get('q')?.trim() || null;
     if (q !== null && q.length > 200) throw fail(400, 'bad_request', 'q is too long (200 characters at most).');
     const cur = decodeCursor(sp.get('page'), LISTING_ID);
@@ -467,18 +512,19 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     if (visibility) where.push(`l.visibility = ${$(visibility)}`);
     if (publisher) where.push(`l.publisher_id = ${$(publisher)}`);
     if (state) where.push(`lv.state = ${$(state)}`);
+    if (tier) where.push(`lv.risk_tier = ${$(tier)}`);
     if (q) { const a = $(q), b = $(`%${likeEscape(q.toLowerCase())}%`); where.push(`(l.search @@ websearch_to_tsquery('simple', ${a}::text) OR lower(l.id) LIKE ${b} OR lower(l.title) LIKE ${b})`); }
     if (cur) { const u = $(cur.u), id = $(cur.id); where.push(`(l.updated_at < ${u}::timestamptz OR (l.updated_at = ${u}::timestamptz AND l.id > ${id}::text))`); }
     const lim = $(limit + 1);
-    return read(adminId, 'list_catalog', null, { q, type, visibility, publisher, state }, async (c) => {
+    return read(adminId, 'list_catalog', null, { q, type, visibility, publisher, state, tier }, async (c) => {
       const rows = (await c.query(`
         SELECT l.id, l.title, l.type, l.publisher_id, l.visibility, l.trust, l.updated_at, ${UTC('l.updated_at')} AS updated_raw,
-               lv.id AS latest_version_id, lv.version AS latest_version, lv.state AS version_state, lv.scan_verdict,
+               lv.id AS latest_version_id, lv.version AS latest_version, lv.state AS version_state, lv.scan_verdict, lv.risk_tier,
                (SELECT count(*) FROM marketplace_installs i WHERE i.listing_id = l.id AND i.state IN ${LIVE_INSTALL})::int AS installs,
                (SELECT count(*) FROM marketplace_installs i WHERE i.listing_id = l.id AND i.state IN ${LIVE_INSTALL} AND i.enabled)::int AS active_installs,
                s.rating_avg, s.rating_count
           FROM marketplace_listings l
-          LEFT JOIN LATERAL (SELECT v.id, v.version, v.state, v.scan_verdict FROM marketplace_versions v WHERE v.listing_id = l.id
+          LEFT JOIN LATERAL (SELECT v.id, v.version, v.state, v.scan_verdict, v.risk_tier FROM marketplace_versions v WHERE v.listing_id = l.id
                               ORDER BY (v.version LIKE '%-%') ASC, v.semver_major DESC, v.semver_minor DESC, v.semver_patch DESC, v.created_at DESC, v.id ASC LIMIT 1) lv ON true
           LEFT JOIN marketplace_listing_stats s ON s.listing_id = l.id
          ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -489,6 +535,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
           id: r.id, name: r.title, type: r.type, publisher: r.publisher_id, visibility: r.visibility, trust: r.trust, state: r.version_state ?? null,
           latestVersion: r.latest_version ?? null, latestVersionId: r.latest_version_id ?? null, installs: r.installs, activeInstalls: r.active_installs,
           ratingAvg: r.rating_avg === null ? null : Number(r.rating_avg), ratingCount: Number(r.rating_count ?? 0), updatedAt: r.updated_at, scanVerdict: r.scan_verdict ?? null,
+          ...((BRIDGE_TYPES as readonly string[]).includes(r.type) ? { riskTier: r.risk_tier ?? null } : {}),
         })),
         nextPage: rows.length > limit && last ? encodeCursor(last.updated_raw, last.id) : null,
       };
@@ -526,7 +573,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
          WHERE v.state = ANY($1::text[]) ORDER BY v.created_at ASC, v.id ASC LIMIT ${PAGE_MAX}`, [state ? [state] : ['submitted', 'in_review'], OVERALL])).rows;
       return { items: rows.map((r) => ({ versionId: r.id, listingId: r.listing_id, name: r.title, type: r.type, publisher: r.publisher_id, version: r.version, state: r.state,
         scanVerdict: r.scan_verdict, verified: r.overall?.verified === true, submittedAt: r.created_at, riskTier: r.risk_tier ?? null,
-        ...((TYPE_POLICY[r.type as ListingType]?.manualReview ?? true) ? { manualReview: true, summarySha256: summaryHash(r.manifest, r.sha256, r.risk_tier ?? null) } : {}) })) };
+        ...(needsManualReview(r.type, r.risk_tier ?? null, r.overall?.checks ?? []) ? { manualReview: true, summarySha256: summaryHash(r.manifest, r.sha256, r.risk_tier ?? null) } : {}),
+        ...((BRIDGE_TYPES as readonly string[]).includes(r.type) ? { review: reviewSummary(r) } : {}) })) };
     });
   }
 
@@ -758,6 +806,43 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     });
   }
 
+  // ── organization policy and team assignments (Plan 2 Task 7)
+  async function orgPolicy(adminId: string) {
+    return read(adminId, 'view_org_policy', null, {}, (c) => readPolicy(c, 'org', 'default'));
+  }
+  async function setOrgPolicy(adminId: string, doc: PolicyDoc) {
+    return tx(async (c) => {
+      const before = await readPolicy(c, 'org', 'default');
+      // updated_by stays NULL: it references users, and an admin is not a user; the audit row below names the admin
+      await c.query(`INSERT INTO marketplace_policies(scope_kind, scope_id, mode, min_trust, require_clean_scan) VALUES ('org','default',$1,$2,$3)
+                     ON CONFLICT (scope_kind, scope_id) DO UPDATE SET mode = EXCLUDED.mode, min_trust = EXCLUDED.min_trust, require_clean_scan = EXCLUDED.require_clean_scan`, [doc.mode, doc.minTrust, doc.requireCleanScan]);
+      await c.query(`DELETE FROM marketplace_policy_rules WHERE scope_kind = 'org' AND scope_id = 'default'`);
+      for (const r of doc.rules) {
+        await c.query(`INSERT INTO marketplace_policy_rules(id, scope_kind, scope_id, effect, match_kind, match_value) VALUES ($1,'org','default',$2,$3,$4)`, [newId('pr'), r.effect, r.matchKind, r.matchValue]);
+      }
+      await audit(c, adminId, 'org_policy_set', null, { mode: doc.mode, minTrust: doc.minTrust, requireCleanScan: doc.requireCleanScan, rules: doc.rules.length,
+        before: before ? { mode: before.mode, minTrust: before.minTrust, requireCleanScan: before.requireCleanScan, rules: before.rules.length } : null });
+      return readPolicy(c, 'org', 'default');
+    });
+  }
+  async function teamAssignments(adminId: string, sp: URLSearchParams) {
+    const team = idParam(sp.get('team'), OPAQUE_ID, 'team');
+    const listing = idParam(sp.get('listing'), LISTING_ID, 'listing');
+    const values: unknown[] = [];
+    const $ = (v: unknown) => { values.push(v); return `$${values.length}`; };
+    const where: string[] = [];
+    if (team) where.push(`a.team_id = ${$(team)}`);
+    if (listing) where.push(`a.listing_id = ${$(listing)}`);
+    return read(adminId, 'list_team_assignments', null, { team, listing }, async (c) => {
+      const rows = (await c.query(`
+        SELECT a.id, a.team_id, a.listing_id, a.version_id, a.pinned_version, a.pin_sha256, a.mode, a.assigned_by, a.created_at, v.state, l.type, l.title
+          FROM marketplace_team_assignments a JOIN marketplace_versions v ON v.id = a.version_id JOIN marketplace_listings l ON l.id = a.listing_id
+         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.created_at DESC, a.id ASC LIMIT ${PAGE_MAX * 2}`, values)).rows;
+      return { items: rows.map((r) => ({ id: r.id, teamId: r.team_id, listingId: r.listing_id, title: r.title, type: r.type, versionId: r.version_id, pinnedVersion: r.pinned_version,
+        pinSha256: r.pin_sha256, mode: r.mode, assignedBy: r.assigned_by ?? null, createdAt: r.created_at, versionState: r.state, blocked: r.state === 'revoked' || r.state === 'quarantined' })), note: USER_NOTE };
+    });
+  }
+
   // ── routing
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -805,6 +890,9 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
         return send(r.status, r.body), true;
       }
       if (a === 'security' && id === 'suspicious-install-bursts' && !sub && m === 'GET') { need('marketplace.read'); return send(200, await suspiciousInstallBursts(adminId, sp)), true; }
+      if (a === 'policies' && id === 'org' && !sub && m === 'GET') { need('marketplace.policy'); return send(200, await orgPolicy(adminId)), true; }
+      if (a === 'policies' && id === 'org' && !sub && m === 'PUT') { need('marketplace.policy'); return send(200, await setOrgPolicy(adminId, parsePolicyDoc(await jsonBody(req)))), true; }
+      if (a === 'team-assignments' && !id && m === 'GET') { need('marketplace.read'); return send(200, await teamAssignments(adminId, sp)), true; }
       if (a === 'analytics' && !id && m === 'GET') { need('marketplace.read'); return send(200, await analytics(adminId, sp)), true; }
       throw fail(404, 'not_found', 'Not found.');
     } catch (e: any) {

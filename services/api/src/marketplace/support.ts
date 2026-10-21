@@ -22,9 +22,21 @@ export const OPERATIONAL: Readonly<Record<ListingType, Entry>> = Object.freeze({
   bundle: { supported: false, reason: 'Bundles are not available yet.', path: 'Agents and bundles arrive with the agents-and-bundles release.' },
 });
 
-export function typeSupport(): TypeSupport[] {
+/** Types whose support depends on a startup self-check rather than on the static table: agent and bundle need the Python compiler bridge. */
+export const BRIDGE_TYPES: readonly ListingType[] = ['agent', 'bundle'];
+export interface RuntimeSupport { bridge?: boolean }
+export const BRIDGE_UNAVAILABLE_REASON = 'Agents and bundles are unavailable on this server right now: the blueprint compiler did not pass its startup self-check.';
+
+/**
+ * `runtime.bridge === true` (the compiler bridge passed its startup self-check) makes agent and bundle supported; anything else
+ * leaves them as OPERATIONAL says. A static `supported:true` row is never downgraded here.
+ */
+export function typeSupport(runtime: RuntimeSupport = {}): TypeSupport[] {
   return LISTING_TYPES.map((type): TypeSupport => {
-    const e = OPERATIONAL[type] ?? { supported: false, reason: 'Unknown type.' };   // a missing row is unsupported, never supported
+    const base = OPERATIONAL[type] ?? { supported: false, reason: 'Unknown type.' };   // a missing row is unsupported, never supported
+    const viaBridge = BRIDGE_TYPES.includes(type);
+    const e: Entry = viaBridge && runtime.bridge === true ? { supported: true }
+      : viaBridge && runtime.bridge === false && base.supported !== true ? { ...base, supported: false, reason: BRIDGE_UNAVAILABLE_REASON } : base;
     return {
       type, supported: e.supported === true,
       ...(e.modes ? { modes: { ...e.modes } } : {}),
@@ -57,6 +69,18 @@ export const TYPE_POLICY: Readonly<Record<ListingType, TypePolicy>> = Object.fre
   agent: { riskTier: 'declarative', manualReview: false, minPublisherTrust: 'community' },
   bundle: { riskTier: 'declarative', manualReview: false, minPublisherTrust: 'community' },
 });
+
+/**
+ * Manual review (a reviewer other than the submitter, acknowledging the permission summary) applies to every type whose policy
+ * says so, and to an agent or bundle whose risk tier is `executable` (it declares or contains exec.script / network / secrets use,
+ * or an elevated member). `checks` may carry the bundle validator's `manual-review-required` note. Unknown type: manual.
+ */
+export function needsManualReview(type: string, riskTier: string | null | undefined, checks?: ReadonlyArray<{ name: string }>): boolean {
+  const p = (TYPE_POLICY as Record<string, TypePolicy | undefined>)[type];
+  if (!p || p.manualReview) return true;
+  if (type === 'agent' || type === 'bundle') return riskTier === 'executable' || (checks?.some(c => c.name === 'manual-review-required') ?? false);
+  return false;
+}
 
 const TIER_RANK: Record<RiskTier, number> = { data: 0, declarative: 1, executable: 2 };
 export const maxTier = (a: RiskTier, b: RiskTier): RiskTier => (TIER_RANK[a] >= TIER_RANK[b] ? a : b);

@@ -3,7 +3,8 @@
 // decides what is visible: nothing in this file re-implements visibility.
 import { randomBytes } from 'node:crypto';
 import type pg from 'pg';
-import { compareSemver } from './manifest.ts';
+import { compareSemver, isRange, satisfies } from './manifest.ts';
+import { evaluate, loadEffectivePolicy, type EffectivePolicy } from './policy.ts';
 import { buildListQuery, encodeCursor, latestPublished, CAPABILITIES, LIVE_INSTALL, PREVIEW_COUNT, type ListParams } from './search.ts';
 import type { InstallState } from './types.ts';
 
@@ -219,6 +220,8 @@ export interface InstallItem { listingId: string; versionId: string | null; stat
 export interface InstallEntry { listingId: string; item: InstallItem | null }
 export interface InstallResult { listingId: string; ok: boolean; code?: 'not_found' | 'invalid' | 'rejected' }
 export interface InstallUpdate { listingId: string; versionId?: string; installedVersion?: string; latest?: string; state: string; reason?: string; detail?: string; revoked?: true }
+/** A team assignment whose pinned version was pulled (revoked or quarantined): reported to every member of the team. */
+export interface BlockedAssignment { assignmentId: string; teamId: string; listingId: string; versionId: string; pinnedVersion: string; mode: string; state: string; reason: 'assignment_blocked'; detail?: string }
 export const MAX_UPDATES = 500;
 
 export const ERROR_CODES = ['download_failed', 'hash_mismatch', 'blocked_by_scan', 'unsupported_type', 'hermes_failed', 'permission_denied', 'disk_error', 'other'] as const;
@@ -271,7 +274,7 @@ async function applyInstall(c: pg.PoolClient, uid: string, deviceId: string, raw
  * device must do from the caller's existing install rows (never from the request). A device that is not the
  * caller's is the only whole-request failure.
  */
-export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: string, entries: InstallEntry[]): Promise<{ results: InstallResult[]; updates: InstallUpdate[] }> {
+export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: string, entries: InstallEntry[]): Promise<{ results: InstallResult[]; updates: InstallUpdate[]; assignments: BlockedAssignment[] }> {
   if (!(await c.query(`SELECT 1 FROM devices WHERE id = $1 AND user_id = $2`, [deviceId, uid])).rowCount) throw new StoreError(404, 'Unknown device.');
   const results: InstallResult[] = [];
   for (const { listingId, item } of entries) {
@@ -290,17 +293,36 @@ export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: stri
   }
   // What the device should do next, for every live install on it: pulled versions and newer releases.
   const rows = (await c.query(`
-    SELECT i.listing_id, i.version_id, i.state AS install_state, st.version AS installed_version, st.state AS version_state, st.reason, lv.version AS latest
+    SELECT i.listing_id, i.version_id, i.state AS install_state, st.version AS installed_version, st.state AS version_state, st.reason, lv.version AS latest,
+           vis.id AS visible_listing, vis.type AS l_type, vis.publisher_id AS l_publisher, vis.trust AS l_trust, iv.scan_verdict AS v_scan
       FROM marketplace_installs i
       JOIN marketplace_installed_status() st ON st.version_id = i.version_id AND st.listing_id = i.listing_id
+      LEFT JOIN marketplace_listings vis ON vis.id = i.listing_id
+      LEFT JOIN marketplace_versions iv ON iv.id = i.version_id
       LEFT JOIN LATERAL ${latestPublished('i.listing_id')} lv ON true
      WHERE i.device_id = $1 AND i.user_id = $2 AND i.state IN ${LIVE_INSTALL}
      ORDER BY i.listing_id
      LIMIT ${MAX_UPDATES}`, [deviceId, uid])).rows;
+  // Dependencies of what is installed (an agent's skills, a bundle's members): if every version that satisfies a dependency range was
+  // pulled, the dependent is reported as revoked too, with the dependency's reason.
+  const depProblem = await dependencyProblems(c, rows.filter((r) => r.version_state !== 'revoked' && r.version_state !== 'quarantined').map((r) => r.version_id as string));
+  let policy: EffectivePolicy | undefined;
+  try { policy = await loadEffectivePolicy(c, uid); } catch { policy = undefined; }   // a policy that cannot be read reports nothing; install-time refuses (fail closed there)
   const updates = rows.flatMap((r): InstallUpdate[] => {
     const base = { listingId: r.listing_id, versionId: r.version_id as string, installedVersion: r.installed_version, ...(r.latest ? { latest: r.latest } : {}) };
     if (r.version_state === 'revoked' || r.version_state === 'quarantined') {
       return [{ ...base, state: 'update_available', reason: r.version_state, ...(r.reason ? { detail: r.reason } : {}), revoked: true }];
+    }
+    // The caller's own view (row-level security) no longer shows the listing: a team they left, a listing made private again.
+    if (!r.visible_listing) return [{ ...base, state: 'access_revoked', reason: 'access_revoked', detail: 'You no longer have access to this item.' }];
+    const dep = depProblem.get(r.version_id as string);
+    if (dep) return [{ ...base, state: 'update_available', reason: 'dependency_revoked', detail: dep, revoked: true }];
+    if (policy) {
+      let d: { allowed: boolean; reason?: string };
+      try {
+        d = evaluate(policy, { listingId: r.listing_id, publisherId: r.l_publisher ?? String(r.listing_id).split('/')[0], type: r.l_type, trust: r.l_trust ?? 'private', scanVerdict: r.v_scan ?? 'pending' });
+      } catch (e) { d = { allowed: false, reason: `policy could not be evaluated: ${(e as Error).message}` }; }
+      if (!d.allowed) return [{ ...base, state: 'update_available', reason: 'policy', ...(d.reason ? { detail: d.reason.slice(0, 300) } : {}) }];
     }
     if (r.latest && compareSemver(r.latest, r.installed_version) > 0) return [{ ...base, state: 'update_available', reason: 'newer_version' }];
     return [];
@@ -316,7 +338,30 @@ export async function syncInstalls(c: pg.PoolClient, uid: string, deviceId: stri
       updates.push({ listingId: st.listingId, versionId: st.versionId, state: st.state, revoked: true, ...(st.reason ? { reason: st.reason } : {}) });
     }
   }
-  return { results, updates };
+  const blocked = (await c.query(`SELECT assignment_id, team_id, listing_id, version_id, pinned_version, mode, state, reason FROM marketplace_assignment_status() WHERE blocked ORDER BY team_id, listing_id LIMIT 200`)).rows;
+  const assignments = blocked.map((a): BlockedAssignment => ({ assignmentId: a.assignment_id, teamId: a.team_id, listingId: a.listing_id, versionId: a.version_id,
+    pinnedVersion: a.pinned_version, mode: a.mode, state: a.state, reason: 'assignment_blocked', ...(a.reason ? { detail: String(a.reason).slice(0, 300) } : {}) }));
+  return { results, updates, assignments };
+}
+
+/** version id -> "dep-listing: reason" for installed versions with a dependency range that no longer has an installable version. */
+async function dependencyProblems(c: pg.PoolClient, versionIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!versionIds.length) return out;
+  const rows = (await c.query(`SELECT version_id, dep_listing, dep_range, dep_version, dep_state, reason FROM marketplace_dependency_status($1::text[])`, [versionIds.slice(0, 200)])).rows;
+  const edges = new Map<string, typeof rows>();
+  for (const r of rows) { const k = `${r.version_id}\u0000${r.dep_listing}\u0000${r.dep_range}`; (edges.get(k) ?? edges.set(k, []).get(k)!).push(r); }
+  for (const [k, vs] of edges) {
+    const [vid] = k.split('\u0000');
+    if (out.has(vid)) continue;
+    const range = vs[0].dep_range as string;
+    if (!isRange(range)) continue;
+    const sat = vs.filter((r) => { try { return satisfies(r.dep_version, range); } catch { return false; } });
+    if (!sat.length || sat.some((r) => r.dep_state === 'published' || r.dep_state === 'deprecated')) continue;
+    const worst = sat.find((r) => r.dep_state === 'revoked') ?? sat[0];
+    out.set(vid, `${vs[0].dep_listing}: ${worst.reason ? String(worst.reason).slice(0, 200) : worst.dep_state}`);
+  }
+  return out;
 }
 
 /** Pull state of up to 200 version ids (marketplace_version_status: SECURITY DEFINER, states only). */
