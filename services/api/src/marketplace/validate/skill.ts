@@ -30,7 +30,7 @@ function starts(b: Uint8Array, m: number[]): boolean { return b.length >= m.leng
 const TEXT_NO_EXT = new Set(['license', 'notice', 'readme']);
 /** Scanner-ignore files: any case, after NFKC (case-insensitive file systems), at any depth. */
 const isIgnoreName = (p: string): boolean => { const b = (p.split('/').pop() ?? '').normalize('NFKC').toLowerCase(); return (b.startsWith('.skill') || b.startsWith('.claw')) && b.includes('ignore'); };
-const HIDDEN_RE = /[\p{Cf}\p{Co}\u{E0000}-\u{E007F}\uFE00-\uFE0F\u00AD\u180E]/u;
+const HIDDEN_RE = /[\p{Cf}\p{Co}\u{E0000}-\u{E007F}\uFE00-\uFE0F\u00AD\u180E\u2800\u3164]/u;
 const extOf = (p: string): string => { const b = p.split('/').pop() ?? ''; const i = b.lastIndexOf('.'); return i <= 0 ? '' : b.slice(i).toLowerCase(); };
 
 const ok = (name: string, extra: Partial<ValidationCheck> = {}): ValidationCheck => ({ name, ok: true, ...extra });
@@ -368,6 +368,7 @@ export function createSkillValidator(opts: SkillValidatorOptions = {}) {
     for (const [f, b] of pkg.files) {
       const base = f.split('/').pop() ?? '', ext = extOf(f);
       if (isIgnoreName(f)) continue; // reported by no-scan-ignore-files
+      if (f.includes('\0') || HIDDEN_RE.test(f)) { policy.push(`${JSON.stringify(f)}: file name contains NUL or an invisible/format character`); continue; }
       if (INERT_MAGIC[ext]) {
         if (b.length > MAX_FILE) policy.push(`${f}: over the ${MAX_FILE} byte cap`);
         else if (!INERT_MAGIC[ext](b)) policy.push(`${f}: contents do not match the magic bytes of a ${ext} file`);
@@ -376,6 +377,7 @@ export function createSkillValidator(opts: SkillValidatorOptions = {}) {
       if (ext === '') { if (!TEXT_NO_EXT.has(base.toLowerCase())) { policy.push(`${f}: files without an extension are not allowed (only LICENSE, NOTICE, README)`); continue; } }
       else if (!SCANNABLE_EXTENSIONS.has(ext)) { policy.push(`${f}: extension ${ext} is not allowed (the security scanner would not read it)`); continue; }
       if (b.length > MAX_TEXT) { policy.push(`${f}: over the ${MAX_TEXT} byte cap for text files`); continue; }
+      if (b.includes(0)) { policy.push(`${f}: contains NUL bytes (e.g. UTF-16 without a BOM)`); continue; }
       let text: string;
       try { text = new TextDecoder('utf-8', { fatal: true }).decode(b); } catch { policy.push(`${f}: not valid UTF-8 (the security scanner skips such files)`); continue; }
       if (text.split('\n').some((l) => l.length > MAX_LINE)) policy.push(`${f}: a line is longer than ${MAX_LINE} characters`);
