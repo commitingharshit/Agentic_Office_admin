@@ -41,6 +41,7 @@ import { zipSync } from 'fflate';
 import { HttpError } from '../src/api/sync.ts';
 import { marketplaceHandler } from '../src/api/marketplace.ts';
 import { marketplaceAdminHandler } from '../src/api/marketplace-admin.ts';
+import { marketplaceTeamsHandler } from '../src/api/marketplace-teams.ts';
 import { isAdminRole, permissionsOf, type AdminRole } from '../src/marketplace/permissions.ts';
 import { memoryArtifactStore, putArtifact, sha256Hex, unpack } from '../src/marketplace/artifacts.ts';
 import { officecliRenderer } from '../src/marketplace/validate/officecli.ts';
@@ -240,7 +241,10 @@ async function main() {
   }
 
   const app = h.pool('ao_app');
-  const handler = marketplaceHandler({ app, admin: h.pool('ao_admin'), authenticate, store });
+  const publicHandler = marketplaceHandler({ app, admin: h.pool('ao_admin'), authenticate, store });
+  // install-time re-resolution, policy and team assignments (the desktop calls POST /v1/marketplace/resolve on every Installed view; without this it reports a 404)
+  const teamsHandler = marketplaceTeamsHandler({ app, authenticate, store });
+  const handler = async (req: any, res: any) => (await teamsHandler(req, res)) || publicHandler(req, res);
   // --admin: the console's admin API surface, dev only. One admin, the dev bearer; the role is AO_DEV_ADMIN_ROLE (default superadmin).
   let adminHandlerFn: ((req: any, res: any) => Promise<boolean>) | undefined;
   if (ADMIN) {
