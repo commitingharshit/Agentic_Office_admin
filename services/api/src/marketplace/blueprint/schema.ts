@@ -113,7 +113,7 @@ export function parseBlueprintText(text: string): AgentBlueprint {
 }
 
 /** Scans already-validated JSON text for an object that repeats a key (escapes decoded). Returns a path-ish label. */
-function findDuplicateKey(text: string): string | null {
+export function findDuplicateKey(text: string): string | null {
   const stack: Array<Set<string> | null> = [];
   let i = 0, expectKey = false;
   const n = text.length;
@@ -213,9 +213,20 @@ function ref(v: unknown, path: string, extra: readonly string[] = []): Obj {
   return o;
 }
 const toRef = (o: Obj): Ref => ({ id: o.id as string, range: o.range as string });
+/** Ids that read the same to a person (hyphens removed: pdf-tool / pdftool) must not both appear in one list: one is a look-alike of the other. */
+const confusableKey = (id: string): string => id.replace(/-/g, '');
+function noConfusable(ids: string[], path: string): void {
+  const seen = new Map<string, string>();
+  for (const id of ids) {
+    const prior = seen.get(confusableKey(id));
+    if (prior !== undefined && prior !== id) fail(path, 'confusable_id', `${id} is confusable with ${prior}`);
+    seen.set(confusableKey(id), id);
+  }
+}
 function refList(v: unknown, path: string, max: number): Ref[] {
   const out = arr(v, path, 0, max).map((r, i) => toRef(ref(r, `${path}[${i}]`)));
   if (new Set(out.map(r => r.id)).size !== out.length) fail(path, 'duplicate', 'a listing may be referenced once');
+  noConfusable(out.map(r => r.id), path);
   return out;
 }
 function modelRef(v: unknown, path: string, extra: readonly string[] = []): Obj {
@@ -266,6 +277,7 @@ export function parseBlueprint(input: unknown): AgentBlueprint {
       return { ...toRef(o), required: bool(o.required, `skillReferences[${i}].required`) };
     });
     if (new Set(list.map(r => r.id)).size !== list.length) fail('skillReferences', 'duplicate', 'a skill may be referenced once');
+    noConfusable(list.map(r => r.id), 'skillReferences');
     out.skillReferences = list;
   }
   if (top.toolPermissions !== undefined) {
@@ -329,6 +341,7 @@ export function parseBlueprint(input: unknown): AgentBlueprint {
       }),
     };
     if (new Set(dp.children.map(c => c.id)).size !== dp.children.length) fail('delegationPolicy.children', 'duplicate', 'a child may be listed once');
+    noConfusable(dp.children.map(c => c.id), 'delegationPolicy.children');
     if (o.childModel !== undefined) dp.childModel = modelRef(o.childModel, 'delegationPolicy.childModel') as { provider: string; model: string };
     out.delegationPolicy = dp;
   }

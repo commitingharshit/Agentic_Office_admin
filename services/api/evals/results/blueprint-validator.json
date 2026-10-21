@@ -1,0 +1,868 @@
+{
+  "eval": "blueprint-validator",
+  "gates": {
+    "minRecall": 1,
+    "maxFalsePositiveRate": 0.1
+  },
+  "passed": true,
+  "confusion": {
+    "truePositive": 54,
+    "falseNegative": 0,
+    "falsePositive": 0,
+    "trueNegative": 18
+  },
+  "metrics": {
+    "recall": 1,
+    "recallExcludingKnownGaps": 1,
+    "precision": 1,
+    "falsePositiveRate": 0
+  },
+  "knownGapsStillOpen": [],
+  "failures": [],
+  "skipped": [],
+  "cases": [
+    {
+      "id": "b01-minimal",
+      "label": "benign",
+      "category": "real",
+      "note": "the smallest valid agent: identity, objective, one environment, no components",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b02-ma-analyst-fixture",
+      "label": "benign",
+      "category": "fixture",
+      "note": "the M&A Analyst example: two skills, three kits, memory, rubric verification, one child, read-write workspace, declared-only weekly schedule",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b03-legal-research-fixture",
+      "label": "benign",
+      "category": "fixture",
+      "note": "the Legal Research example: web and skills toolsets, terminal denied, read workspace, verifier skill",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b04-read-research",
+      "label": "benign",
+      "category": "real",
+      "note": "a research agent with workspace read access and one skill, nothing else",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b05-unsupported-warnings",
+      "label": "benign",
+      "category": "real",
+      "note": "declares hook, workflow and url knowledge components that run in a later plan: reported as unsupported, not dropped and not rejected",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b06-advisory-verification",
+      "label": "benign",
+      "category": "real",
+      "note": "rubric verification is advisory only and declared as such by the compiler",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b07-two-level-delegation",
+      "label": "benign",
+      "category": "real",
+      "note": "parent delegates to a child which delegates to a grandchild, within maxDepth 2 and with permissions that nest",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b08-private-private-dep",
+      "label": "benign",
+      "category": "real",
+      "note": "a private agent that depends on a private skill of its author",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b09-team-team-dep",
+      "label": "benign",
+      "category": "real",
+      "note": "a team agent that depends on a skill of the same team",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b10-file-toolset",
+      "label": "benign",
+      "category": "real",
+      "note": "the file toolset with read and write permissions declared at the scopes it uses",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b11-memory-binding",
+      "label": "benign",
+      "category": "real",
+      "note": "built-in memory with write approval",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b12-model-fallbacks",
+      "label": "benign",
+      "category": "real",
+      "note": "a primary model with two fallbacks and a reasoning effort",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b13-manual-trigger",
+      "label": "benign",
+      "category": "real",
+      "note": "a manual schedule trigger only",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b14-optional-skill-warnings",
+      "label": "benign",
+      "category": "real",
+      "note": "an optional skill whose scan verdict is warnings (still installable)",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b15-persona-mentions-approvals",
+      "label": "benign",
+      "category": "persona",
+      "note": "a persona that tells the agent to keep asking for approval and never to ask for passwords: mentions the words, attacks nothing",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b16-persona-unicode",
+      "label": "benign",
+      "category": "persona",
+      "note": "a persona in French with accents and CJK words, a code fence and a table",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b17-yaml-special-name",
+      "label": "benign",
+      "category": "real",
+      "note": "a name full of YAML-significant characters; the compiler must quote it, not interpret it",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b18-long-skill-slug",
+      "label": "benign",
+      "category": "real",
+      "note": "two skills with long hyphenated slugs (high Shannon entropy but not secrets)",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "m01-terminal-undeclared",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "terminal toolset gives exec.script but the manifest declares no permission (the compiler derives the capability)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: the blueprint requires exec.script but the manifest does not declare it; permissions: the blueprint requires tool.invoke but the manifest does not declare it",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m02-hidden-skill-exec",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "a skill dependency declares exec.script; the agent manifest hides it",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: the blueprint requires exec.script but the manifest does not declare it; permissions: skill acme/helper declares exec.script on \"scripts/run.sh\" which the agent does n",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m03-hidden-skill-network",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "a skill dependency declares network access that the agent does not show in the install dialog",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: the blueprint requires network but the manifest does not declare it; permissions: skill acme/helper declares network on \"https://example.com\" which the agent does not ",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m04-child-exceeds-parent",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "the delegated child declares network, the parent does not",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: the blueprint requires network but the manifest does not declare it; delegationPolicy.children: child acme/child declares network on \"https://example.com\" which the pa",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m05-child-toolset-exceeds",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "the child enables the terminal toolset the parent does not have",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: delegationPolicy.children: child acme/child enables toolset(s) the parent does not: terminal",
+      "failedChecks": [
+        "permissions-subset",
+        "compiles"
+      ]
+    },
+    {
+      "id": "m06-grandchild-exceeds",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "a grandchild holds exec.script that its own parent (the child) does not declare",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: delegationPolicy.children: acme/grandchild declares exec.script on \"scripts/run.sh\" which its parent acme/child does not declare",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m07-wildcard-toolset",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "the toolset name \"all\" asks for every toolset",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-wildcards: toolPermissions.toolsets[0]: \"all\" is a wildcard; name exact toolsets",
+      "failedChecks": [
+        "no-wildcards",
+        "compiles"
+      ]
+    },
+    {
+      "id": "m08-wildcard-kit",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "a \"*\" kit name that asks for every kit",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: toolPermissions.kits[0]: must be a kit name (no wildcards)",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m09-wildcard-permission-scope",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "a declared read permission whose scope is \"**\" (the whole disk)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-wildcards: permissions[0]: fs.workspace.read: scope must be specific",
+      "failedChecks": [
+        "no-wildcards"
+      ]
+    },
+    {
+      "id": "m10-auto-edit-no-write",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "auto-edit mode applies edits without asking but fs.workspace.write is not declared",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: the blueprint requires fs.workspace.write but the manifest does not declare it; permissions: the blueprint requires tool.invoke but the manifest does not declare it",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m11-workspace-write-undeclared",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "workspaceAccess write while only read is declared",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: the blueprint requires fs.workspace.write but the manifest does not declare it",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m12-url-knowledge-no-network",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "a url knowledge source needs network, none declared",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: the blueprint requires network but the manifest does not declare it",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m13-approvals-off",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "toolPermissions.mode \"off\" would switch approvals off",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: toolPermissions.mode: must be one of ask, auto-edit",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m14-skill-scope-broader",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "the skill reads secrets/** while the agent declares one file under docs",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-subset: permissions: skill acme/helper declares fs.workspace.read on \"secrets/**\" which the agent does not declare",
+      "failedChecks": [
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m15-public-agent-private-skill",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a public agent that depends on a private skill",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "visibility-no-escalation: public agent depends on private listing acme/helper",
+      "failedChecks": [
+        "visibility-no-escalation"
+      ]
+    },
+    {
+      "id": "m16-revoked-dependency",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "the skill version is revoked",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "refs-resolve: skillReferences[0]: acme/helper: version state is revoked",
+      "failedChecks": [
+        "refs-resolve"
+      ]
+    },
+    {
+      "id": "m17-unsatisfiable-range",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "the range ^1.0.0 is not satisfied by the only published version 0.9.0",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "refs-resolve: skillReferences[0]: acme/helper: no published version satisfies the range",
+      "failedChecks": [
+        "refs-resolve"
+      ]
+    },
+    {
+      "id": "m18-other-team-dependency",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a team-t1 agent that depends on a skill that belongs to team t2",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "visibility-no-escalation: team agent depends on team (team t2) listing acme/helper",
+      "failedChecks": [
+        "visibility-no-escalation"
+      ]
+    },
+    {
+      "id": "m19-dependency-not-visible",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "the publisher cannot see the skill (row-level security answers not_visible)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "refs-resolve: skillReferences[0]: acme/helper: the listing is not visible to the publisher",
+      "failedChecks": [
+        "refs-resolve"
+      ]
+    },
+    {
+      "id": "m20-confusable-skill-ids",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "two skills whose ids differ only by a hyphen (pdf-tool / pdftool): one is a look-alike of the other",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: skillReferences: acme/pdftool is confusable with acme/pdf-tool",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m21-deps-manifest-extra",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "the manifest pins an extra dependency the blueprint never references",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "deps-match-manifest: manifest.dependencies lists evil/extra@^1.0.0 but the blueprint does not reference it",
+      "failedChecks": [
+        "deps-match-manifest"
+      ]
+    },
+    {
+      "id": "m22-payload-lies",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "manifest payload.components claims no components while the blueprint has several",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "payload-matches: payload.components must be exactly [toolPermissions, memoryBinding]",
+      "failedChecks": [
+        "payload-matches",
+        "permissions-subset"
+      ]
+    },
+    {
+      "id": "m23-extra-file",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "an extra executable file in the package",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "agent-files-allowlist: \"run.sh\": file kind not allowed for this type",
+      "failedChecks": [
+        "agent-files-allowlist"
+      ]
+    },
+    {
+      "id": "m24-dependency-wrong-type",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "the id in skillReferences resolves to a template, not a skill",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "refs-resolve: skillReferences[0]: acme/helper: expected a skill, found a template",
+      "failedChecks": [
+        "refs-resolve"
+      ]
+    },
+    {
+      "id": "m54-workflow-not-pinned",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a workflow reference that the manifest does not pin (an unpinned late-bound dependency)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "deps-match-manifest: blueprint references acme/flow@^1.0.0 but manifest.dependencies does not pin it",
+      "failedChecks": [
+        "deps-match-manifest"
+      ]
+    },
+    {
+      "id": "m25-delegation-cycle",
+      "label": "malicious",
+      "category": "cycle",
+      "note": "agent a delegates to b which delegates back to a",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "delegation-acyclic: delegationPolicy.children: delegation cycle: acme/a -> acme/b -> acme/a",
+      "failedChecks": [
+        "delegation-acyclic",
+        "dry-run"
+      ]
+    },
+    {
+      "id": "m26-self-delegation",
+      "label": "malicious",
+      "category": "cycle",
+      "note": "the agent lists itself as its own child",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "deps-match-manifest: the agent references itself (acme/a)",
+      "failedChecks": [
+        "deps-match-manifest",
+        "delegation-acyclic",
+        "compiles"
+      ]
+    },
+    {
+      "id": "m27-delegation-too-deep",
+      "label": "malicious",
+      "category": "cycle",
+      "note": "maxDepth 1 but the chain a to b to c goes two levels deep",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "delegation-acyclic: delegationPolicy.maxDepth: delegation reaches 2 level(s), more than maxDepth 1",
+      "failedChecks": [
+        "delegation-acyclic",
+        "dry-run"
+      ]
+    },
+    {
+      "id": "m28-soul-ignore-instructions",
+      "label": "malicious",
+      "category": "injection",
+      "note": "prompt injection: tells the agent to ignore prior instructions and disable approvals",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "persona-scan: verdict dangerous; 1 finding(s): injection/critical SOUL.md:3",
+      "failedChecks": [
+        "persona-scan",
+        "compiles"
+      ]
+    },
+    {
+      "id": "m29-soul-exfiltrate-memory",
+      "label": "malicious",
+      "category": "injection",
+      "note": "persona exfiltration: copy memory to a remote host every session",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "persona-scan: verdict dangerous; 2 finding(s): injection/critical SOUL.md:3; exfiltration/high SOUL.md:3",
+      "failedChecks": [
+        "persona-scan"
+      ]
+    },
+    {
+      "id": "m30-soul-override-host-policy",
+      "label": "malicious",
+      "category": "injection",
+      "note": "persona that claims marketplace and host policy do not apply and turns approvals off",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "compiles: SOUL.md: the persona tries to override approvals or permissions; those are set by the host, not by persona text",
+      "failedChecks": [
+        "compiles"
+      ]
+    },
+    {
+      "id": "m33-soul-read-ssh-keys",
+      "label": "malicious",
+      "category": "injection",
+      "note": "persona that reads ssh keys and cloud credentials and prints them",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "persona-scan: verdict dangerous; 3 finding(s): exfiltration/high SOUL.md:3; exfiltration/high SOUL.md:3; exfiltration/critical SOUL.md:3",
+      "failedChecks": [
+        "persona-scan"
+      ]
+    },
+    {
+      "id": "m31-soul-zero-width",
+      "label": "malicious",
+      "category": "injection",
+      "note": "SOUL.md hides an instruction behind zero-width characters",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "soul-file: SOUL.md contains an invisible/format character U+200B",
+      "failedChecks": [
+        "soul-file"
+      ]
+    },
+    {
+      "id": "m32-instructions-traversal",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "identity.instructionsFile points outside the package",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: identity.instructionsFile: must not contain . or .. segments",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m34-yaml-newline-name",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "a name containing a newline and \"approvals: mode: off\" so a naive YAML writer would emit a new key",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: identity.name: contains control characters",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m35-proto-key",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "a __proto__ key (prototype pollution)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: __proto__: key \"__proto__\" is not allowed",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m36-hook-inline-command",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "a hook binding carrying an inline shell command instead of a listing reference",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: hookBindings[0].command: unknown key command",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m37-model-base-url",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "modelPolicy with a baseUrl and apiKey (redirects the model traffic and carries a credential)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: modelPolicy.apiKey: unknown key apiKey",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m38-knowledge-userinfo",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "a knowledge URL with user:password@ userinfo",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: knowledgeSources[0].ref: looks like a credential; blueprints never carry secrets",
+      "failedChecks": [
+        "blueprint-parse",
+        "no-secrets"
+      ]
+    },
+    {
+      "id": "m39-duplicate-key",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "the same key twice: two parsers would disagree about which value wins",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: mode: duplicate object key",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m40-bom-prefix",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "a UTF-8 byte order mark before the JSON",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: $: blueprint.json is not valid JSON",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m41-constructor-key",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "a constructor key that targets the object prototype chain",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: constructor: key \"constructor\" is not allowed",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m52-unicode-confusable-id",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a skill id whose \"a\" is a Cyrillic letter, a look-alike of acme/pdf-reader",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: skillReferences[0].id: must be a publisher/slug listing id and a semver range",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m53-unknown-component",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "an unknown top-level component \"plugins\" (silently dropped by a lenient parser)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: plugins: unknown key plugins",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m42-secret-in-description",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "an OpenAI-style key in the description",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: identity.description: looks like a credential; blueprints never carry secrets",
+      "failedChecks": [
+        "blueprint-parse",
+        "no-secrets"
+      ]
+    },
+    {
+      "id": "m43-secret-in-soul",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "an AWS access key id in SOUL.md",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-secrets: SOUL.md: AWS access key id",
+      "failedChecks": [
+        "no-secrets",
+        "persona-scan",
+        "compiles"
+      ]
+    },
+    {
+      "id": "m44-private-key-in-goal",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a PEM private key header in the objective",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: objective.goal: looks like a credential; blueprints never carry secrets",
+      "failedChecks": [
+        "blueprint-parse",
+        "no-secrets"
+      ]
+    },
+    {
+      "id": "m45-secret-behind-parse-error",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a token inside blueprint text that does not parse (the secret must not hide behind the parse error)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: $: blueprint.json is not valid JSON",
+      "failedChecks": [
+        "blueprint-parse",
+        "no-secrets"
+      ]
+    },
+    {
+      "id": "m46-one-megabyte",
+      "label": "malicious",
+      "category": "dos",
+      "note": "a 1 MB blueprint",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: blueprint.json is 1048842 bytes, over the 65536 byte cap",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m47-ten-thousand-elements",
+      "label": "malicious",
+      "category": "dos",
+      "note": "an array of 10 000 elements",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: blueprint.json is 100243 bytes, over the 65536 byte cap",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m48-depth-1000",
+      "label": "malicious",
+      "category": "dos",
+      "note": "objects nested 1000 deep",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: a.a.a.a.a.a.a.a: nesting deeper than 8",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m49-oversized-soul",
+      "label": "malicious",
+      "category": "dos",
+      "note": "a 100 KB SOUL.md",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "soul-file: SOUL.md is 100011 bytes, over the 32768 byte cap",
+      "failedChecks": [
+        "soul-file"
+      ]
+    },
+    {
+      "id": "m50-sixty-five-skills",
+      "label": "malicious",
+      "category": "dos",
+      "note": "65 skill references (the cap is 64)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "blueprint-parse: skillReferences: array longer than 64",
+      "failedChecks": [
+        "blueprint-parse"
+      ]
+    },
+    {
+      "id": "m51-oversized-graph",
+      "label": "malicious",
+      "category": "dos",
+      "note": "a delegation chain 8 levels deep, beyond what the resolver follows",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "refs-resolve: delegationPolicy.children[0].children[0].children[0].children[0].children[0].children[0].children[0]: delegation graph exceeds 64 agents or 6 levels",
+      "failedChecks": [
+        "refs-resolve",
+        "delegation-acyclic"
+      ]
+    }
+  ]
+}

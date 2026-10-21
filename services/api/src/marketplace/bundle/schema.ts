@@ -4,6 +4,7 @@
 import { isSemver } from '../manifest.ts';
 import { LISTING_TYPES, type ListingType } from '../types.ts';
 import { checkBounded } from '../validate/advanced-common.ts';
+import { findDuplicateKey } from '../blueprint/schema.ts';
 
 export const BUNDLE_SCHEMA = 'agentic.bundle/1' as const;
 export const BUNDLE_FILE = 'bundle.json';
@@ -84,5 +85,7 @@ export function parseBundleText(text: string): BundleV1 {
   if (new TextEncoder().encode(text).length > BUNDLE_LIMITS.maxBytes) fail('', 'too_large', `bundle.json exceeds ${BUNDLE_LIMITS.maxBytes} bytes`);
   let raw: unknown;
   try { raw = JSON.parse(text); } catch (e) { return fail('', 'json', `not valid JSON: ${(e as Error).message}`); }
+  const dup = findDuplicateKey(text);
+  if (dup) fail(dup, 'duplicate_key', 'duplicate object key (parsers disagree about which value wins)');
   return parseBundle(raw);
 }

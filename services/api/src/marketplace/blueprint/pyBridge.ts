@@ -57,6 +57,14 @@ export function toBridgeResolved(r: ResolvedRefs): { skills: unknown[]; children
   };
 }
 
+/** The dry run proves delegation is acyclic and within depth only from the children's own blueprints: it fails closed ("child blueprint not supplied")
+ *  for an agent with any child unless every reachable child blueprint is in the request. Keyed by listing id, transitively. */
+export function childBlueprints(r: ResolvedRefs): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [id, a] of r.agents) if (a.blueprint) out[id] = a.blueprint;
+  return out;
+}
+
 const garbage = (message: string): CheckResult => ({ ok: false, findings: [{ path: '', code: 'bridge_garbage', message: `compiler bridge: ${message}` }] });
 
 function parseFindings(v: unknown): BlueprintDiagnostic[] | null {
@@ -108,7 +116,7 @@ export function createPythonBridge(opts: { python?: string; repoRoot?: string; t
     try { root = resolve(opts.repoRoot ?? findRepoRoot()); } catch (e) { return { unavailable: e instanceof Error ? e.message : String(e) }; }
     if (!opts.runner && !existsSync(join(root, MODULE_REL))) return { unavailable: `compiler not found at ${join(root, MODULE_REL)}` };
     const b64 = (u: Uint8Array) => Buffer.from(u).toString('base64');
-    const stdin = JSON.stringify({ op: req.op, listing_id: req.listingId, version: req.version, files: { 'blueprint.json': b64(req.blueprint), 'SOUL.md': b64(req.soul) }, resolved: toBridgeResolved(req.resolved) });
+    const stdin = JSON.stringify({ op: req.op, listing_id: req.listingId, version: req.version, files: { 'blueprint.json': b64(req.blueprint), 'SOUL.md': b64(req.soul) }, resolved: toBridgeResolved(req.resolved), ...(req.op === 'dryrun' ? { child_blueprints: childBlueprints(req.resolved) } : {}) });
     if (Buffer.byteLength(stdin) > MAX_REQUEST) return garbage('request larger than 1 MiB');
     const base = await mkdtemp(join(tmpdir(), 'mkt-bp-'));
     try {

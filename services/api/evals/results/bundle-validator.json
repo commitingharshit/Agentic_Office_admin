@@ -1,0 +1,556 @@
+{
+  "eval": "bundle-validator",
+  "gates": {
+    "minRecall": 1,
+    "maxFalsePositiveRate": 0.1
+  },
+  "passed": true,
+  "confusion": {
+    "truePositive": 35,
+    "falseNegative": 0,
+    "falsePositive": 0,
+    "trueNegative": 11
+  },
+  "metrics": {
+    "recall": 1,
+    "recallExcludingKnownGaps": 1,
+    "precision": 1,
+    "falsePositiveRate": 0
+  },
+  "knownGapsStillOpen": [],
+  "failures": [],
+  "skipped": [],
+  "cases": [
+    {
+      "id": "b01-single-skill",
+      "label": "benign",
+      "category": "real",
+      "note": "a bundle of one skill",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b02-template-skill-agent",
+      "label": "benign",
+      "category": "real",
+      "note": "a template, a skill and an agent with a complete dependency closure, installed skill first",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b03-dependency-chain",
+      "label": "benign",
+      "category": "real",
+      "note": "c depends on b depends on a, listed and ordered a, b, c",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b04-pinned-not-ranged",
+      "label": "benign",
+      "category": "real",
+      "note": "the same bundle built twice with exact pins (a member re-published at a newer version is not picked up)",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b05-team-bundle",
+      "label": "benign",
+      "category": "real",
+      "note": "a team bundle (teamScope team t1) with a public and a t1 member",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b06-org-bundle",
+      "label": "benign",
+      "category": "real",
+      "note": "an org bundle with a public and an org member",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b07-warnings-member",
+      "label": "benign",
+      "category": "real",
+      "note": "a member whose scan verdict is warnings (still installable)",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b08-elevated-member-manual-review",
+      "label": "benign",
+      "category": "real",
+      "note": "a member declares exec.script and the bundle declares the union: accepted, but routed to manual review as executable",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b09-private-with-private",
+      "label": "benign",
+      "category": "real",
+      "note": "a private bundle that contains a private member of its author",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b10-readme-and-notes",
+      "label": "benign",
+      "category": "real",
+      "note": "a README.md and a notes field describing the bundle",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "b11-over-declared-permission",
+      "label": "benign",
+      "category": "real",
+      "note": "the bundle declares a permission no member uses: a note, not a failure",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed",
+      "failedChecks": []
+    },
+    {
+      "id": "m01-swapped-hash",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a member pinned with a sha256 that is not the published artifact (swapped content)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-pinned: acme/a@1.0.0: sha256 does not match the published artifact",
+      "failedChecks": [
+        "items-pinned"
+      ]
+    },
+    {
+      "id": "m02-range-instead-of-pin",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a version range \"^1.0.0\" instead of an exact pin (a later malicious release would be picked up)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: items[0].version: must be one exact semver version (no range)",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m03-nested-bundle",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a bundle inside a bundle (unbounded closure)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-types: acme/inner: a bundle cannot contain a bundle (nesting depth limit 0)",
+      "failedChecks": [
+        "items-types"
+      ]
+    },
+    {
+      "id": "m04-private-in-public",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a public bundle that contains a private skill",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "visibility-no-escalation: acme/priv: a public bundle cannot contain a private listing",
+      "failedChecks": [
+        "visibility-no-escalation"
+      ]
+    },
+    {
+      "id": "m05-other-team-member",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a team-t1 bundle that contains a skill of team t2",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "visibility-no-escalation: acme/other: a team bundle cannot contain a team listing of another team",
+      "failedChecks": [
+        "visibility-no-escalation"
+      ]
+    },
+    {
+      "id": "m06-revoked-member",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a member whose version is revoked",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-pinned: acme/rev@1.0.0: is revoked, not published",
+      "failedChecks": [
+        "items-pinned"
+      ]
+    },
+    {
+      "id": "m07-not-visible-member",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a member the publisher cannot see (row-level security)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-pinned: acme/b@1.0.0: not visible to the publisher",
+      "failedChecks": [
+        "items-pinned"
+      ]
+    },
+    {
+      "id": "m08-unknown-member",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a member id that does not exist",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-pinned: acme/b@1.0.0: not_found",
+      "failedChecks": [
+        "items-pinned"
+      ]
+    },
+    {
+      "id": "m09-missing-transitive-dep",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a member needs acme/ghost which the bundle does not include",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "closure-complete: acme/a needs acme/ghost ^1.0.0, which is not an item of the bundle",
+      "failedChecks": [
+        "closure-complete"
+      ]
+    },
+    {
+      "id": "m10-dep-at-unsatisfying-pin",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "a member needs ^2.0.0 of a dependency the bundle pins at 1.0.0",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "closure-complete: acme/b needs acme/a ^2.0.0, the bundle pins 1.0.0",
+      "failedChecks": [
+        "closure-complete"
+      ]
+    },
+    {
+      "id": "m11-disjoint-compat",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "members whose app compatibility ranges cannot both be satisfied",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "compat-consistent: no app version satisfies all of: ^1.0.0, ^3.0.0",
+      "failedChecks": [
+        "compat-consistent"
+      ]
+    },
+    {
+      "id": "m12-install-order-violation",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "installOrder puts a dependent before the member it needs",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "install-order-valid: acme/a must be installed before acme/b",
+      "failedChecks": [
+        "install-order-valid"
+      ]
+    },
+    {
+      "id": "m13-under-declared-union",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "a member declares network but the bundle declares no permissions",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-union: undeclared: the payload needs network on \"https://example.com\"",
+      "failedChecks": [
+        "permissions-union"
+      ]
+    },
+    {
+      "id": "m14-wildcard-scope",
+      "label": "malicious",
+      "category": "escalation",
+      "note": "the bundle declares a network permission with scope \"*\"",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "permissions-union: network: scope must be specific (no wildcard); undeclared: the payload needs network on \"*\"",
+      "failedChecks": [
+        "permissions-union"
+      ]
+    },
+    {
+      "id": "m15-env-file",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a .env file inside the bundle",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-files-allowlist: \".env\": file kind not allowed for this type",
+      "failedChecks": [
+        "bundle-files-allowlist"
+      ]
+    },
+    {
+      "id": "m16-memory-file",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a memory.md file (a user memory) inside the bundle",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-files-allowlist: \"memory.md\": file kind not allowed for this type",
+      "failedChecks": [
+        "bundle-files-allowlist"
+      ]
+    },
+    {
+      "id": "m17-document-file",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a notes.docx document inside the bundle",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-files-allowlist: \"notes.docx\": file kind not allowed for this type",
+      "failedChecks": [
+        "bundle-files-allowlist"
+      ]
+    },
+    {
+      "id": "m18-credentials-file",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a credentials.json inside the bundle",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-files-allowlist: \"credentials.json\": file kind not allowed for this type",
+      "failedChecks": [
+        "bundle-files-allowlist"
+      ]
+    },
+    {
+      "id": "m19-secret-in-notes",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a GitHub token in bundle.json notes",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-secrets: $.notes: GitHub token",
+      "failedChecks": [
+        "no-secrets"
+      ]
+    },
+    {
+      "id": "m20-two-hundred-members",
+      "label": "malicious",
+      "category": "dos",
+      "note": "a 200-member bundle (the cap is 50)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: : more than 600 keys/items",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m21-confusable-ids",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "two members acme/pdf-tool and acme/pdftool: a look-alike pair",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: items[1].id: acme/pdftool is confusable with acme/pdf-tool",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m22-contains-itself",
+      "label": "malicious",
+      "category": "cycle",
+      "note": "the bundle lists its own id as a member",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-types: acme/starter-pack: a bundle cannot contain itself",
+      "failedChecks": [
+        "items-types"
+      ]
+    },
+    {
+      "id": "m23-duplicate-member",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "the same member twice (the second pin could differ)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: items[1].id: duplicate item acme/a",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m24-proto-key",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "a __proto__ key in bundle.json",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: : reserved key \"__proto__\"",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m25-depth-1000",
+      "label": "malicious",
+      "category": "dos",
+      "note": "JSON nested 1000 deep",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: : nested deeper than 6",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m26-credentials-key",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a \"credentials\" object next to the items (a bundle carries references, never credentials)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: credentials: unknown key \"credentials\"",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m27-memories-and-documents-keys",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "\"memories\" and \"documents\" arrays in bundle.json",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: memories: unknown key \"memories\"",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    },
+    {
+      "id": "m28-team-scope-mismatch",
+      "label": "malicious",
+      "category": "dependency",
+      "note": "teamScope names team t1 but the bundle is published to the public",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "team-scope-valid: teamScope names a team, but the bundle audience is not that team",
+      "failedChecks": [
+        "team-scope-valid"
+      ]
+    },
+    {
+      "id": "m29-unsupported-member-type",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a member of a type that cannot be installed yet (surface)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "members-supported: acme/s: type surface is not supported yet",
+      "failedChecks": [
+        "members-supported"
+      ]
+    },
+    {
+      "id": "m30-manifest-deps-mismatch",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "manifest.dependencies lists an extra package that is not an item",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "deps-match-manifest: manifest.dependencies lists evil/extra, which is not an item",
+      "failedChecks": [
+        "deps-match-manifest"
+      ]
+    },
+    {
+      "id": "m31-member-wrong-type",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "the bundle says acme/a is an agent but the catalog row is a skill",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-pinned: acme/a: is a skill, the bundle says agent",
+      "failedChecks": [
+        "items-pinned"
+      ]
+    },
+    {
+      "id": "m32-unpublished-member",
+      "label": "malicious",
+      "category": "supply-chain",
+      "note": "a member that is only in review (not published)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "items-pinned: acme/q@1.0.0: is in_review, not published",
+      "failedChecks": [
+        "items-pinned"
+      ]
+    },
+    {
+      "id": "m33-dependency-cycle",
+      "label": "malicious",
+      "category": "cycle",
+      "note": "two members that depend on each other",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "closure-complete: dependency cycle: acme/a -> acme/b -> acme/a",
+      "failedChecks": [
+        "closure-complete",
+        "install-order-valid"
+      ]
+    },
+    {
+      "id": "m34-secret-in-manifest-payload",
+      "label": "malicious",
+      "category": "secrets",
+      "note": "a credential in the manifest payload of the bundle",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-secrets-manifest-payload: $.note: AWS access key id",
+      "failedChecks": [
+        "no-secrets-manifest-payload"
+      ]
+    },
+    {
+      "id": "m35-duplicate-key",
+      "label": "malicious",
+      "category": "config-smuggling",
+      "note": "the \"items\" key twice (the last one wins in JSON.parse, the first in other parsers); the manifest and catalog are consistent with the last",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "bundle-parse: items: duplicate object key (parsers disagree about which value wins)",
+      "failedChecks": [
+        "bundle-parse"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "agentic.agent-blueprint/1",
+  "identity": {
+    "name": "M&A Analyst",
+    "role": "due-diligence analyst",
+    "description": "Reviews target-company data rooms, builds comparable-company screens and drafts diligence findings for a deal team.",
+    "instructionsFile": "SOUL.md"
+  },
+  "objective": {
+    "goal": "Produce a sourced due-diligence workbook, memo and summary deck for a target company.",
+    "successCriteria": ["every figure in the memo traces to a data-room document", "open diligence questions are listed", "model assumptions are stated"]
+  },
+  "executionEnvironments": ["desktop"],
+  "modelPolicy": { "primary": { "provider": "anthropic", "model": "claude-sonnet-4-5", "reasoningEffort": "medium" } },
+  "skillReferences": [
+    { "id": "fixture-pub/dd-checklist", "range": "^1.0.0", "required": true },
+    { "id": "fixture-pub/financial-model-review", "range": "^1.0.0", "required": true }
+  ],
+  "toolPermissions": { "mode": "ask", "toolsets": ["web"], "kits": ["xlsx_kit", "docx_kit", "pptx_kit"], "deny": [] },
+  "memoryBinding": { "provider": "builtin", "scope": "agent", "writeApproval": true },
+  "verificationPolicy": {
+    "checks": [{ "name": "figures-sourced", "kind": "rubric", "ref": "every-figure-has-a-source", "when": "before-final", "onFail": "ask", "maxAttempts": 2 }],
+    "requireEvidence": true
+  },
+  "delegationPolicy": { "maxDepth": 1, "maxConcurrent": 2, "children": [{ "id": "fixture-pub/comps-researcher", "range": "^1.0.0", "role": "comps-researcher" }] },
+  "contextScope": { "workspaceAccess": "write", "pathGlobs": ["deals/**"], "includeUserProfile": false },
+  "schedulingPolicy": { "triggers": [{ "kind": "manual" }, { "kind": "schedule", "schedule": "0 8 * * 1", "prompt": "Draft the weekly diligence digest." }] }
+}

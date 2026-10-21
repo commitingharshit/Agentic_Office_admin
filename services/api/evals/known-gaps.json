@@ -1,5 +1,7 @@
 {
   "scan-gate": [],
   "template-validator": [],
-  "template-differential": []
+  "template-differential": [],
+  "blueprint-validator": [],
+  "bundle-validator": []
 }

@@ -1,0 +1,68 @@
+{
+  "schema": "agentic.marketplace/1",
+  "id": "fixture-pub/legal-research",
+  "type": "agent",
+  "version": "1.0.0",
+  "title": "Legal Research (fixture)",
+  "summary": "TEST FIXTURE ONLY. Read-only-in-intent legal research agent.",
+  "license": "MIT",
+  "compat": {
+    "app": "^1.0.0"
+  },
+  "dependencies": [
+    {
+      "id": "fixture-pub/citation-verifier",
+      "range": "^1.0.0"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "fs.workspace.read",
+      "scope": "matters/**",
+      "reason": "Reads the matter files."
+    },
+    {
+      "capability": "fs.workspace.write",
+      "scope": "matters/research-notes/**",
+      "reason": "The skills toolset can write skill notes; the agent is instructed to only hand back a memo."
+    },
+    {
+      "capability": "network",
+      "scope": "public web (toolset web)",
+      "reason": "Searches public legal sources."
+    },
+    {
+      "capability": "tool.invoke",
+      "scope": "skills",
+      "reason": "Runs the citation verifier skill."
+    }
+  ],
+  "files": [
+    {
+      "path": "blueprint.json",
+      "sha256": "2cd7e9cc749633039b634d973ab406dd1be953288c0e7d254f697f24601d260c",
+      "size": 1215
+    },
+    {
+      "path": "SOUL.md",
+      "sha256": "a8148f5470716557b155b74908f705b9f3e696bbc0020dc618936c8f765a7ed2",
+      "size": 574
+    },
+    {
+      "path": "README.md",
+      "sha256": "95c974bec31b7d7565fccbd3a1020568d7f4d22904558f7b6530cf73476933b2",
+      "size": 368
+    }
+  ],
+  "payload": {
+    "blueprint": "blueprint.json",
+    "schema": "agentic.agent-blueprint/1",
+    "components": [
+      "modelPolicy",
+      "skillReferences",
+      "toolPermissions",
+      "verificationPolicy",
+      "contextScope"
+    ]
+  }
+}

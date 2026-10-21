@@ -19,6 +19,7 @@
   },
   "knownGapsStillOpen": [],
   "failures": [],
+  "skipped": [],
   "cases": [
     {
       "id": "b01-memo-style-seed",

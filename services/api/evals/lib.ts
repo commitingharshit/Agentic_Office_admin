@@ -18,7 +18,7 @@ export interface Case {
 }
 export interface Outcome {
   id: string; label: Label; category: string; note: string;
-  verdict: 'accept' | 'reject'; stage: 'unpack' | 'validate' | 'none'; reason: string; failedChecks: string[];
+  verdict: 'accept' | 'reject' | 'skip'; stage: 'unpack' | 'validate' | 'none'; reason: string; failedChecks: string[];
   knownGap?: string; ms: number;
 }
 export interface KnownGap { id: string; reason: string }
@@ -52,6 +52,17 @@ export async function runEval(name: string, title: string, cases: Case[], type: 
     const j = await judge(type, bytes);
     outcomes.push({ id: c.id, label: c.label, category: c.category, note: c.note, ...j, ...(gaps.has(c.id) ? { knownGap: gaps.get(c.id) } : {}), ms: Date.now() - t0 });
   }
+  return finish(name, title, outcomes, limits);
+}
+
+/** Known-gap lookup for runners that compute their own outcomes. */
+export const gapsFor = (name: string): Map<string, string> => new Map(knownGaps(name).map((g) => [g.id, g.reason]));
+
+/** Confusion matrix, gates, console report and results/*.json|md for already-computed outcomes. A `skip` outcome (a case that
+ *  needs infrastructure that is absent) is counted and listed but is in neither the matrix nor the pass count. */
+export function finish(name: string, title: string, all: Outcome[], limits: string[], extraFailures: string[] = []): number {
+  const skipped = all.filter((o) => o.verdict === 'skip');
+  const outcomes = all.filter((o) => o.verdict !== 'skip');
   const mal = outcomes.filter((o) => o.label === 'malicious'), ben = outcomes.filter((o) => o.label === 'benign');
   const tp = mal.filter((o) => o.verdict === 'reject').length, fn = mal.length - tp;
   const fp = ben.filter((o) => o.verdict === 'reject').length, tn = ben.length - fp;
@@ -62,7 +73,7 @@ export async function runEval(name: string, title: string, cases: Case[], type: 
   const documentedMisses = mal.filter((o) => o.verdict === 'accept' && o.knownGap);
   const staleGaps = mal.filter((o) => o.verdict === 'reject' && o.knownGap);
   const recallExcludingKnown = mal.length - documentedMisses.length ? (tp / (mal.length - documentedMisses.length)) : 1;
-  const failures: string[] = [];
+  const failures: string[] = [...extraFailures];
   if (unexpectedMisses.length) failures.push(`malicious accepted (not a known gap): ${unexpectedMisses.map((o) => o.id).join(', ')}`);
   if (fpr > GATES.maxFalsePositiveRate) failures.push(`false-positive rate ${(fpr * 100).toFixed(1)}% is over ${GATES.maxFalsePositiveRate * 100}%: ${ben.filter((o) => o.verdict === 'reject').map((o) => o.id).join(', ')}`);
   const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
@@ -81,6 +92,7 @@ export async function runEval(name: string, title: string, cases: Case[], type: 
     const ok = o.label === 'malicious' ? o.verdict === 'reject' : o.verdict === 'accept';
     console.log(`${ok ? 'ok  ' : o.knownGap ? 'GAP ' : 'FAIL'} ${o.label.padEnd(9)} ${o.id.padEnd(34)} ${o.verdict.padEnd(6)} ${o.stage === 'none' ? '' : `[${o.failedChecks.join(',')}] `}${o.knownGap ? '(known gap) ' : ''}${o.ms}ms`);
   }
+  if (skipped.length) console.log(`\nSKIPPED ${skipped.length} case(s) (infrastructure absent, NOT counted as passed): ${skipped.map((o) => o.id).join(', ')}`);
   for (const o of staleGaps) console.log(`note: known gap ${o.id} is now detected; remove it from evals/known-gaps.json`);
   if (failures.length) console.log(`\nGATE FAILED:\n- ${failures.join('\n- ')}`); else console.log('\nGATE PASSED');
 
@@ -92,9 +104,10 @@ export async function runEval(name: string, title: string, cases: Case[], type: 
     confusion: { truePositive: tp, falseNegative: fn, falsePositive: fp, trueNegative: tn },
     metrics: { recall, recallExcludingKnownGaps: recallExcludingKnown, precision, falsePositiveRate: fpr },
     knownGapsStillOpen: documentedMisses.map((o) => o.id), failures,
-    cases: outcomes.map(({ ms: _ms, ...o }) => o),
+    skipped: skipped.map((o) => ({ id: o.id, reason: o.reason })),
+    cases: all.map(({ ms: _ms, ...o }) => o),
   }, null, 2) + '\n');
-  const row = (o: Outcome) => `| ${o.id} | ${o.label} | ${o.category} | ${o.verdict}${o.knownGap ? ' (known gap)' : ''} | ${o.failedChecks.join(', ') || '-'} |`;
+  const row = (o: Outcome) => `| ${o.id} | ${o.label} | ${o.category} | ${o.verdict === 'skip' ? 'SKIPPED' : o.verdict}${o.knownGap ? ' (known gap)' : ''} | ${o.failedChecks.join(', ') || '-'} |`;
   writeFileSync(join(outDir, `${name}.md`), [
     `# ${title}`, '',
     `Result: **${failures.length ? 'FAILED' : 'passed'}**. Gates: recall on the malicious set = 100% (known gaps listed in \`evals/known-gaps.json\` excepted), benign false-positive rate <= ${GATES.maxFalsePositiveRate * 100}%.`, '',
@@ -103,8 +116,9 @@ export async function runEval(name: string, title: string, cases: Case[], type: 
     `- precision ${pct(precision)} (${tp}/${tp + fp})`,
     `- false-positive rate ${pct(fpr)} (${fp}/${ben.length})`, '',
     ...(documentedMisses.length ? ['## Known gaps (malicious, accepted today)', '', ...documentedMisses.map((o) => `- **${o.id}**: ${o.knownGap}`), ''] : []),
+    ...(skipped.length ? [`## Skipped (${skipped.length}; not counted as passed)`, '', ...skipped.map((o) => `- **${o.id}**: ${o.reason}`), ''] : []),
     ...(failures.length ? ['## Gate failures', '', ...failures.map((f) => `- ${f}`), ''] : []),
-    '## Cases', '', '| case | label | category | verdict | failed checks |', '|---|---|---|---|---|', ...outcomes.map(row), '',
+    '## Cases', '', '| case | label | category | verdict | failed checks |', '|---|---|---|---|---|', ...all.map(row), '',
     '## Limits of this eval', '', ...limits.map((l) => `- ${l}`), '',
   ].join('\n'));
   return failures.length ? 1 : 0;

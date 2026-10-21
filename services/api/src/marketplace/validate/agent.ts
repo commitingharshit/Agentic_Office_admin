@@ -83,7 +83,8 @@ export function createAgentValidator(opts: AgentValidatorOptions = {}) {
     if (!bpBytes) parseErr = 'blueprint.json is not in the package';
     else if (bpBytes.length > BLUEPRINT_LIMITS.maxBytes) parseErr = `blueprint.json is ${bpBytes.length} bytes, over the ${BLUEPRINT_LIMITS.maxBytes} byte cap`;
     else {
-      try { text = new TextDecoder('utf-8', { fatal: true }).decode(bpBytes); } catch { parseErr = 'blueprint.json is not valid UTF-8'; }
+      // ignoreBOM: keep a BOM in the text so JSON.parse rejects it (the default decoder strips it, and the Python compiler would see different bytes)
+      try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bpBytes); } catch { parseErr = 'blueprint.json is not valid UTF-8'; }
       if (text !== undefined) {
         try { bp = parseBlueprintText(text); }
         catch (e) { parseErr = e instanceof BlueprintError ? `${e.path || '$'}: ${e.message.replace(/^[^:]*: /, '')}` : `cannot parse: ${e instanceof Error ? e.message : String(e)}`; }

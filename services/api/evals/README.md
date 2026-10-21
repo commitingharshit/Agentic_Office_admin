@@ -1,6 +1,6 @@
 # Marketplace evals
 
-Two evals that run the marketplace's real validators over fixed, labelled corpora and gate on the numbers. They
+Evals that run the marketplace's real validators over fixed, labelled corpora and gate on the numbers. They
 answer "did a change to a validator, the file policy or the vendored scanner let something through that used to be
 caught, or start blocking things that used to pass?". They are **regression gates, not security proofs**.
 
@@ -9,6 +9,8 @@ caught, or start blocking things that used to pass?". They are **regression gate
 | `run-scan-gate.ts` | 12 benign + 12 malicious skill packages, built in the runner | `unpack()` then `validateArtifact('skill')` with `createSkillValidator` and the real Skills Guard (`createSkillsGuardScanner` runs `vendor/hermes-agent/tools/skills_scan_cli.py` under `python3`) |
 | `run-template-validator.ts` | corpus in `template-corpus.ts`: 6 benign (5 real templates from `templates/` + 1 benign edge) + 52 hostile or malformed packages (mutations of those templates; the `h*` cases are the Plan 4 Task 11 hardening gaps) | `unpack()` then `validateArtifact('template')` (static checks; no OfficeCLI) |
 | `run-template-differential.ts` | the template corpus + `FUZZ_MUTATIONS` (default 500) seeded mutations of the real templates (`FUZZ_SEED`, default 1) | validator verdict vs OfficeCLI `validate` + `view issues` (skipped when `officecli` is missing) |
+| `run-blueprint-validator.ts` | `blueprint-corpus.ts`: 18 benign agents (incl. the M&A Analyst and Legal Research fixtures from `test/fixtures/agents/`, test fixtures only, never listings) + 54 hostile ones (escalation, injection, supply-chain, cycle, dependency, config-smuggling, dos, secrets) | `createAgentValidator` with a fake caller-scoped catalog, the REAL Python compiler bridge (with dry run over real skill trees) and the REAL Skills Guard persona scanner when `vendor/hermes-agent/venv` exists (`HERMES_PYTHON` overrides). Cases marked `needsPython` are **skipped, not passed** without it |
+| `run-bundle-validator.ts` | `bundle-corpus.ts`: 11 benign + 35 hostile bundles (swapped hash, range pins, nesting, visibility, closure, order, compat, permission union, forbidden files, smuggling, DoS) | `createBundleValidator` with a fake caller-scoped catalog |
 
 Positive class = malicious; "detected" = the package was rejected (at unpack or by any failed validation check).
 
@@ -76,3 +78,12 @@ malicious case is accepted, either fix the validator or add an entry with the re
   parser was declined as disproportionate (OfficeCLI already schema-validates in the verification pipeline).
 - Hostile markdown (raw HTML, bad links) is neutralised by the Marketplace renderer, not by the scanner; remote images
   are rejected by the `no-remote-images` check. `known-gaps.json` is currently empty.
+
+## Blueprint and bundle evals: extra rules
+
+- Every malicious case has `catches`, the check that should reject it. A case rejected by a different check **fails the gate** (it proves nothing about the intended defence). A blueprint case not marked `needsPython` must also be rejected by the TypeScript checks alone (the runner re-runs it without the bridge and scanner).
+- Benign cases must be accepted and, when Python is available, `verified` (no required check skipped). Some also assert a check is present (for example `manual-review-required` for an elevated bundle member, `unsupported-reported` for declared-only components).
+- Without the Hermes virtualenv the blueprint run still gates on the TypeScript-detectable cases and prints `SKIPPED n case(s)`; the skipped list is also in `results/blueprint-validator.json|md`. Skipped is never counted as passed, so a missing Python shows up as fewer evaluated cases.
+- Labels are set by what the package is. If a hostile case is accepted, fix the validator or record a `known-gaps.json` entry with the reason; never relabel.
+- Holes these corpora found (fixed with regression tests in `test/marketplace-fixtures.test.ts`): a long hyphenated skill id tripped the secret entropy rule (false positive), the dry run was never sent the child blueprints (any agent with a delegated child failed the real dry run), a BOM before `blueprint.json` was stripped by the decoder, hyphen-only confusable skill/child ids in a blueprint, and duplicate keys in `bundle.json`.
+- Run: `npm run eval:blueprints`, `npm run eval:bundles`; `npm run eval` runs all four.

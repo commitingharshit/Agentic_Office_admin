@@ -19,6 +19,7 @@
   },
   "knownGapsStillOpen": [],
   "failures": [],
+  "skipped": [],
   "cases": [
     {
       "id": "t01-pptx-board-update",
