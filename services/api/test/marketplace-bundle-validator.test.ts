@@ -50,9 +50,9 @@ describe('createBundleValidator', () => {
     assert.ok(failed(cs).includes('items-types')); assert.match(get(cs, 'items-types').detail!, /cannot contain a bundle.*cannot contain itself/);
   });
   test('unsupported member types make the bundle fail with an explicit reason', async () => {
-    const h = member('acme/h', { type: 'hook' }), a = member('acme/a');
+    const h = member('acme/h', { type: 'surface' }), a = member('acme/a');   // surface is the type that stays unsupported (hook is operational since ship step A)
     const cs = await run(pkgOf(bundleOf([a, h])), [a, h]);
-    assert.ok(failed(cs).includes('members-supported')); assert.match(get(cs, 'members-supported').detail!, /acme\/h: type hook is not supported yet/);
+    assert.ok(failed(cs).includes('members-supported')); assert.match(get(cs, 'members-supported').detail!, /acme\/h: type surface is not supported yet/);
     const ok = await createBundleValidator({ catalog: catalogOf([a, h]), context: pub, supported: () => true })(pkgOf(bundleOf([a, h])));
     assert.ok(!failed(ok as ValidationCheck[]).includes('members-supported'));
   });

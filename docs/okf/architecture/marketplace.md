@@ -1,16 +1,19 @@
 ---
 type: Reference
 title: "Extension marketplace"
-description: "The 11-type taxonomy, the version and install state machines, what is built (templates and skills only) and the infrastructure each type reuses."
+description: "The 11-type taxonomy, the version and install state machines, which types are operational (and which are not, with evidence) and the infrastructure each type reuses."
 tags: [marketplace, hermes, mcp, accounts]
 timestamp: 2026-10-21T00:00:00Z
 ---
 
-Status: **built for templates and skills only.** The public, creator and admin APIs, the database
-and the desktop Marketplace tab exist for those two types; the other nine types in the table below are
-planned, and the desktop shows them as "not yet available", never as empty or fake listings. The API
-refuses to create them (400 `type_not_supported`). There are **no admin web pages** yet: the admin API
-(`/admin/marketplace/*`) is driven by tokens and scripts.
+Status: **operational types are decided by `OPERATIONAL` in `services/accounts-sync/src/marketplace/support.ts`, each backed by
+an end-to-end evidence record** (see [`docs/audits/marketplace-truth-table.md`](/../docs/audits/marketplace-truth-table.md) and the
+enforcement test `test/marketplace-enablement.test.ts`). Operational: template, skill, routine, memory, hook (declarative mode only),
+bridge, connector (none, api_key, bearer; not oauth2) and workflow. NOT operational: surface (no sandbox), agent and bundle (server side
+exists, the desktop install path is not wired, so `GET /capabilities` reports them unsupported), hook scripts and oauth2 connectors. The
+desktop reads `GET /v1/marketplace/capabilities` to decide which Discover categories are available; anything it cannot read or does not
+recognise stays "Not available yet". The admin web pages are a patch ([`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)),
+not committed in the control-plane tree here; until applied the admin API (`/admin/marketplace/*`) is driven by tokens and scripts.
 
 One listing identity with immutable, content-hashed versions lives in the accounts-sync Postgres
 ([service](/architecture/marketplace-service.md)). The desktop gets one Marketplace editor tab and a local
@@ -26,7 +29,7 @@ adds no second loader, scheduler or identity system.
 | agent | 2 | agent blueprints |
 | bundle | 2 | a set of other listings |
 | memory | 3 | `plugins/memory/*` providers |
-| connector | 3 | OAuth through Better Auth |
+| connector | 3 | none / api_key / bearer through the bridge path; oauth2 needs a token broker (not built) |
 | bridge | 3 | `mcp/registry.json` |
 | surface | 3 | not yet decided |
 | workflow | 3 | `services/dag-runtime` |
@@ -86,8 +89,10 @@ The local index is `~/.agentic-office/marketplace/installed.lock.json`.
 
 # Not built yet
 
-Agents, bundles, memory, connectors, bridges, surfaces, workflows, hooks and routines (later plans), admin
-web pages, org visibility, payments, and automatic revocation of running skills in Hermes.
+Agent and bundle installation on the desktop (adapter registration and the bundle transaction), surfaces, hook scripts, oauth2 connectors,
+the Configure/Grant UI for advanced types (in progress as a separate step), admin web pages in the control-plane tree, org visibility,
+payments, and revocation of an advanced item inside an already-running process for every type (bridge, connector, hook and workflow have
+it with e2e evidence; see the truth table).
 
 # Citations
 
