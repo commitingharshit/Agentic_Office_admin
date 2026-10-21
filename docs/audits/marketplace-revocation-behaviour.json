@@ -1,0 +1,54 @@
+{
+  "template": {
+    "behaviour": "cannot-be-revoked",
+    "why": "A template is a document the user already copied into their own workspace; the lockfile entry is flagged and the template can no longer be used from the marketplace, but copies already made are the user's own files and are not recalled."
+  },
+  "skill": {
+    "behaviour": "revokes",
+    "mechanism": "Reconcile flags the lockfile entry first, then adapter.revoke() removes the skill from Hermes (a missing skill counts as removed); retried each reconcile until it succeeds.",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/installAdvanced.test.ts"
+  },
+  "routine": {
+    "behaviour": "revokes",
+    "mechanism": "Ledger marked revoked first (the scheduler filter skips it on the next tick), then the managed cron job is removed via hermes marketplace revoke.",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/routineHermes.integration.test.ts"
+  },
+  "memory": {
+    "behaviour": "revokes",
+    "mechanism": "hermes marketplace revoke marks the ledger, then reverts the memory provider to the one recorded in memory-binding.json; stored memory data is left untouched.",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/memoryAdapter.test.ts"
+  },
+  "hook": {
+    "behaviour": "revokes",
+    "mechanism": "Ledger revoked flag read by the hook engine on every event (inert in the running process), then the applied declarative hook entries are removed.",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/hookAdapter.test.ts"
+  },
+  "bridge": {
+    "behaviour": "revokes",
+    "mechanism": "Ledger flag first (the guard blocks the next call in the running gateway), then the mcp_servers entry and the grant are removed.",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/bridgeHermes.integration.test.ts"
+  },
+  "connector": {
+    "behaviour": "revokes",
+    "mechanism": "Ledger flag first (guard blocks calls), then the mcp_servers entry, the managed .env block, grants and instances are removed; the keychain secret is deleted.",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/connectorHermes.integration.test.ts"
+  },
+  "workflow": {
+    "behaviour": "revokes",
+    "mechanism": "Ledger flag first (the next run is refused), then the applied definition is removed; an in-flight tool call finishes.",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/workflowHermes.integration.test.ts"
+  },
+  "agent": {
+    "behaviour": "revokes",
+    "mechanism": "The agent profile becomes an inert tombstone (managed files and skills leave, profile data stays) via adapter.revoke().",
+    "proof": "apps/desktop/src/vs/platform/marketplace/test/node/agentHermes.integration.test.ts"
+  },
+  "bundle": {
+    "behaviour": "cannot-be-revoked",
+    "why": "A bundle is only a record; its members are real installs of other types and each is revoked through its own adapter (dependency_revoked), so there is nothing applied to the bundle itself."
+  },
+  "surface": {
+    "behaviour": "cannot-be-revoked",
+    "why": "Surface is unsupported and never installed, so nothing is ever applied that could need revoking; the not-available adapter revoke is a no-op."
+  }
+}

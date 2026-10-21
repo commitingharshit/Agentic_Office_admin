@@ -1,0 +1,90 @@
+{
+ "about": "Shared conformance list for foldName (NFD, upper, lower, NFC), the collision key all three marketplace zip readers must compute identically. Each pair says whether the two names collide. Tested by services/accounts-sync/test, apps/desktop safeUnzip tests and vendor/hermes-agent/tests/tools/test_agentic_marketplace_source.py.",
+ "pairs": [
+  {
+   "a": "straße.md",
+   "b": "strasse.md",
+   "same": true
+  },
+  {
+   "a": "README.md",
+   "b": "readme.md",
+   "same": true
+  },
+  {
+   "a": "ı.md",
+   "b": "i.md",
+   "same": true
+  },
+  {
+   "a": "ſ.md",
+   "b": "s.md",
+   "same": true
+  },
+  {
+   "a": "é.md",
+   "b": "é.md",
+   "same": true
+  },
+  {
+   "a": "a.md",
+   "b": "b.md",
+   "same": false
+  },
+  {
+   "a": "İ.md",
+   "b": "i̇.md",
+   "same": true
+  },
+  {
+   "a": "ΣΑΣ.md",
+   "b": "σας.md",
+   "same": true
+  },
+  {
+   "a": "ǅ.md",
+   "b": "ǆ.md",
+   "same": true
+  },
+  {
+   "a": "K.md",
+   "b": "k.md",
+   "same": true
+  },
+  {
+   "a": "Å.md",
+   "b": "å.md",
+   "same": true
+  },
+  {
+   "a": "ﬁ.md",
+   "b": "fi.md",
+   "same": true
+  },
+  {
+   "a": "dir/Æ.md",
+   "b": "dir/æ.md",
+   "same": true
+  },
+  {
+   "a": "ǰ.md",
+   "b": "J̌.md",
+   "same": true
+  },
+  {
+   "a": "ΐ.md",
+   "b": "ΐ.md",
+   "same": true
+  },
+  {
+   "a": "a/b",
+   "b": "a\\b",
+   "same": false
+  },
+  {
+   "a": "x.md",
+   "b": "x.md ",
+   "same": false
+  }
+ ]
+}

@@ -1,0 +1,110 @@
+{
+  "type": "hook",
+  "mode": "declarative",
+  "script": "scripts/e2e/plan/marketplace-hook-flow.mjs",
+  "commit": "81acf4edb29b3ed3953cd5638604a00725bcdd1f",
+  "workingTreeDirty": false,
+  "passedAt": "2026-10-21T16:58:27.893Z",
+  "result": "pass",
+  "layers": [
+    "accounts-sync admin+public handlers on embedded Postgres (RLS)",
+    "desktop MarketplaceInstaller + HookAdapter (apps/desktop/out)",
+    "real `hermes marketplace` CLI in a throwaway HERMES_HOME",
+    "real Hermes gateway (api_server) + scripted model + stub docx MCP server"
+  ],
+  "notExercised": [
+    "Marketplace UI for configure/grant (separate step)",
+    "installer reconcile reaching hermes for hooks (Task 14)",
+    "script hooks (Task 10)"
+  ],
+  "steps": [
+    {
+      "name": "published through the real admin handlers (submit, a different admin approves with the summary hash, publish)",
+      "ok": true
+    },
+    {
+      "name": "the submitter cannot approve their own hook (separation of duties)",
+      "ok": true
+    },
+    {
+      "name": "manual review and the executable tier are recorded for the hook",
+      "ok": true
+    },
+    {
+      "name": "a hook that could deny every tool is refused by the validator (never installable)",
+      "ok": true
+    },
+    {
+      "name": "the real capabilities endpoint (nothing overridden) marks hook supported in declarative mode only",
+      "ok": true
+    },
+    {
+      "name": "the install plan is elevated and executable (native confirmation required)",
+      "ok": true
+    },
+    {
+      "name": "installed: state enabled, ledger entry written by hermes, stored rules present",
+      "ok": true
+    },
+    {
+      "name": "the install reports the event mapping honestly (before_document_edit is derived)",
+      "ok": true
+    },
+    {
+      "name": "the gateway offers the docx MCP tool to the model",
+      "ok": true
+    },
+    {
+      "name": "the hook BLOCKED the confidential edit: the model saw the block message as the tool result",
+      "ok": true
+    },
+    {
+      "name": "the stub tool never ran for the blocked call",
+      "ok": true
+    },
+    {
+      "name": "the audit log has the block line (no argument values)",
+      "ok": true
+    },
+    {
+      "name": "a non-matching edit goes through (the hook only blocks what it names)",
+      "ok": true
+    },
+    {
+      "name": "installed while the gateway runs: \"Restart the assistant to activate\", not enabled",
+      "ok": true
+    },
+    {
+      "name": "the late hook does not fire before a restart (no audit line for it)",
+      "ok": true
+    },
+    {
+      "name": "the server revokes the version (moderator)",
+      "ok": true
+    },
+    {
+      "name": "reconcile marks the item revoked and disabled on the device",
+      "ok": true
+    },
+    {
+      "name": "reconcile ALONE (no direct adapter call) marked the ledger revoked and removed the stored rules",
+      "ok": true
+    },
+    {
+      "name": "after reconcile alone the SAME gateway process lets the edit through (hook inert, no restart)",
+      "ok": true
+    },
+    {
+      "name": "the audit log records why the hook stopped",
+      "ok": true
+    },
+    {
+      "name": "uninstall leaves no applied artefact (ledger entries and stored rules gone)",
+      "ok": true
+    },
+    {
+      "name": "no process started by this run is left",
+      "ok": true
+    }
+  ]
+}

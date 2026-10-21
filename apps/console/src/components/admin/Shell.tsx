@@ -55,7 +55,7 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, children }: { alert
     return out;
   }, [path, items]);
 
-  const current = (href: string) => (href === '/admin' ? path === '/admin' : path === href || path.startsWith(`${href}/`));
+  const current = (href: string) => (href === '/admin' || href === '/admin/marketplace' ? path === href : path === href || path.startsWith(`${href}/`));
 
   return (
     <div className="shell" data-collapsed={collapsed}>

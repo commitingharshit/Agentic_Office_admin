@@ -1,0 +1,250 @@
+{
+  "about": "Documented differences between the three zip readers: server (services/accounts-sync/src/marketplace/artifacts.ts), desktop (apps/desktop/src/vs/platform/marketplace/node/safeUnzip.ts) and Hermes (vendor/hermes-agent/tools/skill_sources/agentic_marketplace.py). A divergence is a zip one reader accepts and another rejects. 'entries' are accepted by design and must each say why it cannot let different bytes or an unsafe path through: whenever two readers both accept a zip the script still requires identical (path, sha256) sets, so none of these entries can hide a content difference. 'crashes' are exceptions a reader raises instead of its own rejection error (fail-closed, but a robustness bug). 'openHoles' are NOT accepted: they are real gaps with a named owner, listed so the script reports them loudly and fails unless run with --allow-open-holes. match.cls is an anchored regex over the corpus class; accept/reject are the reader sets; rejectCodes/rejectMsg narrow it (rejectMsg is per rejecting reader). allowPolicy must be true for any entry whose rejecting reader used a policy code (zip-slip, symlink, bad-path, duplicate, too-large, too-many-files); waiveExpect waives the generator's 'reject' expectation for that class.",
+  "entries": [
+    {
+      "id": "python-skill-only",
+      "reason": "The Hermes source installs skills only; a template package is rejected by verify_and_extract on its manifest type. Templates install through the desktop reader, which accepts them. Rejection cannot lead to different bytes.",
+      "match": {
+        "cls": ".*",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectMsg": {
+          "python": "^manifest type is "
+        }
+      }
+    },
+    {
+      "id": "python-checks-local-header-name",
+      "reason": "zipfile verifies that the local header name equals the central directory name and rejects when they differ. The TS readers take names only from the central directory and ignore the local name, so the extracted names and bytes are identical whenever both accept. Python is stricter by design.",
+      "match": {
+        "cls": ".*",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectMsg": {
+          "python": "File name in directory .* and header .* differ"
+        }
+      }
+    },
+    {
+      "id": "python-rejects-strong-encryption-bit",
+      "reason": "Flag bit 6 (strong encryption) without bit 0: zipfile refuses it, the TS readers only test bit 0. The entry data is a plain stored/deflated stream in the corpus, so the TS readers read identical bytes. Python is stricter.",
+      "match": {
+        "cls": ".*",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectMsg": {
+          "python": "strong encryption"
+        }
+      }
+    },
+    {
+      "id": "python-rejects-overlapped-entries",
+      "reason": "zipfile warns/raises on entries whose data overlap (possible zip bomb); the TS readers bound inflation by the declared size instead. Python is stricter.",
+      "match": {
+        "cls": ".*",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectMsg": {
+          "python": "Overlapped entries"
+        }
+      }
+    },
+    {
+      "id": "python-manifest-stricter",
+      "reason": "Hermes verifies the manifest against the listing it was asked for (id, version), caps the manifest at 2 MiB, requires payload.entry to be a SKILL.md and parses it with Python's json (which refuses a UTF-8 BOM that TextDecoder strips). All are extra checks on the manifest and cannot change extracted bytes.",
+      "match": {
+        "cls": ".*",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectMsg": {
+          "python": "does not match the listing|manifest is too large|payload.entry must|valid JSON: Unexpected UTF-8 BOM"
+        }
+      }
+    },
+    {
+      "id": "python-malformed-read-errors",
+      "reason": "zipfile raises while reading a damaged archive (bad offset for central directory, 'File is not a zip file', cannot read entry). The TS readers did not need those bytes, or located the real end-of-central-directory record differently, and read correct content; Python failing closed is the safe side. The opposite direction (Python reading a different archive than the TS readers) was closed in Plan 4 Task 12: unpack_package applies the TS end-of-central-directory rule before zipfile.",
+      "match": {
+        "cls": ".*",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectMsg": {
+          "python": "^cannot read |not a valid zip archive"
+        }
+      }
+    },
+    {
+      "id": "python-lenient-eocd-structure",
+      "reason": "zipfile tolerates what the TS readers refuse: entry-count lies, a non-zero disk number, a wrong comment length, trailing bytes after the EOCD, bytes before the first header, concatenated archives, zip64 markers without a record. In every such case the TS readers fail closed. Python reads the central directory by offset/size, so the entries it extracts are the ones the archive lists, and the content comparison still applies if a TS reader ever accepts the same zip. The one place this laxity could change WHICH archive is read (fake-eocd-comment-lying-len) is closed by the framing check in unpack_package (Task 12).",
+      "match": {
+        "cls": "eocd-.*|prefix-.*|suffix-.*|concat-.*|zip64-.*|mut-eocd-.*|mut-flip-eocd|mut-flip-cd|mut-trunc",
+        "accept": [
+          "python"
+        ],
+        "reject": [
+          "server",
+          "desktop"
+        ],
+        "rejectCodes": [
+          "bad-zip",
+          "missing-manifest",
+          "bad-manifest"
+        ]
+      }
+    },
+    {
+      "id": "python-reads-bzip2-lzma",
+      "reason": "zipfile decodes methods 12 (bzip2) and 14 (lzma); the TS readers reject every method except 0 and 8. Python reads the real bytes the archive lists, bounded by read(file_size + 1), so no conflict.",
+      "match": {
+        "cls": "hdr-method-12-valid-bzip2|mut-field-method-.*",
+        "accept": [
+          "python"
+        ],
+        "reject": [
+          "server",
+          "desktop"
+        ],
+        "rejectCodes": [
+          "bad-zip"
+        ]
+      }
+    },
+    {
+      "id": "python-decodes-cp437-names",
+      "reason": "Without the UTF-8 flag the zip specification says names are cp437 and Python decodes them so; the TS readers reject any non-ASCII name without the flag. The decoded name still has to pass Python's path rules and be listed in the manifest with the same bytes, so what installs is what the manifest declares. Python is more lenient on an encoding detail only.",
+      "allowPolicy": true,
+      "waiveExpect": true,
+      "match": {
+        "cls": "name-cp437-noflag",
+        "accept": [
+          "python"
+        ],
+        "reject": [
+          "server",
+          "desktop"
+        ],
+        "rejectCodes": [
+          "bad-path"
+        ]
+      }
+    },
+    {
+      "id": "python-rejects-leading-space",
+      "reason": "Hermes rejects a name with leading or trailing whitespace (name != name.strip()). A leading space is a legal file name on every file system we target, so the TS readers accept it. Python is stricter.",
+      "allowPolicy": true,
+      "match": {
+        "cls": "name-leading-space",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectCodes": [
+          "bad-path"
+        ]
+      }
+    },
+    {
+      "id": "python-skill-file-cap",
+      "reason": "A 200-file template is within the template cap; Hermes applies its skill cap of 50 files (and rejects non-skill types anyway).",
+      "allowPolicy": true,
+      "match": {
+        "cls": "count-template-200-files",
+        "accept": [
+          "server",
+          "desktop"
+        ],
+        "reject": [
+          "python"
+        ],
+        "rejectCodes": [
+          "too-many-files"
+        ]
+      }
+    },
+    {
+      "id": "per-file-size-caps-live-in-validators",
+      "reason": "Per-file size caps (5 MiB for a skill file on the server, 1 MiB for a text file in Hermes) are enforced by the type validators, not by the zip readers; the desktop reader only enforces the 64 MiB archive total, which the other readers enforce as well. The server publish path and the Hermes install path both refuse this package; the desktop reader is used for templates.",
+      "allowPolicy": true,
+      "match": {
+        "cls": "size-ratio-bomb-6mib",
+        "accept": [
+          "desktop"
+        ],
+        "reject": [
+          "server",
+          "python"
+        ]
+      }
+    },
+    {
+      "id": "server-rejects-special-file-modes",
+      "reason": "The server (the publish gate, added by the server hardening backlog) rejects an entry whose unix mode says fifo, device or socket. The desktop and Hermes readers do not look at special modes: they write a regular file with the entry's bytes either way, so when both accept, the extracted (path, sha256) sets are identical (the script still enforces that). The server being stricter only means such a package cannot be published; it cannot make a client write different bytes or a special file.",
+      "match": {
+        "cls": "mode-.*|mut-field-mode-.*",
+        "accept": [
+          "desktop",
+          "python"
+        ],
+        "reject": [
+          "server"
+        ],
+        "rejectCodes": [
+          "special-file"
+        ]
+      }
+    },
+    {
+      "id": "server-rejects-special-file-modes-python-manifest",
+      "reason": "The server (the publish gate, added by the server hardening backlog) rejects an entry whose unix mode says fifo, device or socket. The desktop and Hermes readers do not look at special modes: they write a regular file with the entry's bytes either way, so when both accept, the extracted (path, sha256) sets are identical (the script still enforces that). The server being stricter only means such a package cannot be published; it cannot make a client write different bytes or a special file. Here Hermes also rejects, for its own stricter manifest rule (see python-manifest-stricter).",
+      "match": {
+        "cls": "mode-.*|mut-field-mode-.*",
+        "accept": [
+          "desktop"
+        ],
+        "reject": [
+          "server",
+          "python"
+        ],
+        "rejectCodes": [
+          "special-file",
+          "bad-manifest"
+        ]
+      }
+    }
+  ],
+  "crashes": [],
+  "openHoles": []
+}

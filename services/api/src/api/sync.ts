@@ -71,7 +71,7 @@ async function readBody(req: IncomingMessage, max: number): Promise<Buffer> {
   }
   return Buffer.concat(chunks);
 }
-async function json(req: IncomingMessage, max = 2_000_000): Promise<Record<string, unknown>> {
+export async function json(req: IncomingMessage, max = 2_000_000): Promise<Record<string, unknown>> {
   const b = await readBody(req, max);
   if (!b.length) return {};
   try { return JSON.parse(b.toString('utf8')); } catch { throw new HttpError(400, 'Body is not JSON.'); }
@@ -307,7 +307,7 @@ export function syncHandler(deps: SyncDeps) {
     return mintDeviceToken(row.id, d);
   }
 
-  return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
+  const handle = async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
     if (!url.pathname.startsWith('/v1/')) return false;
     const send = (status: number, payload: unknown, type = 'application/json') => {
@@ -757,4 +757,6 @@ export function syncHandler(deps: SyncDeps) {
       return true;
     }
   };
+  // Other /v1 handlers (the marketplace) authenticate with the same Clerk / device-token logic and caches.
+  return Object.assign(handle, { authenticate: user });
 }

@@ -1,0 +1,22 @@
+{
+  "schema": "agentic.agent-blueprint/1",
+  "identity": {
+    "name": "Legal Research",
+    "role": "legal research assistant",
+    "description": "Finds and summarises authorities for a legal question and checks that every citation resolves to a real source.",
+    "instructionsFile": "SOUL.md"
+  },
+  "objective": {
+    "goal": "Answer a legal research question with a memo whose citations have all been checked.",
+    "successCriteria": ["every citation is checked against its source", "the memo states what is uncertain"]
+  },
+  "executionEnvironments": ["desktop"],
+  "modelPolicy": { "primary": { "provider": "anthropic", "model": "claude-sonnet-4-5" } },
+  "skillReferences": [{ "id": "fixture-pub/citation-verifier", "range": "^1.0.0", "required": true }],
+  "toolPermissions": { "mode": "ask", "toolsets": ["web", "skills"], "kits": ["docx_kit"], "deny": ["terminal"] },
+  "verificationPolicy": {
+    "checks": [{ "name": "citations-checked", "kind": "skill", "ref": "fixture-pub/citation-verifier", "when": "before-final", "onFail": "retry", "maxAttempts": 2 }],
+    "requireEvidence": true
+  },
+  "contextScope": { "workspaceAccess": "read", "pathGlobs": ["matters/**"], "includeUserProfile": false }
+}

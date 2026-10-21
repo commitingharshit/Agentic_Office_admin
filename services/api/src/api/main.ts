@@ -11,9 +11,10 @@
 //   KEYCLOAK_ISSUER (+ KEYCLOAK_JWKS_URL, KEYCLOAK_CLIENT_IDS)   (Keycloak: the identity service; when set, the app is sent there to sign in)
 //   AUTH_ISSUER (public base URL of services/control-plane) [+ AUTH_AUDIENCE, AUTH_JWKS_URL] + AO_APP_PASSWORD   (our own sign-in: the sync API /v1/*)
 //   AO_PRICING (JSON, credits per 1,000 tokens per model) + AO_UPSTREAM_URL + AO_UPSTREAM_KEY   (managed inference)
+import { accessSync, constants as fsConstants } from 'node:fs';
 import { createServer } from 'node:http';
 import pg from 'pg';
-import { adminHandler, parseTokens } from './admin.ts';
+import { adminHandler, authenticate as adminAuthenticate, parseTokens } from './admin.ts';
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { JwksVerifier } from '../auth/jwks.ts';
 import { httpStreamUpstream, httpUpstream, parsePricing } from './inference.ts';
@@ -27,6 +28,24 @@ import { cors, parseOrigins } from './cors.ts';
 import { sweepGuardrails } from '../growth/admin.ts';
 import { emailConfigFromEnv } from '../growth/email.ts';
 import { growthPublicHandler } from '../growth/public.ts';
+import { marketplaceHandler } from './marketplace.ts';
+import { registerSkillPipeline } from '../marketplace/verify/stages/skill/index.ts';
+import '../marketplace/verify/stages/template/index.ts'; // registers the template verification pipeline (Plan 4 Task 3)
+import type { PipelineTools } from '../marketplace/verify/types.ts';
+import { marketplaceTeamsHandler } from './marketplace-teams.ts';
+import { createAgentBridge, createAgentRuntime } from '../marketplace/agents.ts';
+import { parseRoleMap } from '../marketplace/permissions.ts';
+import { marketplaceAdminHandler } from './marketplace-admin.ts';
+import { s3ArtifactStore } from '../marketplace/artifacts.ts';
+import { registerValidator } from '../marketplace/validate/index.ts';
+import { createSkillValidator } from '../marketplace/validate/skill.ts';
+import { createSkillsGuardScanner } from '../marketplace/validate/skillsGuard.ts';
+import { createRoutineValidator } from '../marketplace/validate/routine.ts';
+import { createTemplateValidator } from '../marketplace/validate/template.ts';
+import { createDagPlanChecker, createWorkflowValidator } from '../marketplace/validate/workflow.ts';
+import { skillScannerSelfCheck } from '../marketplace/selfcheck.ts';
+import { validateArtifact } from '../marketplace/validate/index.ts';
+import { officecliRenderer } from '../marketplace/validate/officecli.ts';
 
 const env = process.env;
 const need = (k: string) => { const v = env[k]; if (!v) { console.error(`${k} is not set`); process.exit(2); } return v; };
@@ -83,7 +102,55 @@ const sync = app ? syncHandler({ app, verify: clerk ? (t) => clerk.verify(t) : u
     return (u.external_accounts ?? []).filter((x) => x.provider && x.verification?.status !== 'unverified')
       .map((x) => ({ provider: x.provider!, email: x.email_address ?? null, image: x.image_url || x.avatar_url || (u.has_image ? u.image_url : null) || null }));
   } : undefined }) : undefined;
+// Eager scanner self-check: until it passes, skill uploads (creator and admin) answer 503 scanner_unavailable instead of storing rejected versions.
+const scanner = { ok: false };
+const scannerOk = () => scanner.ok;
+// Verification pipelines (Plan 4). The skill pipeline's scan stage and the creator's gated auto-publish use the same Skills Guard scanner.
+registerSkillPipeline();
+const verifyTools: PipelineTools = { scanner: createSkillsGuardScanner() };
+// Agents and bundles: the REAL compiler bridge (python3 -m agent.office.blueprint.cli) and the persona scanner, proven at startup by
+// compiling and scanning a built-in agent. Until that passes (and while it fails), agent/bundle uploads answer 503 compiler_unavailable
+// and GET /v1/marketplace/capabilities says they are unsupported; browse and install of everything else is unaffected.
+const hermesPython = env.HERMES_PYTHON || 'python3';
+const marketplaceStore = s3 ? s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') : undefined;
+const agents = createAgentRuntime({ bridge: createAgentBridge({ python: hermesPython, store: marketplaceStore }), scanner: (() => { try { return createSkillsGuardScanner({ python: hermesPython }); } catch { return undefined; } })() });
+agents.register();
+const agentsOk = () => agents.ok();
+// Team assignments, install policy, install-time re-resolution and bundle plans (before `marketplace`, whose catch-all answers 404).
+const marketplaceTeams = sync && app && marketplaceStore ? marketplaceTeamsHandler({ app, authenticate: sync.authenticate, store: marketplaceStore }) : undefined;
+const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools, agentsOk, verifyMode: env.AO_VERIFY_MODE === 'queue' ? 'queue' : 'inline' }) : undefined;
 const admin = adminHandler(deps);
+// Marketplace publishing runs the REAL scanner (skills guard) and, when OFFICECLI_BIN is set, the officecli render check.
+// Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.
+try { registerValidator('skill', createSkillValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: skill scanner unavailable, skill submissions stay unverified:', (e as Error).message); }
+// Routines: the prompt text goes through the same scanner; without it a routine report stays unverified and the admin API refuses to approve it.
+try { registerValidator('routine', createRoutineValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: routine prompt scanner unavailable, routine submissions stay unverified:', (e as Error).message); }
+// Workflows: the plan is parsed and compiled by the DAG runtime's own code (validate-plan CLI) and agent text goes through the scanner; without either the report stays unverified.
+try { registerValidator('workflow', createWorkflowValidator({ planChecker: createDagPlanChecker(), scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: workflow checks unavailable, workflow submissions stay unverified:', (e as Error).message); }
+if (env.OFFICECLI_BIN) {
+  try { accessSync(env.OFFICECLI_BIN, fsConstants.X_OK); registerValidator('template', createTemplateValidator({ officecli: officecliRenderer() })); }
+  catch { console.error(`marketplace: OFFICECLI_BIN=${env.OFFICECLI_BIN} is not an executable file; templates cannot reach 'verified' until it is fixed.`); }
+} else console.warn('marketplace: OFFICECLI_BIN is not set; template submissions cannot reach the verified state (no render check).');
+if (s3) void skillScannerSelfCheck(validateArtifact).then((r) => {
+  scanner.ok = r.ok;
+  if (r.ok) console.log('marketplace: skill scanner self-check passed');
+  else console.error(`marketplace: SKILL SCANNER SELF-CHECK FAILED, skill uploads are disabled (503 scanner_unavailable). It needs python3 on PATH and a vendor/hermes-agent checkout above the server's src/ directory (deploy/docker-compose.yml mounts it at /srv/vendor/hermes-agent; deploy/Dockerfile.marketplace adds python3). ${r.detail ?? ''}`);
+});
+// Roles fail closed: an admin not listed in AO_MARKETPLACE_ROLES (adminName:role[,..]; Clerk admins by email or user id) is an analyst, so without it the API is read-only.
+let marketplaceRoles: ReturnType<typeof parseRoleMap>;
+try { marketplaceRoles = parseRoleMap(env.AO_MARKETPLACE_ROLES); } catch (e) { console.error((e as Error).message); process.exit(2); }
+const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools, agentsOk }) : undefined;
+// Startup self-check of the agent compiler; a failure is retried every minute so a late-starting dependency recovers without a restart.
+if (s3) {
+  const check = () => void agents.selfCheck().then((r) => {
+    if (r.ok) console.log('marketplace: agent compiler self-check passed (agents and bundles are supported)');
+    else {
+      console.error(`marketplace: AGENT COMPILER SELF-CHECK FAILED, agent and bundle uploads are disabled (503 compiler_unavailable). It needs python3 (HERMES_PYTHON) and the vendored vendor/hermes-agent checkout. ${r.detail ?? ''}`);
+      setTimeout(check, 60_000).unref();
+    }
+  });
+  check();
+}
 
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);
@@ -92,8 +159,11 @@ const growthPublic = growthPublicHandler({ admin: deps.admin, email: deps.email 
 const server = createServer(async (req, res) => {
   if (allowCors(req, res)) return;
   if (await growthPublic(req, res)) return;
+  if (marketplaceTeams && (await marketplaceTeams(req, res))) return;
+  if (marketplace && (await marketplace(req, res))) return;   // before sync, whose /v1 catch-all answers 404
   if (sync && (await sync(req, res))) return;
   if (!sync && req.url?.startsWith('/v1/')) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'Sign-in is not configured on this server yet (CLERK_PUBLISHABLE_KEY).' })); return; }
+  if (marketplaceAdmin && (await marketplaceAdmin(req, res))) return;
   await admin(req, res);
 });
 // Growth guardrails: a live promotion people dismiss too often is paused automatically (src/growth/admin.ts).

@@ -1,0 +1,47 @@
+# PROPOSAL (Plan 4 Task 18): not wired. .github/workflows is not edited by the marketplace work; copy this to .github/workflows/marketplace.yml
+# when the owner has decided the open question below.
+#
+# Open question for the owner: can OfficeCLI and the Rust kernels be installed on the hosted runner? The verification eval and the template
+# differential need them. Until then the PR job runs the gates with `--allow-skip verification_eval,desktop,...` as listed, and the nightly job
+# runs them for real on a self-hosted macOS runner. The real-window acceptance run (scripts/dev/marketplace-acceptance.sh) needs a display and
+# the fork build and is manual or self-hosted only, never hosted PR CI.
+name: marketplace
+on:
+  pull_request:
+    paths:
+      - 'services/accounts-sync/**'
+      - 'apps/desktop/src/vs/platform/marketplace/**'
+      - 'apps/desktop/src/vs/workbench/contrib/marketplace/**'
+      - 'vendor/hermes-agent/tools/skill_sources/**'
+      - 'vendor/hermes-agent/hermes_cli/marketplace_ext/**'
+      - 'docs/audits/marketplace-*'
+      - 'scripts/dev/marketplace-*'
+  schedule:
+    - cron: '0 3 * * *'
+jobs:
+  gates:
+    # every PR touching the paths. Timeout: measure with scripts/dev/marketplace-gates.sh on the runner class first (docs/audits/2026-10-21-marketplace-baselines.md has laptop numbers).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24.15' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: cd services/accounts-sync && npm ci
+      - run: pip install pytest -r vendor/hermes-agent/requirements.txt || true   # the Hermes gate SKIPs (allowed below) when its venv cannot be built
+      # postgres: the gate starts a throwaway pgvector/pgvector:pg17 container itself (docker is present on ubuntu-latest)
+      - run: scripts/dev/marketplace-gates.sh --allow-skip verification_eval,desktop,desktop_types,desktop_layers,bench,zip_differential,hermes
+  nightly:
+    if: github.event_name == 'schedule'
+    runs-on: [self-hosted, macos]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - run: cd services/accounts-sync && npm ci
+      - run: FUZZ_ITERS=20000 scripts/dev/marketplace-gates.sh --perf --full-desktop
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: marketplace-evals, path: 'services/accounts-sync/evals/results/**' }

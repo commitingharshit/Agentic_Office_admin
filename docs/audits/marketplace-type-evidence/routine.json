@@ -1,0 +1,26 @@
+{
+  "type": "routine",
+  "mode": null,
+  "script": "scripts/e2e/plan/marketplace-routine-flow.mjs",
+  "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/routineHermes.integration.test.ts",
+  "commit": "81acf4edb29b3ed3953cd5638604a00725bcdd1f",
+  "dirty": true,
+  "passedAt": "2026-10-21T16:58:56.638Z",
+  "result": "pass",
+  "covered": [
+    "publish through the real admin handlers with the real validator and scanner (manual review, ack, second admin)",
+    "install with the native confirmation, state \"Needs configuration\", no job before configuration",
+    "configure through the adapter: one managed cron job with the expected expression, local delivery, allowlisted toolsets",
+    "scheduler tick against a fake model fires the managed job",
+    "uninstall removes the job, the ledger entry and the stored blueprint; a user job survives",
+    "server-side revoke + reconcile removes the job, marks the ledger revoked, and a later tick fires nothing managed"
+  ],
+  "harness": [
+    "GET /v1/marketplace/capabilities is answered by the real handler from the OPERATIONAL table (no override)",
+    "the configure view is Task 11: the flow makes the same adapter call"
+  ],
+  "notExercised": [
+    "the workbench window (no CDP): the Marketplace UI for routines lands with Task 11",
+    "a real model run of the job (a fake model proves the scheduler fires it)"
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "schema": "agentic.agent-blueprint/1",
+  "identity": {
+    "name": "Analyst",
+    "role": "Research analyst",
+    "description": "Summarises filings.",
+    "instructionsFile": "SOUL.md"
+  },
+  "objective": {
+    "goal": "Produce a sourced summary.",
+    "successCriteria": [
+      "every claim cites a source"
+    ]
+  },
+  "executionEnvironments": [
+    "desktop"
+  ],
+  "modelPolicy": {
+    "primary": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "reasoningEffort": "high"
+    },
+    "fallbacks": [
+      {
+        "provider": "openrouter",
+        "model": "openai/gpt-5"
+      }
+    ],
+    "allowProviders": [
+      "anthropic",
+      "openrouter"
+    ],
+    "localOnly": false,
+    "maxCostTier": "standard"
+  },
+  "skillReferences": [
+    {
+      "id": "acme/sec-filings",
+      "range": "^1.0.0",
+      "required": true
+    },
+    {
+      "id": "acme/charts",
+      "range": ">=2.0.0 <3.0.0",
+      "required": false
+    }
+  ],
+  "toolPermissions": {
+    "mode": "ask",
+    "toolsets": [
+      "web",
+      "file"
+    ],
+    "kits": [
+      "docx_kit"
+    ],
+    "deny": [
+      "terminal"
+    ]
+  },
+  "memoryBinding": {
+    "provider": "builtin",
+    "scope": "agent",
+    "writeApproval": true
+  },
+  "knowledgeSources": [
+    {
+      "name": "Deal folder",
+      "kind": "workspace",
+      "ref": "deals/current"
+    },
+    {
+      "name": "Filings",
+      "kind": "url",
+      "ref": "https://www.sec.gov/edgar"
+    },
+    {
+      "name": "Data room",
+      "kind": "connector",
+      "ref": "dataroom/main"
+    }
+  ],
+  "verificationPolicy": {
+    "checks": [
+      {
+        "name": "Citations",
+        "kind": "skill",
+        "ref": "acme/cite-check",
+        "when": "before-final",
+        "onFail": "retry",
+        "maxAttempts": 2
+      },
+      {
+        "name": "Tone",
+        "kind": "rubric",
+        "ref": "rubrics/tone",
+        "when": "each-edit",
+        "onFail": "ask",
+        "maxAttempts": 1
+      }
+    ],
+    "requireEvidence": true
+  },
+  "hookBindings": [
+    {
+      "event": "post_tool_call",
+      "hook": {
+        "id": "acme/audit-hook",
+        "range": "^1.0.0"
+      }
+    }
+  ],
+  "delegationPolicy": {
+    "maxDepth": 2,
+    "maxConcurrent": 3,
+    "childModel": {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5"
+    },
+    "children": [
+      {
+        "id": "acme/fact-checker",
+        "range": "^1.0.0",
+        "role": "Checks facts"
+      }
+    ]
+  },
+  "contextScope": {
+    "workspaceAccess": "read",
+    "pathGlobs": [
+      "deals/**/*.docx"
+    ],
+    "includeUserProfile": false,
+    "maxContextTokens": 200000
+  },
+  "schedulingPolicy": {
+    "triggers": [
+      {
+        "kind": "manual"
+      },
+      {
+        "kind": "schedule",
+        "schedule": "0 9 * * 1",
+        "prompt": "Weekly summary"
+      }
+    ]
+  },
+  "workflowReferences": [
+    {
+      "id": "acme/deal-flow",
+      "range": "^1.0.0"
+    }
+  ]
+}

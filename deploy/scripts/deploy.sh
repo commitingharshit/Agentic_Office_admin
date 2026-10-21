@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy the pricing/payments, admin-invite, CORS and Growth (promotions, releases, campaign email) work: migrations 0018-0022, the API, the media worker and the console.
+# Deploy the pricing/payments, admin-invite, CORS and Growth (promotions, releases, campaign email) work: migrations 0018-0030 (growth is 0029/0030), the API, the media worker and the console.
 # Growth: campaign email stays off (no Resend key) and the public Resend webhook is not opened by this script.
 # Payments stay OFF: no provider credentials are set, AO_PAYMENTS is left empty. Run by a person, from the repo root:  scripts/dev/deploy-pricing-payments.sh
 # Order: dump -> backup env -> add the billing role password -> ship code -> migrate -> restart API -> rebuild console -> check.
@@ -18,8 +18,8 @@ ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && cp -
 echo "2b/6 retire Better Auth on the API: it stops accepting its sign-in tokens (the env backup above is the way back)"
 ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && sed -i "s/^AUTH_ISSUER=.*/AUTH_ISSUER=/; s/^AUTH_JWKS_URL=.*/AUTH_JWKS_URL=/" .env && grep -c "^AUTH_ISSUER=$" .env'
 
-echo "3/6 ship the code (first remove growth files that earlier test runs left on the host: the old 0020/0021 migration names and src/growth)"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && rm -f db/migrations/0020_growth.sql db/migrations/0021_releases_email.sql test/growth-*.test.ts && rm -rf src/growth'
+echo "3/6 ship the code (first remove growth files that earlier test runs left on the host: the old 0020/0021 and 0021/0022 migration names and src/growth)"
+ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && rm -f db/migrations/0020_growth.sql db/migrations/0021_releases_email.sql db/migrations/0021_growth.sql db/migrations/0022_releases_email.sql test/growth-*.test.ts && rm -rf src/growth'
 COPYFILE_DISABLE=1 tar --exclude=node_modules --exclude=.next --exclude=.DS_Store --no-xattrs -czf - \
   accounts-sync/db accounts-sync/src accounts-sync/deploy/docker-compose.yml accounts-sync/deploy/media-worker.Dockerfile accounts-sync/deploy/.env.example accounts-sync/package.json \
   control-plane/src control-plane/public control-plane/package.json control-plane/Dockerfile \
