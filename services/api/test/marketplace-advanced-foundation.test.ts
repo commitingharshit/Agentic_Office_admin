@@ -108,8 +108,8 @@ describe('checkBounded / checkOnlyFiles / impliedPermissions / risk tier', () =>
 
 describe('placeholders and the support table', () => {
   test('every advanced type answers type-supported:false with a reason and path; surface/agent/bundle too', async () => {
-    // hook, memory and routine are no longer placeholders (Plan 3 Tasks 6, 5 and 4 replaced them); the rest are until their own tasks land
-    for (const t of ['bridge', 'connector', 'workflow'] as const) {
+    // hook, memory, routine and bridge are no longer placeholders (Plan 3 Tasks 6, 5, 4 and 7 replaced them); each type task removes its own name here
+    for (const t of ['connector', 'workflow'] as const) {
       const r = await validateArtifact(t, pkgOf(t));
       const c = r.checks.find((k) => k.name === 'type-supported');
       assert.ok(c && c.ok === false && /not available|not supported/i.test(c.detail ?? ''), t);
