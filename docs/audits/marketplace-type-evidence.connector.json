@@ -2,9 +2,9 @@
   "type": "connector",
   "mode": "api_key",
   "script": "scripts/e2e/plan/marketplace-connector-flow.mjs",
-  "commit": "9a07e058a0ea56c95d41bb50f6688b10b714ba06",
+  "commit": "e48658d9afb3a40d16bf8c267574fbac9567a947",
   "workingTreeDirty": true,
-  "passedAt": "2026-10-21T11:42:08.846Z",
+  "passedAt": "2026-10-21T12:11:55.040Z",
   "result": "pass",
   "steps": [
     "elevated install without the native confirmation is refused and installs nothing",
@@ -36,5 +36,5 @@
     true,
     true
   ],
-  "notes": "loopback accepted only under AGENTICOFFICE_DEV_MODE=1 (asserted refused without it); capabilities reported connector supported by the e2e server stand-in, not by OPERATIONAL (Task 15 flips that)"
+  "notes": "loopback accepted only under AGENTICOFFICE_DEV_MODE=1 (asserted refused without it); capabilities served by the real handler from the OPERATIONAL table (no override)"
 }

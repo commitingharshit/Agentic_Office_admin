@@ -208,6 +208,41 @@
           "python"
         ]
       }
+    },
+    {
+      "id": "server-rejects-special-file-modes",
+      "reason": "The server (the publish gate, added by the server hardening backlog) rejects an entry whose unix mode says fifo, device or socket. The desktop and Hermes readers do not look at special modes: they write a regular file with the entry's bytes either way, so when both accept, the extracted (path, sha256) sets are identical (the script still enforces that). The server being stricter only means such a package cannot be published; it cannot make a client write different bytes or a special file.",
+      "match": {
+        "cls": "mode-.*|mut-field-mode-.*",
+        "accept": [
+          "desktop",
+          "python"
+        ],
+        "reject": [
+          "server"
+        ],
+        "rejectCodes": [
+          "special-file"
+        ]
+      }
+    },
+    {
+      "id": "server-rejects-special-file-modes-python-manifest",
+      "reason": "The server (the publish gate, added by the server hardening backlog) rejects an entry whose unix mode says fifo, device or socket. The desktop and Hermes readers do not look at special modes: they write a regular file with the entry's bytes either way, so when both accept, the extracted (path, sha256) sets are identical (the script still enforces that). The server being stricter only means such a package cannot be published; it cannot make a client write different bytes or a special file. Here Hermes also rejects, for its own stricter manifest rule (see python-manifest-stricter).",
+      "match": {
+        "cls": "mode-.*|mut-field-mode-.*",
+        "accept": [
+          "desktop"
+        ],
+        "reject": [
+          "server",
+          "python"
+        ],
+        "rejectCodes": [
+          "special-file",
+          "bad-manifest"
+        ]
+      }
     }
   ],
   "crashes": [],

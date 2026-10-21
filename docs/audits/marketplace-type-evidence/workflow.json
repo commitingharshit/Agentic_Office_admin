@@ -3,9 +3,9 @@
   "mode": null,
   "script": "scripts/e2e/plan/marketplace-workflow-flow.mjs",
   "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/workflowHermes.integration.test.ts",
-  "commit": "9a07e058a0ea56c95d41bb50f6688b10b714ba06",
+  "commit": "e48658d9afb3a40d16bf8c267574fbac9567a947",
   "dirty": true,
-  "passedAt": "2026-10-21T11:41:20.336Z",
+  "passedAt": "2026-10-21T12:05:35.121Z",
   "result": "pass",
   "covered": [
     "publish through the real admin handlers with the real validator, the real dag-runtime validate-plan check and the real scanner (manual review, ack, second admin)",
@@ -16,7 +16,7 @@
     "uninstall removes the ledger entry, the stored plan and any temp plan files"
   ],
   "harness": [
-    "GET /v1/marketplace/capabilities is answered by the harness with workflow supported (OPERATIONAL is flipped only by Task 15 on this evidence)",
+    "GET /v1/marketplace/capabilities is answered by the real handler from the OPERATIONAL table (no override)",
     "the tool server is a deterministic stdio stub named docx (scripts/e2e/plan/fixtures/workflow-stub-docx.py), not the real Rust-backed docx MCP"
   ],
   "notExercised": [

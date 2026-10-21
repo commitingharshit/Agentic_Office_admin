@@ -16,7 +16,6 @@ import { HttpError } from '../src/api/sync.ts';
 import { marketplaceHandler } from '../src/api/marketplace.ts';
 import { marketplaceAdminHandler } from '../src/api/marketplace-admin.ts';
 import { memoryArtifactStore } from '../src/marketplace/artifacts.ts';
-import { typeSupport } from '../src/marketplace/support.ts';
 import { startMarketplacePg } from '../test/helpers/marketplace-pg.ts';
 
 if (process.env.NODE_ENV === 'production') { console.error('marketplace-connector-e2e-server: refusing to start with NODE_ENV=production.'); process.exit(2); }
@@ -46,11 +45,6 @@ async function main() {
   const server = createServer(async (req, res) => {
     try {
       const path = new URL(req.url ?? '/', 'http://x').pathname;
-      if (req.method === 'GET' && path === '/v1/marketplace/capabilities') {
-        const types = typeSupport().map((t) => t.type === 'connector' ? { type: 'connector', supported: true } : t);
-        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ schema: 'agentic.marketplace.capabilities/1', types }));
-        return;
-      }
       if (path.startsWith('/admin/marketplace')) { if (await adm(req, res)) return; }
       else if (await pub(req, res)) return;
       res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"Not found."}');

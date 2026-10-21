@@ -2,6 +2,10 @@
 // run and looked at against real data instead of mocks. Never deploy this: it accepts a fixed bearer token.
 //
 //   node scripts/marketplace-dev-server.ts [--port 8791] [--http] [--bulk 30] [--hostile] [--admin] [--state <file>]
+//        [--advanced [--bridge-url https://127.0.0.1:P/mcp] [--connector-url https://127.0.0.1:Q/mcp]]
+//   --advanced also seeds one example of each operational advanced type (routine, memory, declarative hook, workflow, and a bridge /
+//   connector when their URL is given) from scripts/dev-seed/advanced.ts, each through the REAL validator of its type. Loopback URLs are
+//   accepted by those validators only under AGENTICOFFICE_DEV_MODE=1, so this flag refuses to start without it.
 //   --admin also serves the /admin/marketplace/* API (marketplace-admin.ts) for the control-plane console, as ONE dev admin (role from
 //   AO_DEV_ADMIN_ROLE, default superadmin) behind the same dev bearer, plus stand-ins for /admin/me, /healthz and /admin/users/:id,
 //   and seeds a few installs and a report so the console pages have rows. DEV ONLY, like the rest of this file.
@@ -44,6 +48,9 @@ import { registerValidator, validateArtifact } from '../src/marketplace/validate
 import { createSkillValidator } from '../src/marketplace/validate/skill.ts';
 import { createSkillsGuardScanner } from '../src/marketplace/validate/skillsGuard.ts';
 import { createTemplateValidator } from '../src/marketplace/validate/template.ts';
+import { createRoutineValidator } from '../src/marketplace/validate/routine.ts';
+import { createDagPlanChecker, createWorkflowValidator } from '../src/marketplace/validate/workflow.ts';
+import { advancedSeeds } from './dev-seed/advanced.ts';
 import type { ManifestV1, PermissionRequest } from '../src/marketplace/types.ts';
 import { startMarketplacePg } from '../test/helpers/marketplace-pg.ts';
 
@@ -62,6 +69,8 @@ const HTTP = args.includes('--http');
 const STATE = opt('--state');
 const HOSTILE = args.includes('--hostile');
 const ADMIN = args.includes('--admin');
+const ADVANCED = args.includes('--advanced');
+if (ADVANCED && process.env.AGENTICOFFICE_DEV_MODE !== '1') { console.error('marketplace-dev-server: --advanced needs AGENTICOFFICE_DEV_MODE=1 (the bridge and connector seeds point at loopback).'); process.exit(2); }
 
 /** DEV ONLY: the one bearer this server accepts. */
 export const DEV_TOKEN = 'dev-token';
@@ -145,6 +154,10 @@ async function main() {
   registerValidator('template', createTemplateValidator({ officecli: officecliRenderer({ bin: OFFICECLI, ...(process.env.OFFICECLI_TIMEOUT_MS ? { timeoutMs: Number(process.env.OFFICECLI_TIMEOUT_MS) } : {}) }) }));
   try { registerValidator('skill', createSkillValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { log(`skills scanner unavailable: ${(e as Error).message}`); }
 
+  if (ADVANCED) {
+    registerValidator('routine', createRoutineValidator({ scanner: createSkillsGuardScanner() }));
+    registerValidator('workflow', createWorkflowValidator({ planChecker: createDagPlanChecker(), scanner: createSkillsGuardScanner() }));
+  }
   const h = await startMarketplacePg();
   const store = memoryArtifactStore();
   const admin = h.admin;
@@ -173,6 +186,38 @@ async function main() {
   await insert(await mk('agentic-office/board-update', deck), { trust: 'official', tags: ['board', 'deck', 'pptx'] });
   await insert(await skillPackage(), { trust: 'community', tags: ['docx', 'outline', 'review'] });
   await insert(await memoStylePackage(), { trust: 'community', tags: ['memo', 'writing'] });
+  const seededAdvanced: string[] = [];
+  if (ADVANCED) {
+    // The advanced types are manual-review types, so they cannot be inserted as published directly (the database refuses): each goes through the
+    // REAL admin handlers on a private loopback server (submit as one admin, approve with the permission-summary hash as ANOTHER, publish).
+    await admin.query(`INSERT INTO marketplace_publishers(id, display_name, owner_user_id, verified) VALUES ('dev-advanced','Dev Seed (advanced types)','usr_pub2',true)`);
+    const SEED_TOKENS: Record<string, string> = { 'seed-submitter-token': 'adm_seed_submitter', 'seed-reviewer-token': 'adm_seed_reviewer' };
+    const bearerOf = (req: { headers: { authorization?: string } }) => /^Bearer\s+(\S+)$/.exec(req.headers.authorization ?? '')?.[1] ?? '';
+    const seedAdmin = marketplaceAdminHandler({ admin: h.pool('ao_admin'), store, roleOf: () => 'superadmin',
+      authenticate: async (req) => { const a = SEED_TOKENS[bearerOf(req)]; if (!a) throw new HttpError(401, 'unknown seed admin token'); return a; } });
+    const internal = createHttpServer(async (req, res) => { if (!(await seedAdmin(req, res))) res.writeHead(404).end(); });
+    await new Promise<void>((ok) => internal.listen(0, '127.0.0.1', ok));
+    const base = `http://127.0.0.1:${(internal.address() as { port: number }).port}`;
+    const call = async (path: string, token: string, body: Uint8Array | object) => {
+      const isZip = body instanceof Uint8Array;
+      const r = await fetch(base + path, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': isZip ? 'application/zip' : 'application/json' }, body: isZip ? body : JSON.stringify(body) } as RequestInit);
+      const text = await r.text(); if (!r.ok) throw new Error(`${path} -> ${r.status} ${text.slice(0, 300)}`);
+      return JSON.parse(text);
+    };
+    for (const seed of advancedSeeds({ bridgeUrl: opt('--bridge-url'), connectorUrl: opt('--connector-url') })) {
+      try {
+        const built = await build(seed.manifest, seed.files);   // the real validator of the type, fail closed before anything is stored
+        const sub = await call('/admin/marketplace/submissions?publisher=dev-advanced&visibility=public', 'seed-submitter-token', built.bytes);
+        if (!sub.validation?.ok) throw new Error(`submission refused: ${JSON.stringify(sub.validation?.checks?.filter((c: any) => !c.ok))}`);
+        await call(`/admin/marketplace/versions/${sub.versionId}/approve`, 'seed-reviewer-token', { ack_summary_sha256: sub.summarySha256 });
+        await call(`/admin/marketplace/versions/${sub.versionId}/publish`, 'seed-reviewer-token', {});
+        await admin.query('UPDATE marketplace_listings SET tags = $2 WHERE id = $1', [seed.manifest.id, seed.tags]);
+        seededAdvanced.push(`${seed.manifest.type}:${seed.manifest.id}`);
+      } catch (e) { log(`ADVANCED SEED SKIPPED ${seed.manifest.id}: ${(e as Error).message.slice(0, 500)}`); }
+    }
+    internal.close(); internal.closeAllConnections?.();
+    log(`advanced seeds published through the real admin flow: ${seededAdvanced.join(', ') || 'none'}`);
+  }
   if (HOSTILE) {
     const md = new Uint8Array(readFileSync(join(here, 'dev-seed', 'hostile-docs', 'SKILL.md')));
     await insert(await build({ schema: 'agentic.marketplace/1', id: 'dev-community/hostile-docs', type: 'skill', version: '1.0.0', title: 'Hostile Docs (fixture)', license: 'MIT',
@@ -244,7 +289,7 @@ async function main() {
   await new Promise<void>((ok) => server.listen(PORT, '127.0.0.1', ok));
   const url = `${HTTP ? 'http' : 'https'}://127.0.0.1:${PORT}`;
   console.log(`marketplace dev server: ${url}  (bearer: ${DEV_TOKEN} = ${DEV_USER}, device dev-device)`);
-  if (STATE) { mkdirSync(dirname(resolve(STATE)), { recursive: true }); writeFileSync(STATE, JSON.stringify({ url, pid: process.pid, token: DEV_TOKEN, user: DEV_USER, device: 'dev-device', ...(certDir ? { ca: join(certDir, 'c.pem') } : {}) })); }
+  if (STATE) { mkdirSync(dirname(resolve(STATE)), { recursive: true }); writeFileSync(STATE, JSON.stringify({ url, pid: process.pid, token: DEV_TOKEN, user: DEV_USER, device: 'dev-device', advancedSeeded: seededAdvanced, ...(certDir ? { ca: join(certDir, 'c.pem') } : {}) })); }
   log(`seeded: ${relative(repo, join(repo, 'templates'))}/… 2 templates, 2 skills${BULK ? `, ${BULK} bulk templates` : ''}`);
 
   let stopping = false;
@@ -256,6 +301,8 @@ async function main() {
     process.exit(0);
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
+  // stopping the database under idle pooled connections makes them emit a FATAL 57P01 error; that is the expected end of a stop, not a crash
+  process.on('uncaughtException', (e) => { if (stopping) process.exit(0); console.error(e); process.exit(1); });
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

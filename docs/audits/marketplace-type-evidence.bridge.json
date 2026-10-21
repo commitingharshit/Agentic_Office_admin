@@ -2,9 +2,9 @@
   "type": "bridge",
   "mode": null,
   "script": "scripts/e2e/plan/marketplace-bridge-flow.mjs",
-  "commit": "9a07e058a0ea56c95d41bb50f6688b10b714ba06",
+  "commit": "e48658d9afb3a40d16bf8c267574fbac9567a947",
   "workingTreeDirty": true,
-  "passedAt": "2026-10-21T11:40:57.801Z",
+  "passedAt": "2026-10-21T12:09:47.861Z",
   "result": "pass",
   "steps": [
     "elevated install without the native confirmation is refused and installs nothing",
@@ -26,5 +26,5 @@
     "search_issues",
     "search_issues"
   ],
-  "notes": "loopback accepted only under AGENTICOFFICE_DEV_MODE=1 (asserted refused without it); capabilities reported bridge supported by the e2e server stand-in, not by OPERATIONAL (Task 15 flips that)"
+  "notes": "loopback accepted only under AGENTICOFFICE_DEV_MODE=1 (asserted refused without it); capabilities served by the real handler from the OPERATIONAL table (no override)"
 }

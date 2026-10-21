@@ -112,13 +112,13 @@ describe('placeholders and the support table', () => {
     const s = await validateArtifact('surface', pkgOf('surface'));
     assert.equal(s.checks.find((k) => k.name === 'type-supported')?.ok, false);
   });
-  test('typeSupport(): 11 rows, only template and skill supported, unsupported rows carry reason and path; frozen', () => {
+  test('typeSupport(): 11 rows, the evidence-backed types supported, unsupported rows carry reason and path; frozen', () => {
     const rows = typeSupport();
     assert.deepEqual(rows.map((r) => r.type), [...LISTING_TYPES]);
-    assert.deepEqual(rows.filter((r) => r.supported).map((r) => r.type).sort(), ['skill', 'template']);
+    assert.deepEqual(rows.filter((r) => r.supported).map((r) => r.type).sort(), ['bridge', 'connector', 'hook', 'memory', 'routine', 'skill', 'template', 'workflow']);   // see marketplace-enablement.test.ts
     for (const r of rows.filter((x) => !x.supported)) { assert.ok(r.reason, r.type); assert.ok(r.path, r.type); }
     assert.throws(() => { 'use strict'; (OPERATIONAL as any).hook = { supported: true }; });
-    assert.equal(isPublishable('hook'), false); assert.equal(isPublishable('skill'), true);
+    assert.equal(isPublishable('hook'), true); assert.equal(isPublishable('hook', 'script'), false); assert.equal(isPublishable('skill'), true);
     assert.equal(isPublishable('skill', 'script'), false);   // unknown mode on a type without modes: closed
     assert.equal(isPublishable('nope' as any), false);
   });
@@ -178,15 +178,18 @@ describe('advanced foundation over HTTP (real Postgres)', { skip }, () => {
   });
   after(async () => { api?.close(); pub?.close(); if (h) await h.stop(); });
 
-  test('GET /v1/marketplace/capabilities: anonymous, 11 rows, advanced and surface unsupported with reason and path, nothing user-specific', async () => {
+  test('GET /v1/marketplace/capabilities: anonymous, 11 rows, surface/agent/bundle unsupported with reason and path, hook scripts and oauth2 off, nothing user-specific', async () => {
     const r = await call(pubBase, '/v1/marketplace/capabilities');
     assert.equal(r.status, 200);
     assert.equal(r.json.schema, 'agentic.marketplace.capabilities/1');
     assert.equal(r.json.types.length, 11);
-    for (const t of ['hook', 'routine', 'memory', 'bridge', 'connector', 'workflow', 'surface']) {
+    for (const t of ['surface', 'agent', 'bundle']) {
       const row = r.json.types.find((x: any) => x.type === t);
       assert.equal(row.supported, false, t); assert.ok(row.reason && row.path, t);
     }
+    for (const t of ['hook', 'routine', 'memory', 'bridge', 'connector', 'workflow']) assert.equal(r.json.types.find((x: any) => x.type === t).supported, true, t);
+    assert.deepEqual(r.json.types.find((x: any) => x.type === 'hook').modes, { declarative: true, script: false });
+    assert.equal(r.json.types.find((x: any) => x.type === 'connector').modes.oauth2, false);
     assert.match(r.headers.get('cache-control') ?? '', /public/);
     assert.equal((await call(pubBase, '/v1/marketplace/capabilities', { method: 'POST', body: {} })).status === 404 || true, true);
   });
