@@ -24,6 +24,7 @@ import { youpiFromEnv } from './payments/youpi.ts';
 import { mailerFromEnv } from './mailer.ts';
 import { syncHandler } from './sync.ts';
 import { cors, parseOrigins } from './cors.ts';
+import { sweepGuardrails } from '../growth/admin.ts';
 
 const env = process.env;
 const need = (k: string) => { const v = env[k]; if (!v) { console.error(`${k} is not set`); process.exit(2); } return v; };
@@ -90,5 +91,7 @@ const server = createServer(async (req, res) => {
   if (!sync && req.url?.startsWith('/v1/')) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'Sign-in is not configured on this server yet (CLERK_PUBLISHABLE_KEY).' })); return; }
   await admin(req, res);
 });
+// Growth guardrails: a live promotion people dismiss too often is paused automatically (src/growth/admin.ts).
+setInterval(() => { sweepGuardrails(deps).then((p) => p.length && console.log(`guardrails paused ${p.join(', ')}`)).catch((e) => console.error('guardrail sweep failed:', e.message)); }, 10 * 60_000).unref();
 server.listen(port, bind, () => console.log(`admin API on http://${bind}:${port} (${deps.tokens.size} admin token(s), blobs ${deps.s3 ? 'on' : 'off'}, sign-in ${[clerk && 'Clerk', idVerifier && 'ours'].filter(Boolean).join('+') || 'tokens only'}, sync ${sync ? 'on' : 'off'})`));
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => server.close(() => Promise.all([deps.ro.end(), deps.admin.end(), app?.end()]).then(() => process.exit(0))));

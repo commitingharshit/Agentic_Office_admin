@@ -16,6 +16,7 @@ import { attention } from './attention.ts';
 import * as access from './access-requests.ts';
 import { DEFAULT_CURRENCY, PLAN_PRICE_JOIN, PLAN_SELECT as billingSelect } from './billing.ts';
 import * as ops from './ops.ts';
+import * as growthAdmin from '../growth/admin.ts';
 import { keycloakView, mirrorKeycloak } from './keycloak-link.ts';
 import * as consoleApi from './admin-console.ts';
 import { can, permissionsOf, isAdminRole, type AdminRole, type Permission } from './rbac.ts';
@@ -526,6 +527,11 @@ export function adminHandler(deps: AdminDeps) {
         const r = await deleteUser(deps, id, b.confirm);
         await audit(deps, adminId, 'delete_done', id, r);
         return send(200, r);
+      }
+      // ── growth: campaigns, creatives, media, audiences, releases, funnel (src/growth/admin.ts; every change audited there)
+      if (a === 'growth') {
+        const g = { deps, adminId, need, audit: (action: string, target: string | null, detail: Record<string, unknown> = {}) => audit(deps, adminId, action, target, detail) };
+        return send(200, (await growthAdmin.route(g, m, parts.slice(1), req, () => body(req), q)) as Json);
       }
       // ── operations: flags, announcements, support (src/api/ops.ts)
       if (m === 'GET' && a === 'flags') { await need('flags.read'); return send(200, await ops.listFlags(deps)); }
