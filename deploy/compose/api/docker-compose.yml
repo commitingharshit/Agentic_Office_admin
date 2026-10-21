@@ -133,6 +133,12 @@ services:
       # Announcement email (off unless both are set): Resend's API key and the verified sender address.
       # Signs the app's links to promotion media (32+ characters; without it links only last for one API process).
       AO_MEDIA_SIGNING_KEY: ${AO_MEDIA_SIGNING_KEY:-}
+      # Campaign email (src/growth/email.ts). Refused unless the unsubscribe link can work: AO_PUBLIC_URL is the public https address of
+      # this API's /v1/unsubscribe and /v1/webhooks/resend (only those two need to be public), AO_UNSUBSCRIBE_KEY signs the links (32+ chars),
+      # RESEND_WEBHOOK_SECRET is the webhook's signing secret from Resend (whsec_…).
+      AO_PUBLIC_URL: ${AO_PUBLIC_URL:-}
+      AO_UNSUBSCRIBE_KEY: ${AO_UNSUBSCRIBE_KEY:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       AO_MAIL_FROM: ${AO_MAIL_FROM:-}
       # Keycloak (the identity service). Empty = not in use yet. KEYCLOAK_ISSUER is the realm URL exactly as it appears in tokens (the public one);

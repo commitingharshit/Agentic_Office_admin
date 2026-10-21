@@ -9,6 +9,7 @@ import { HttpError } from '../api/errors.ts';
 import type { Permission } from '../api/rbac.ts';
 import { candidatesFor, contextFor, decide, exposureFor, MEDIA_BUCKET, PLACEMENTS, type Placement } from './engine.ts';
 import { validateAction, validateCard } from './promo-card.ts';
+import * as email from './email.ts';
 
 type Audit = (action: string, target: string | null, detail?: Record<string, unknown>) => Promise<void>;
 export interface GrowthCtx { deps: AdminDeps; adminId: string; need(p: Permission): Promise<void>; audit: Audit }
@@ -363,6 +364,16 @@ export async function route(g: GrowthCtx, m: string, parts: string[], req: Incom
   if (m === 'POST' && a === 'releases' && !id) return saveRelease(g, await body());
   if (m === 'POST' && a === 'releases' && id && act === 'stage') return stageRelease(g, id, await body());
   if (m === 'POST' && a === 'releases' && id && act === 'announce') return announceRelease(g, id);
+  if (m === 'GET' && a === 'templates') { await read(); return email.listTemplates(g.deps); }
+  if (m === 'POST' && a === 'templates') { await g.need('growth.write'); const b = await body(); const r = await email.saveTemplate(g.deps, g.adminId, b); await g.audit('save_email_template', null, { template: r.template.id, name: r.template.name }); return r; }
+  if (m === 'POST' && a === 'campaigns' && id && act === 'email') {
+    await g.need('growth.publish');
+    const b = await body();
+    const r = await email.sendCampaignEmail(g.deps, g.deps.email ?? {}, g.adminId, id, b);
+    await g.audit('send_campaign_email', null, { campaign: id, template: b.template_id, sent: r.sent, failed: r.failed, remaining: r.remaining });
+    return r;
+  }
+  if (m === 'GET' && a === 'campaigns' && id && act === 'deliveries') { await read(); return email.deliveries(g.deps, id); }
   if (m === 'POST' && a === 'guardrails' && id === 'sweep') { await g.need('growth.publish'); const paused = await sweepGuardrails(g.deps); await g.audit('guardrail_sweep', null, { paused }); return { paused }; }
   throw new HttpError(404, 'Not found.');
 }
