@@ -14,6 +14,8 @@ import { adminHandler, authenticate as adminAuthenticate, parseTokens } from './
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { S3 } from './s3.ts';
 import { marketplaceHandler } from './marketplace.ts';
+import { marketplaceTeamsHandler } from './marketplace-teams.ts';
+import { createAgentBridge, createAgentRuntime } from '../marketplace/agents.ts';
 import { parseRoleMap } from '../marketplace/permissions.ts';
 import { marketplaceAdminHandler } from './marketplace-admin.ts';
 import { syncHandler } from './sync.ts';
@@ -61,7 +63,17 @@ const sync = app && clerk ? syncHandler({ app, verify: (t) => clerk.verify(t), s
 // Eager scanner self-check: until it passes, skill uploads (creator and admin) answer 503 scanner_unavailable instead of storing rejected versions.
 const scanner = { ok: false };
 const scannerOk = () => scanner.ok;
-const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk }) : undefined;
+// Agents and bundles: the REAL compiler bridge (python3 -m agent.office.blueprint.cli) and the persona scanner, proven at startup by
+// compiling and scanning a built-in agent. Until that passes (and while it fails), agent/bundle uploads answer 503 compiler_unavailable
+// and GET /v1/marketplace/capabilities says they are unsupported; browse and install of everything else is unaffected.
+const hermesPython = env.HERMES_PYTHON || 'python3';
+const marketplaceStore = s3 ? s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') : undefined;
+const agents = createAgentRuntime({ bridge: createAgentBridge({ python: hermesPython, store: marketplaceStore }), scanner: (() => { try { return createSkillsGuardScanner({ python: hermesPython }); } catch { return undefined; } })() });
+agents.register();
+const agentsOk = () => agents.ok();
+const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, agentsOk }) : undefined;
+// Team assignments, install policy, install-time re-resolution and bundle plans (before `marketplace`, whose catch-all answers 404).
+const marketplaceTeams = sync && app && marketplaceStore ? marketplaceTeamsHandler({ app, authenticate: sync.authenticate, store: marketplaceStore }) : undefined;
 const admin = adminHandler(deps);
 // Marketplace publishing runs the REAL scanner (skills guard) and, when OFFICECLI_BIN is set, the officecli render check.
 // Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.
@@ -80,11 +92,23 @@ if (s3) void skillScannerSelfCheck(validateArtifact).then((r) => {
 // Roles fail closed: an admin not listed in AO_MARKETPLACE_ROLES (adminName:role[,..]; Clerk admins by email or user id) is an analyst, so without it the API is read-only.
 let marketplaceRoles: ReturnType<typeof parseRoleMap>;
 try { marketplaceRoles = parseRoleMap(env.AO_MARKETPLACE_ROLES); } catch (e) { console.error((e as Error).message); process.exit(2); }
-const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk }) : undefined;
+const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, agentsOk }) : undefined;
+// Startup self-check of the agent compiler; a failure is retried every minute so a late-starting dependency recovers without a restart.
+if (s3) {
+  const check = () => void agents.selfCheck().then((r) => {
+    if (r.ok) console.log('marketplace: agent compiler self-check passed (agents and bundles are supported)');
+    else {
+      console.error(`marketplace: AGENT COMPILER SELF-CHECK FAILED, agent and bundle uploads are disabled (503 compiler_unavailable). It needs python3 (HERMES_PYTHON) and the vendored vendor/hermes-agent checkout. ${r.detail ?? ''}`);
+      setTimeout(check, 60_000).unref();
+    }
+  });
+  check();
+}
 
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);
 const server = createServer(async (req, res) => {
+  if (marketplaceTeams && (await marketplaceTeams(req, res))) return;
   if (marketplace && (await marketplace(req, res))) return;   // before sync, whose /v1 catch-all answers 404
   if (sync && (await sync(req, res))) return;
   if (!sync && req.url?.startsWith('/v1/')) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'Sign-in is not configured on this server yet (CLERK_PUBLISHABLE_KEY).' })); return; }

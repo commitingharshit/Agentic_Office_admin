@@ -10,13 +10,19 @@ import { createConnectorValidator } from './connector.ts';
 import { createWorkflowValidator } from './workflow.ts';
 import { parseRiskTier } from './advanced-common.ts';
 import { TYPE_POLICY, maxTier } from '../support.ts';
-import type { ListingType, UnpackedPackage, ValidationCheck, ValidationReport } from '../types.ts';
+import type { CatalogView } from '../blueprint/catalogView.ts';
+import type { ListingType, UnpackedPackage, ValidationCheck, ValidationReport, Visibility } from '../types.ts';
 
 export type Validator = (pkg: UnpackedPackage) => Promise<ValidationCheck[]> | ValidationCheck[];
+/** What a per-request validator may need: the caller-scoped catalog and the audience of the version being published. Absent = strictest. */
+export interface ValidateContext { catalog?: CatalogView; audience?: { visibility: Visibility; teamId: string | null } }
 
 const validators = new Map<ListingType, Validator>();
+const contextValidators = new Map<ListingType, (ctx: ValidateContext) => Validator>();
 export function registerValidator(type: ListingType, fn: Validator): void { validators.set(type, fn); }
 export function getValidator(type: ListingType): Validator | undefined { return validators.get(type); }
+/** Agent and bundle validators depend on the request (caller-scoped catalog, audience), so the registry holds a factory; it wins over a plain validator. */
+export function registerContextValidator(type: ListingType, factory: (ctx: ValidateContext) => Validator): void { contextValidators.set(type, factory); }
 
 function commonChecks(type: ListingType, pkg: UnpackedPackage): ValidationCheck[] {
   const checks: ValidationCheck[] = [];
@@ -51,9 +57,9 @@ function commonChecks(type: ListingType, pkg: UnpackedPackage): ValidationCheck[
   return checks;
 }
 
-export async function validateArtifact(type: ListingType, pkg: UnpackedPackage): Promise<ValidationReport> {
+export async function validateArtifact(type: ListingType, pkg: UnpackedPackage, ctx: ValidateContext = {}): Promise<ValidationReport> {
   const checks = commonChecks(type, pkg);
-  const v = validators.get(type);
+  const v = contextValidators.get(type)?.(ctx) ?? validators.get(type);
   // Type validators only ever see a manifest that passed manifest-valid.
   if (checks.some(c => c.name === 'manifest-valid' && !c.ok)) return { ok: false, verified: false, checks };
   if (!v) checks.push({ name: 'type-supported', ok: false, detail: `no validator for type ${type}` });

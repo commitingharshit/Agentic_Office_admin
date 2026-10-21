@@ -247,9 +247,10 @@ describe('marketplace creator API (real Postgres)', { skip }, () => {
     assert.equal((await create('u3', { id: 'acme/mine' })).status, 409);
   });
 
-  test('only_skills_and_templates_can_be_created_in_this_release', async () => {
+  test('agents_are_refused_with_503_while_the_compiler_is_not_proven_and_manual_review_types_still_409', async () => {
+    // this server has no agentsOk: the compiler self-check never passed, so an agent upload fails closed (the agent flow is in marketplace-agents-api.test.ts)
     const r = await create('u1', { id: 'u-u1/an-agent', type: 'agent' });
-    assert.equal(r.status, 400); assert.equal(r.json.code, 'type_not_supported');
+    assert.equal(r.status, 503); assert.equal(r.json.code, 'compiler_unavailable');
     assert.equal(await count(`SELECT count(*) n FROM marketplace_listings WHERE id = 'u-u1/an-agent'`), 0);
   });
 

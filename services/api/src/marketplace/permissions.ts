@@ -6,7 +6,7 @@
 export const ADMIN_ROLES = ['superadmin', 'engineer', 'support', 'finance', 'analyst'] as const;
 export type AdminRole = typeof ADMIN_ROLES[number];
 
-export const MARKETPLACE_PERMISSIONS = ['marketplace.read', 'marketplace.write', 'marketplace.review', 'marketplace.moderate'] as const;
+export const MARKETPLACE_PERMISSIONS = ['marketplace.read', 'marketplace.write', 'marketplace.review', 'marketplace.moderate', 'marketplace.policy'] as const;
 export type MarketplacePermission = typeof MARKETPLACE_PERMISSIONS[number];
 
 const GRANTS: Record<AdminRole, readonly MarketplacePermission[]> = {

@@ -14,19 +14,24 @@ import { createGate, defaultLimits, type Gate, type Limits } from './limits.ts';
 import { latestPublished } from './search.ts';
 import { newId, SHOWN, StoreError, withUser } from './store.ts';
 import type { ListingType, ManifestV1, UnpackedPackage, ValidationReport } from './types.ts';
-import { TYPE_POLICY, maxTier } from './support.ts';
+import { BRIDGE_TYPES, TYPE_POLICY, maxTier, needsManualReview } from './support.ts';
 import { validateArtifact } from './validate/index.ts';
+import { createCatalogView } from './catalog.ts';
 
-export const CREATOR_TYPES: readonly ListingType[] = ['skill', 'template'];
+export const CREATOR_TYPES: readonly ListingType[] = ['skill', 'template', 'agent', 'bundle'];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_TEAMS_OWNED = 20, MAX_TEAM_MEMBERS = 100;
 const INT4 = 2_147_483_647;
 
-export interface CreatorDeps { app: pg.Pool; admin: pg.Pool; store: ArtifactStore; limits: Limits; gate: Gate }
+export interface CreatorDeps {
+  app: pg.Pool; admin: pg.Pool; store: ArtifactStore; limits: Limits; gate: Gate;
+  /** True while the blueprint compiler passed its startup self-check. Absent = unavailable: agent and bundle uploads answer 503 (fail closed). */
+  agentsOk?: () => boolean;
+}
 /** The handler builds one of these per process, so the ingest gate is process-wide. */
-export function creatorDeps(app: pg.Pool, admin: pg.Pool, store: ArtifactStore, limits: Partial<Limits> = {}): CreatorDeps {
+export function creatorDeps(app: pg.Pool, admin: pg.Pool, store: ArtifactStore, limits: Partial<Limits> = {}, extra: { agentsOk?: () => boolean } = {}): CreatorDeps {
   const l = defaultLimits(limits);
-  return { app, admin, store, limits: l, gate: createGate(l.ingestConcurrency, l.ingestQueue) };
+  return { app, admin, store, limits: l, gate: createGate(l.ingestConcurrency, l.ingestQueue), ...(extra.agentsOk ? { agentsOk: extra.agentsOk } : {}) };
 }
 const COMPARE_MAX_UNPACKED = 32 * 1024 * 1024;
 
@@ -62,16 +67,18 @@ export function outcomeOf(r: ValidationReport): Outcome {
   return r.verified ? { state: 'published', scan: 'clean' } : { state: 'submitted', scan: 'pending' };
 }
 
-export interface Ingested { pkg: UnpackedPackage; bytes: Uint8Array; report: ValidationReport }
+export interface Ingested { pkg: UnpackedPackage; bytes: Uint8Array; report: ValidationReport; /** agent and bundle only: the audience the version was validated for, recorded with its scan */ audience?: Who['audience'] }
 
 /** Unpack (hardened) and validate. Hostile or malformed archives throw a 400 and nothing has been stored. */
-export function ingest(d: Pick<CreatorDeps, 'gate'>, bytes: Uint8Array, expectType?: ListingType, precheck?: (m: ManifestV1) => Promise<void>): Promise<Ingested> {
-  return d.gate.run(() => ingestNow(bytes, expectType, precheck));
+export function ingest(d: Pick<CreatorDeps, 'gate'> & Partial<Pick<CreatorDeps, 'app' | 'store' | 'agentsOk'>>, bytes: Uint8Array, expectType?: ListingType, precheck?: (m: ManifestV1) => Promise<void>, who?: Who): Promise<Ingested> {
+  return d.gate.run(() => ingestNow(d, bytes, expectType, precheck, who));
 }
+/** The caller and the audience of the version being created: agent and bundle validation resolves references as THIS user. */
+export interface Who { uid: string; audience: { visibility: 'private' | 'team'; teamId: string | null } }
 
 // Validation goes through the registry (validate/index.ts), whose skill validator carries the injected scanner: this path and
 // the admin submission path share that one registration, nothing here wires or duplicates a scanner.
-async function ingestNow(bytes: Uint8Array, expectType?: ListingType, precheck?: (m: ManifestV1) => Promise<void>): Promise<Ingested> {
+async function ingestNow(d: Partial<Pick<CreatorDeps, 'app' | 'store' | 'agentsOk'>>, bytes: Uint8Array, expectType?: ListingType, precheck?: (m: ManifestV1) => Promise<void>, who?: Who): Promise<Ingested> {
   let pkg: UnpackedPackage;
   try { pkg = unpack(bytes); }
   catch (e) {
@@ -86,6 +93,15 @@ async function ingestNow(bytes: Uint8Array, expectType?: ListingType, precheck?:
   const parts = pkg.manifest.version.split('-')[0].split('.').map(Number);
   if (parts.some((n) => n > INT4)) throw err(400, 'bad_package', 'A version number component is too large.');
   if (precheck) await precheck(pkg.manifest);   // cheap ownership checks before the (possibly slow) scan
+  if (BRIDGE_TYPES.includes(type)) {
+    // Fail closed: without a proven compiler the report could only be unverified, and a stored-but-unusable version helps nobody.
+    if (!d.agentsOk?.()) throw err(503, 'compiler_unavailable', 'Agent and bundle uploads are paused: the blueprint compiler is unavailable on this server.');
+    // The caller's own view of the catalog (row-level security), never the admin pool: a reference the publisher cannot see does not resolve.
+    if (!who || !d.app) throw err(500, 'no_caller', 'An agent or bundle can only be validated for a signed-in caller.');
+    const store = d.store, w = who;
+    const report = await withUser(d.app, w.uid, (c) => validateArtifact(type, pkg, { catalog: createCatalogView(c, { mode: 'rls', store }), audience: w.audience }));
+    return { pkg, bytes, report, audience: w.audience };
+  }
   return { pkg, bytes, report: await validateArtifact(type, pkg) };
 }
 
@@ -158,6 +174,10 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
   // defence in depth: no path through here may auto-publish a manual-review type (the database refuses it as well)
   if (out.state === 'published' && (TYPE_POLICY[m.type]?.manualReview ?? true)) out = { state: 'submitted', scan: 'pending' };
   const riskTier = maxTier(TYPE_POLICY[m.type]?.riskTier ?? 'executable', ing.report.riskTier ?? 'data');
+  // An agent or bundle that declares (or contains) an elevated capability is never published by its own creator: it waits for an
+  // admin other than the submitter, who acknowledges the permission summary. Verified and clean, so the reviewer can approve it.
+  const routedToReview = out.state === 'published' && needsManualReview(m.type, riskTier, ing.report.checks);
+  if (routedToReview) out = { state: 'submitted', scan: 'clean' };
   const { sha256, size, wrote } = await putArtifact(d.store, ing.bytes);
   await d.admin.query(`INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1,$2,$3) ON CONFLICT (sha256) DO NOTHING`, [sha256, size, artifactKey(sha256)]);
   const versionId = newId('ver'), isNew = 'type' in listing;
@@ -187,7 +207,11 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
       await c.query(`UPDATE marketplace_versions SET state = $2, scan_verdict = $3, risk_tier = $4 WHERE id = $1`, [versionId, out.state, out.scan, riskTier]);
       // the SAME record the admin path writes and requireScan reads: scanner 'validation', findings {ok, verified, checks}
       await c.query(`INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,'validation',$3,$4)`,
-        [newId('scn'), versionId, out.scan, JSON.stringify({ ok: ing.report.ok, verified: ing.report.verified === true && ing.report.ok, checks: ing.report.checks })]);
+        [newId('scn'), versionId, out.scan, JSON.stringify({ ok: ing.report.ok, verified: ing.report.verified === true && ing.report.ok, checks: ing.report.checks, ...(ing.audience ? { audience: ing.audience } : {}) })]);
+      if (routedToReview) {
+        await c.query(`INSERT INTO marketplace_release_events(listing_id, version_id, event, actor, detail) VALUES ($1,$2,'submitted',$3,$4)`,
+          [listing.id, versionId, uid, JSON.stringify({ reason: 'elevated capabilities: manual review required', riskTier })]);
+      }
       if (isNew) await c.query(`UPDATE marketplace_listings SET trust = 'private' WHERE id = $1`, [listing.id]);
       await c.query(`UPDATE marketplace_listings SET updated_at = now() WHERE id = $1`, [listing.id]);
       if (out.state === 'published') {
@@ -218,7 +242,7 @@ export async function createListing(d: CreatorDeps, uid: string, bytes: Uint8Arr
   const ing = await ingest(d, bytes, undefined, async (mf) => {
     publisherId = await ensurePublisher(d.admin, uid, mf.id.split('/')[0]);
     if ((await d.admin.query(`SELECT 1 FROM marketplace_listings WHERE id = $1`, [mf.id])).rowCount) throw err(409, 'listing_exists', `${mf.id} already exists.`);
-  });
+  }, { uid, audience: { visibility: o.visibility, teamId: o.visibility === 'team' ? o.team : null } });
   const m = ing.pkg.manifest;
   return commit(d, uid, ing, { id: m.id, type: m.type, publisherId, visibility: o.visibility, teamId: o.visibility === 'team' ? o.team : null, title: m.title, summary: m.summary });
 }
@@ -245,7 +269,8 @@ export async function checkCanAddVersion(d: CreatorDeps, uid: string, id: string
 export async function addVersion(d: CreatorDeps, uid: string, id: string, bytes: Uint8Array): Promise<Committed> {
   const l = await ownedListing(d.app, uid, id);
   await checkQuota(d, uid, id, bytes.length);
-  const ing = await ingest(d, bytes, l.type, async (mf) => { if (mf.id !== id) throw err(400, 'manifest_mismatch', `The package id ${mf.id} is not ${id}.`); });
+  const ing = await ingest(d, bytes, l.type, async (mf) => { if (mf.id !== id) throw err(400, 'manifest_mismatch', `The package id ${mf.id} is not ${id}.`); },
+    { uid, audience: { visibility: l.visibility === 'team' ? 'team' : 'private', teamId: l.visibility === 'team' ? l.team_id : null } });
   const m = ing.pkg.manifest;
   return commit(d, uid, ing, { id }, async (c) => {
     // inside the insert transaction, over every state the owner can see (rejected ones count too)
@@ -300,7 +325,7 @@ export async function forkListing(d: CreatorDeps, uid: string, id: string, slug:
     throw e;
   }
   await checkQuota(d, uid, null, rewritten.length);
-  const ing = await ingest(d, rewritten, src.type);   // the copy is validated too: this is what gets stored
+  const ing = await ingest(d, rewritten, src.type, undefined, { uid, audience: { visibility: 'private', teamId: null } });   // the copy is validated too: this is what gets stored
   if (!ing.report.ok) throw fail(ing.report);
   const m = ing.pkg.manifest;
   const r = await commit(d, uid, ing, { id: forkId, type: src.type, publisherId, visibility: 'private', teamId: null, title: m.title, summary: m.summary,
