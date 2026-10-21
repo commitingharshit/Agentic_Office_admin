@@ -48,7 +48,11 @@ const oneOf = <T extends string>(v: unknown, what: string, allowed: readonly T[]
 
 export async function listCampaigns(deps: AdminDeps) {
   const list = await rows(deps.ro, `
-    SELECT k.*, (SELECT json_agg(json_build_object('id', c.id, 'placement', c.placement_id, 'kind', c.kind, 'status', c.status, 'error', c.error) ORDER BY c.placement_id)
+    SELECT k.*, (SELECT json_agg(json_build_object('id', c.id, 'placement', c.placement_id, 'kind', c.kind, 'status', c.status, 'error', c.error,
+                     'headline', c.headline, 'body', c.body, 'cta_label', c.cta_label, 'cta_action', c.cta_action, 'card', c.card, 'updated_at', c.updated_at,
+                     'media', (SELECT coalesce(json_agg(json_build_object('role', m.role, 'width', m.width, 'bytes', m.bytes) ORDER BY m.role, m.width), '[]') FROM creative_media m WHERE m.creative_id = c.id),
+                     'job', (SELECT json_build_object('status', j.status, 'error', j.error) FROM media_jobs j WHERE j.creative_id = c.id ORDER BY j.id DESC LIMIT 1))
+                   ORDER BY c.placement_id)
                    FROM creatives c WHERE c.campaign_id = k.id) AS creatives,
            to_jsonb(t) - 'campaign_id' AS target
       FROM campaigns k LEFT JOIN campaign_targets t ON t.campaign_id = k.id ORDER BY k.created_at DESC LIMIT 200`);

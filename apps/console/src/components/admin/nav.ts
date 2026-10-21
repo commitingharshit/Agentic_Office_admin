@@ -18,6 +18,11 @@ export const NAV: NavGroup[] = [
     { href: '/admin/coupons', label: 'Coupons', icon: 'coupons', perm: 'coupons.read' },
     { href: '/admin/communications', label: 'Communications', icon: 'comms', perm: 'comms.read' },
   ] },
+  { label: 'Growth', items: [
+    { href: '/admin/growth', label: 'Growth overview', icon: 'analytics', perm: 'growth.read' },
+    { href: '/admin/growth/campaigns', label: 'Campaigns', icon: 'comms', perm: 'growth.read' },
+    { href: '/admin/growth/releases', label: 'Releases', icon: 'flags', perm: 'growth.read' },
+  ] },
   { label: 'Intelligence', items: [
     { href: '/admin/analytics', label: 'Product Analytics', icon: 'analytics', perm: 'analytics.read' },
     { href: '/admin/reliability', label: 'Reliability', icon: 'reliability', perm: 'runs.read' },
