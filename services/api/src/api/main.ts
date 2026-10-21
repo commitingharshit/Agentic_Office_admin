@@ -15,6 +15,7 @@ import { ClerkVerifier } from '../auth/clerk.ts';
 import { S3 } from './s3.ts';
 import { marketplaceHandler } from './marketplace.ts';
 import { registerSkillPipeline } from '../marketplace/verify/stages/skill/index.ts';
+import '../marketplace/verify/stages/template/index.ts'; // registers the template verification pipeline (Plan 4 Task 3)
 import type { PipelineTools } from '../marketplace/verify/types.ts';
 import { parseRoleMap } from '../marketplace/permissions.ts';
 import { marketplaceAdminHandler } from './marketplace-admin.ts';

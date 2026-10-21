@@ -1,4 +1,6 @@
 import { createSkillsGuardScanner, findRepoRoot } from '../validate/skillsGuard.ts';
+import { createKernelTool } from './tools/kernelTool.ts';
+import { createOfficecliTool } from './tools/officecliTool.ts';
 import type { PipelineTools } from './types.ts';
 
 /**
@@ -14,5 +16,8 @@ export function defaultTools(env: Record<string, string | undefined> = process.e
   if (g) {
     try { tools.scanner = createSkillsGuardScanner({ repoRoot: g === '1' ? findRepoRoot() : g }); } catch { /* unavailable: stage skips */ }
   }
+  // Explicit opt-in only: setting OFFICECLI_BIN / VERIFY_KERNEL_DIR installs the real tools; unset => undefined => stages skip.
+  if (env.OFFICECLI_BIN) tools.officecli = createOfficecliTool({ bin: env.OFFICECLI_BIN });
+  if (env.VERIFY_KERNEL_DIR) tools.kernel = createKernelTool({ dir: env.VERIFY_KERNEL_DIR });
   return tools;
 }

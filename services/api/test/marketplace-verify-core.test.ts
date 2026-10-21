@@ -206,17 +206,19 @@ describe('adapters and tools', () => {
 
 describe('conformance', () => {
   // A type with a validator but no pipeline must fail this test; that is what forces Plans 2 and 3 to bring one. PENDING lists the
-  // types whose pipeline has not landed in this tree (template: Task 3 on its own branch; the advanced types: their own tasks).
-  // An entry is removed the moment its pipeline is registered (the second assertion fails otherwise).
-  const PENDING = new Set(['template', 'hook', 'routine', 'memory', 'bridge', 'connector', 'workflow']);
-  test('every type with a validator has a pipeline (or is explicitly pending)', () => {
+  // types whose pipeline has not landed in this tree (the advanced types: their own tasks). An entry is removed the moment its
+  // pipeline is registered (the second assertion fails otherwise).
+  const PENDING = new Set(['hook', 'routine', 'memory', 'bridge', 'connector', 'workflow']);
+  test('every type with a validator has a pipeline (or is explicitly pending)', async () => {
     registerSkillPipeline();
+    await import('../src/marketplace/verify/stages/template/index.ts'); // registers the template pipeline
     for (const t of LISTING_TYPES) {
       if (!getValidator(t)) continue;
       if (PENDING.has(t)) assert.ok(!getPipeline(t), `${t} now has a pipeline: remove it from PENDING`);
       else assert.ok(getPipeline(t), `no pipeline for ${t}`);
     }
     assert.ok(getPipeline('skill'), 'skill must have a pipeline');
+    assert.ok(getPipeline('template'), 'template must have a pipeline');
   });
   test('every registered pipeline satisfies the contract', () => { for (const d of listPipelines()) assertPipelineContract(d); });
 });
