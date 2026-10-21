@@ -21,7 +21,7 @@ ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && sed 
 echo "3/6 ship the code (first remove growth files that earlier test runs left on the host: the old 0020/0021 and 0021/0022 migration names and src/growth)"
 ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && rm -f db/migrations/0020_growth.sql db/migrations/0021_releases_email.sql db/migrations/0021_growth.sql db/migrations/0022_releases_email.sql test/growth-*.test.ts && rm -rf src/growth'
 COPYFILE_DISABLE=1 tar --exclude=node_modules --exclude=.next --exclude=.DS_Store --no-xattrs -czf - \
-  accounts-sync/db accounts-sync/src accounts-sync/deploy/docker-compose.yml accounts-sync/deploy/media-worker.Dockerfile accounts-sync/deploy/api-gate.conf accounts-sync/deploy/.env.example accounts-sync/package.json \
+  accounts-sync/db accounts-sync/src accounts-sync/deploy/docker-compose.yml accounts-sync/deploy/media-worker.Dockerfile accounts-sync/deploy/Dockerfile.marketplace accounts-sync/deploy/api-gate.conf accounts-sync/deploy/.env.example accounts-sync/package.json \
   control-plane/src control-plane/public control-plane/package.json control-plane/Dockerfile \
   | ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane && tar xzf - 2>/dev/null; find . -name "._*" -not -path "*/node_modules/*" -delete'
 
@@ -32,7 +32,7 @@ echo "4/6 migrate"
 ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && (set -a; . deploy/.env; set +a; docker run --rm --network ao-live_default -v "$PWD":/w -w /w -e DATABASE_URL="postgres://ao_owner:${PG_OWNER_PASSWORD}@postgres:5432/agentic_office" -e AO_APP_PASSWORD -e AO_READONLY_PASSWORD -e AO_ADMIN_PASSWORD -e AO_AUTH_PASSWORD -e AO_BILLING_PASSWORD node:24.15.0-alpine node db/migrate.ts)'
 
 echo "5/6 restart the API (compose restart silently does nothing for a changed env; recreate it)"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && docker compose -p ao-live up -d --no-deps api && docker compose -p ao-live up -d --build minio-init media-worker && docker compose -p ao-live up -d api-gate && sleep 5 && docker logs --tail 8 ao-live-api-1; docker logs --tail 4 ao-live-media-worker-1 2>&1'
+ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && docker compose -p ao-live up -d --no-deps api-gate && docker compose -p ao-live up -d --no-deps api && docker compose -p ao-live up -d --build minio-init media-worker && sleep 5 && docker logs --tail 8 ao-live-api-1; docker logs --tail 4 ao-live-media-worker-1 2>&1'
 
 echo "6/6 rebuild and restart the console"
 ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/control-plane/deploy && docker compose -p ao-control-plane-web up -d --build'
