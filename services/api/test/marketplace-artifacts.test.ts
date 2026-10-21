@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { zipSync, type Zippable } from 'fflate';
@@ -6,7 +7,7 @@ import type pg from 'pg';
 import { S3 } from '../src/api/s3.ts';
 import { ManifestError } from '../src/marketplace/manifest.ts';
 import {
-  ArtifactCorruptError, MANIFEST_NAME, MAX_ARTIFACT_BYTES, UnpackError, memoryArtifactStore, openArtifact, putArtifact, rewriteManifest, sha256Hex, unpack,
+  ArtifactCorruptError, MANIFEST_NAME, foldName, MAX_ARTIFACT_BYTES, UnpackError, memoryArtifactStore, openArtifact, putArtifact, rewriteManifest, sha256Hex, unpack,
 } from '../src/marketplace/artifacts.ts';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
@@ -305,5 +306,14 @@ describe('rewriteManifest', () => {
   test('a rewrite that would exceed the artifact size cap is refused as too-large before anything is written', () => {
     const p = base(); p.files.set('big.bin', new Uint8Array(MAX_ARTIFACT_BYTES));
     assert.throws(() => rewriteManifest(p, {}), (e: any) => e instanceof UnpackError && e.code === 'too-large');
+  });
+});
+
+describe('foldName conformance (shared with desktop and Hermes)', () => {
+  const pairs: { a: string; b: string; same: boolean }[] = JSON.parse(
+    readFileSync(new URL('../../../scripts/dev/marketplace-zip-differential/fold-conformance.json', import.meta.url), 'utf8')).pairs;
+  test('matches the shared list', () => {
+    assert.ok(pairs.length >= 10);
+    for (const c of pairs) { assert.equal(foldName(c.a) === foldName(c.b), c.same, JSON.stringify(c)); }
   });
 });
