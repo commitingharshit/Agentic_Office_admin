@@ -12,7 +12,7 @@ export class ManifestError extends Error {
 const CAPABILITIES = ['fs.workspace.read', 'fs.workspace.write', 'network', 'exec.script', 'tool.invoke', 'secrets.use'];
 const ID_RE = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 /** Slugs that would collide with the API's listing sub-routes (/listings/:id/versions, /review, /favorite). */
-const RESERVED_SLUGS = new Set(['versions', 'review', 'favorite']);
+const RESERVED_SLUGS = new Set(['versions', 'review', 'reviews', 'favorite']);
 const reservedSlug = (id: string) => RESERVED_SLUGS.has(id.split('/')[1]);
 const NUM = '(0|[1-9]\\d*)';
 const IDENT = '(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)';

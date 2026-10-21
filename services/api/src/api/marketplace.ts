@@ -4,7 +4,7 @@
 // row-level security in Postgres (the store runs as ao_app with app.user_id set), never here.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
-import { ArtifactCorruptError, openArtifact, type ArtifactStore } from '../marketplace/artifacts.ts';
+import { ArtifactCorruptError, openArtifact, unpack, UnpackError, type ArtifactStore } from '../marketplace/artifacts.ts';
 import { createLimiter, type Limiter } from '../marketplace/ratelimit.ts';
 import { BadQuery, parseListParams } from '../marketplace/search.ts';
 import * as store from '../marketplace/store.ts';
@@ -45,6 +45,15 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
 }
 const object = (v: unknown, what: string) => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad(`${what} must be an object.`); return v as Record<string, unknown>; };
 
+/** image/png | jpeg | gif | webp by magic bytes; undefined for anything else. */
+export function imageType(b: Uint8Array): string | undefined {
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return 'image/png';
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38 && (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61) return 'image/gif';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  return undefined;
+}
+
 export function marketplaceHandler(deps: MarketplaceDeps) {
   const limiter = deps.limiter ?? createLimiter();
   const readLimiter = deps.readLimiter ?? createLimiter({ limit: 300 });
@@ -52,6 +61,15 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
     if (url.pathname !== '/v1/marketplace' && !url.pathname.startsWith('/v1/marketplace/')) return false;
+    // The desktop renderer calls this API from the vscode-file:// origin, so the browser needs CORS. Credentials are a bearer
+    // header (never cookies), so '*' lets no site act as a user. The preflight answers before any authentication.
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-expose-headers', 'x-content-sha256, retry-after');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { 'access-control-allow-methods': 'GET, PUT, POST, DELETE, OPTIONS', 'access-control-allow-headers': 'authorization, content-type', 'access-control-max-age': '600' });
+      res.end();
+      return true;
+    }
     const send = (status: number, payload: unknown, extra: Record<string, string> = {}) => {
       res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...extra });
       res.end(JSON.stringify(payload));
@@ -81,7 +99,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
           throw e;
         }
       }
-      const lm = /^listings\/([^/]+\/[^/]+)(?:\/(favorite|review|versions))?$/.exec(rest);
+      const lm = /^listings\/([^/]+\/[^/]+)(?:\/(favorite|review|reviews|versions))?$/.exec(rest);
       if (lm) {
         const [, id, sub] = lm;
         if (!LISTING_ID.test(id)) throw notFound();
@@ -94,6 +112,12 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
           return send(200, await q(async (c) => {
             if (!(await store.listingVisible(c, id))) throw notFound();
             return { versions: await store.listVersions(c, id) };
+          })), true;
+        }
+        if (sub === 'reviews' && m === 'GET') {
+          return send(200, await q(async (c) => {
+            if (!(await store.listingVisible(c, id))) throw notFound();
+            return { reviews: await store.listReviews(c, uid, id) };
           })), true;
         }
         if (sub === 'favorite' && (m === 'PUT' || m === 'DELETE')) {
@@ -128,6 +152,38 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (!a) throw notFound();
         res.writeHead(200, { 'content-type': 'application/zip', 'content-length': a.bytes.length, 'x-content-sha256': a.sha256, 'cache-control': 'private, no-store' });
         res.end(Buffer.from(a.bytes.buffer, a.bytes.byteOffset, a.bytes.byteLength));
+        return true;
+      }
+
+      // ── read-only views into a version's package: a preview image and the skill's SKILL.md (same visibility as the artifact)
+      const pm = /^versions\/([^/]+)\/(preview\/(\d{1,2})|doc)$/.exec(rest);
+      if (pm && m === 'GET') {
+        const vid = pm[1];
+        if (!OPAQUE_ID.test(vid)) throw notFound();
+        const access = await q((c) => store.versionAccess(c, vid, signedIn));
+        if (access === 'missing') throw notFound();
+        if (access === 'gone') throw new HttpError(410, 'This version was withdrawn.');
+        const a = await openArtifact(deps.app, deps.store, { userId: uid }, vid);
+        if (!a) throw notFound();
+        let pkg;
+        try { pkg = unpack(a.bytes); } catch (e) { if (e instanceof UnpackError) throw notFound(); throw e; }
+        const payload = (pkg.manifest.payload ?? {}) as Record<string, unknown>;
+        if (pm[2] === 'doc') {
+          const entry = pkg.manifest.type === 'skill' ? (typeof payload.entry === 'string' ? payload.entry : 'SKILL.md') : undefined;
+          const file = entry ? pkg.files.get(entry) : undefined;
+          if (!file || file.byteLength > 256 * 1024) throw notFound();
+          res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8', 'content-length': file.byteLength, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' });
+          res.end(Buffer.from(file.buffer, file.byteOffset, file.byteLength));
+          return true;
+        }
+        const previews = Array.isArray(payload.previews) ? payload.previews : [];
+        const path = previews[Number(pm[3])];
+        const img = typeof path === 'string' ? pkg.files.get(path) : undefined;
+        const type = img && imageType(img);
+        if (!img || !type) throw notFound();
+        // the type comes from the bytes, never from the file name; SVG is not served (it can carry script)
+        res.writeHead(200, { 'content-type': type, 'content-length': img.byteLength, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'" });
+        res.end(Buffer.from(img.buffer, img.byteOffset, img.byteLength));
         return true;
       }
 

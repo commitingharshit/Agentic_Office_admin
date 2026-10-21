@@ -12,6 +12,8 @@ const PUBLISHER = /^[a-z0-9][a-z0-9-]*$/;
 export interface ListParams {
   q: string | null; type: string | null; publisher: string | null; trust: string | null;
   installed: boolean | null; limit: number; cursor: Cursor | null;
+  /** 'relevance' (default: text rank, then recency) or 'updated' (recency only, even when q is set). */
+  sort: 'relevance' | 'updated';
 }
 interface Cursor { r: string; u: string; id: string }
 
@@ -63,8 +65,10 @@ export function parseListParams(sp: URLSearchParams): ListParams {
     if (!/^\d{1,4}$/.test(lim) || +lim < 1) throw new BadQuery('limit must be a positive integer.');
     limit = Math.min(+lim, MAX_PAGE);
   }
+  const sort = one('sort') ?? 'relevance';
+  if (sort !== 'relevance' && sort !== 'updated') throw new BadQuery('sort must be relevance or updated.');
   const page = one('page');
-  return { q, type, publisher, trust, installed: inst === null ? null : inst === 'true', limit, cursor: page === null ? null : decodeCursor(page) };
+  return { q, type, publisher, trust, installed: inst === null ? null : inst === 'true', limit, cursor: page === null ? null : decodeCursor(page), sort };
 }
 
 /** Latest PUBLISHED version of the listing named by SQL expression `listingId`: stable beats pre-release, then highest semver. */
@@ -72,6 +76,12 @@ export const latestPublished = (listingId: string) => `(
   SELECT v.id, v.version, v.scan_verdict, v.published_at, v.manifest, v.sha256, v.size, v.compat FROM marketplace_versions v
    WHERE v.listing_id = ${listingId} AND v.state = 'published'
    ORDER BY (v.version LIKE '%-%') ASC, v.semver_major DESC, v.semver_minor DESC, v.semver_patch DESC, v.published_at DESC, v.id ASC LIMIT 1)`;
+
+/** Number of preview images a template's latest version declares (payload.previews); 0 for anything else. */
+export const PREVIEW_COUNT = `(CASE WHEN jsonb_typeof(lv.manifest #> '{payload,previews}') = 'array' THEN jsonb_array_length(lv.manifest #> '{payload,previews}') ELSE 0 END)`;
+
+/** The distinct capability names the latest version declares (manifest.permissions[].capability), sorted; empty for none. */
+export const CAPABILITIES = `(SELECT coalesce(array_agg(DISTINCT x.p->>'capability' ORDER BY x.p->>'capability'), '{}') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(lv.manifest->'permissions') = 'array' THEN lv.manifest->'permissions' ELSE '[]'::jsonb END) AS x(p) WHERE jsonb_typeof(x.p) = 'object')`;
 
 /** Live install states: the ones that count as "installed" (same set the counter trigger uses). */
 export const LIVE_INSTALL = `('installed','configured','enabled','disabled','update_available')`;
@@ -97,11 +107,11 @@ export function buildListQuery(p: ListParams): { text: string; values: unknown[]
   const text = `
     WITH b AS (
       SELECT l.id, l.type, l.title, l.summary, l.publisher_id, l.trust, l.visibility, l.updated_at,
-             CASE WHEN ${qp}::text IS NULL THEN 0::float8 ELSE ts_rank(l.search, websearch_to_tsquery('simple', ${qp}::text))::float8 END AS rank
+             CASE WHEN ${qp}::text IS NULL${p.sort === 'updated' ? ' OR TRUE' : ''} THEN 0::float8 ELSE ts_rank(l.search, websearch_to_tsquery('simple', ${qp}::text))::float8 END AS rank
         FROM marketplace_listings l WHERE ${where.join(' AND ')})
     SELECT b.id, b.type, b.title, b.summary, b.publisher_id, b.trust, b.visibility,
            b.rank::text AS rank_raw, to_char(b.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_raw,
-           lv.version AS latest_version,
+           lv.version AS latest_version, lv.id AS latest_version_id, ${PREVIEW_COUNT} AS previews, ${CAPABILITIES} AS capabilities,
            s.rating_avg, s.rating_count, s.favorite_count, s.install_count,
            EXISTS (SELECT 1 FROM marketplace_favorites f WHERE f.listing_id = b.id) AS favorited,
            (SELECT st.version FROM marketplace_installs i JOIN marketplace_installed_status() st ON st.version_id = i.version_id AND st.listing_id = i.listing_id

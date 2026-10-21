@@ -4,7 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import type pg from 'pg';
 import { compareSemver } from './manifest.ts';
-import { buildListQuery, encodeCursor, latestPublished, LIVE_INSTALL, type ListParams } from './search.ts';
+import { buildListQuery, encodeCursor, latestPublished, CAPABILITIES, LIVE_INSTALL, PREVIEW_COUNT, type ListParams } from './search.ts';
 import type { InstallState } from './types.ts';
 
 export const INSTALL_STATES: readonly InstallState[] = ['requested', 'permission_review', 'installed', 'configured', 'enabled', 'disabled', 'update_available', 'failed', 'uninstalled'];
@@ -41,7 +41,7 @@ const statsOf = (r: any): Stats => ({
 });
 const cardOf = (r: any) => ({
   id: r.id, type: r.type, title: r.title, summary: r.summary, publisher: r.publisher_id, trust: r.trust, visibility: r.visibility,
-  latestVersion: r.latest_version ?? null, stats: statsOf(r),
+  latestVersion: r.latest_version ?? null, latestVersionId: r.latest_version_id ?? null, previews: Number(r.previews ?? 0), capabilities: (r.capabilities ?? []) as string[], stats: statsOf(r),
   viewer: { favorited: !!r.favorited, ...(r.installed_version ? { installedVersion: r.installed_version } : {}) },
 });
 
@@ -68,7 +68,7 @@ export async function getListing(c: pg.PoolClient, id: string) {
   const r = (await c.query(`
     SELECT l.id, l.type, l.title, l.summary, l.tags, l.publisher_id, l.trust, l.visibility, l.created_at, l.updated_at,
            p.display_name AS publisher_name, p.verified AS publisher_verified,
-           lv.id AS lv_id, lv.version AS latest_version, lv.scan_verdict, lv.published_at, lv.manifest, lv.sha256, lv.size,
+           lv.id AS lv_id, lv.id AS latest_version_id, ${PREVIEW_COUNT} AS previews, ${CAPABILITIES} AS capabilities, lv.version AS latest_version, lv.scan_verdict, lv.published_at, lv.manifest, lv.sha256, lv.size,
            s.rating_avg, s.rating_count, s.favorite_count, s.install_count,
            EXISTS (SELECT 1 FROM marketplace_favorites f WHERE f.listing_id = l.id) AS favorited,
            (SELECT st.version FROM marketplace_installs i JOIN marketplace_installed_status() st ON st.version_id = i.version_id AND st.listing_id = i.listing_id
@@ -87,6 +87,7 @@ export async function getListing(c: pg.PoolClient, id: string) {
     manifest: r.lv_id ? {
       versionId: r.lv_id, version: r.latest_version, publishedAt: r.published_at, sha256: r.sha256, size: Number(r.size),
       license: m.license ?? null, compat: m.compat ?? {},
+      files: Array.isArray(m.files) ? m.files.filter((f: any) => f && typeof f.path === 'string').map((f: any) => ({ path: f.path, sha256: f.sha256, size: f.size })) : [],
       permissions: Array.isArray(m.permissions) ? m.permissions : [], dependencies: Array.isArray(m.dependencies) ? m.dependencies : [],
     } : null,
     security: { scanVerdict: r.lv_id ? r.scan_verdict : null },
@@ -112,6 +113,12 @@ export async function versionAccess(c: pg.PoolClient, versionId: string, signedI
   // RLS hides pulled versions from everyone but the owner; an installer is still told it is gone.
   const s = (await c.query(`SELECT 1 FROM marketplace_installed_status() WHERE version_id = $1 AND state IN ('revoked','quarantined')`, [versionId])).rowCount;
   return s ? 'gone' : 'missing';
+}
+
+/** Newest first. The reviewer's identity is never exposed: only whether a review is the caller's own. */
+export async function listReviews(c: pg.PoolClient, uid: string, id: string) {
+  return (await c.query(`SELECT stars, body, created_at, (user_id = $2) AS mine FROM marketplace_reviews WHERE listing_id = $1 ORDER BY created_at DESC, id LIMIT 50`, [id, uid]))
+    .rows.map((r) => ({ stars: Number(r.stars), body: r.body as string | null, createdAt: r.created_at, mine: !!r.mine }));
 }
 
 export async function getStats(c: pg.PoolClient, id: string): Promise<Stats> {

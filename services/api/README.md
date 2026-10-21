@@ -12,6 +12,9 @@ behind Clerk sign-in. The only service with versioned SQL migrations.
   optional in either mode (`AO_TEST_MINIO` plus MinIO credentials).
 - **Migrate:** `AO_APP_PASSWORD=… AO_READONLY_PASSWORD=… AO_ADMIN_PASSWORD=… npm run migrate [-- --status]`
 - **Run:** `node src/api/main.ts` (port 8787), or the `api` service in `deploy/docker-compose.yml`.
+- **Marketplace dev server:** `node scripts/marketplace-dev-server.ts [--port 8791] [--bulk 30] [--http]` serves the real marketplace
+  API over embedded Postgres, seeded with two real templates and one real skill (seed data only in `scripts/dev-seed/`). It accepts only the
+  bearer `dev-token` (user `usr_dev`) and refuses `NODE_ENV=production`; https with a throwaway certificate by default (see the script header).
 - **Deploy:** `services/deploy/stack.sh accounts-sync up -d`; host quirks, backups and the restore
   drill in [`deploy/README.md`](deploy/README.md).
 - **Data:** Postgres (`db/migrations/*.sql`, RLS roles), MinIO bucket for sync blobs, WAL archive

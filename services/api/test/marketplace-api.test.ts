@@ -7,7 +7,8 @@ import { after, before, describe, test } from 'node:test';
 import type pg from 'pg';
 import { HttpError } from '../src/api/sync.ts';
 import { marketplaceHandler } from '../src/api/marketplace.ts';
-import { memoryArtifactStore, putArtifact } from '../src/marketplace/artifacts.ts';
+import { zipSync } from 'fflate';
+import { memoryArtifactStore, putArtifact, sha256Hex } from '../src/marketplace/artifacts.ts';
 import { createLimiter } from '../src/marketplace/ratelimit.ts';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
@@ -215,7 +216,7 @@ describe('marketplace API (real Postgres)', { skip }, () => {
     const r = await call('/v1/marketplace/listings?q=toolkit', { user: 'u2' });
     const item = r.json.items[0];
     assert.equal(item.latestVersion, '1.2.0');          // stable beats the 2.0.0-beta.1, draft 3.0.0 is ignored
-    assert.deepEqual(Object.keys(item).sort(), ['id', 'latestVersion', 'publisher', 'stats', 'summary', 'title', 'trust', 'type', 'viewer', 'visibility']);
+    assert.deepEqual(Object.keys(item).sort(), ['capabilities', 'id', 'latestVersion', 'latestVersionId', 'previews', 'publisher', 'stats', 'summary', 'title', 'trust', 'type', 'viewer', 'visibility']);
     assert.equal(item.publisher, 'pa');
     assert.equal(item.viewer.favorited, false);
     const inst = await call('/v1/marketplace/listings?installed=true', { user: 'u2' });
@@ -473,6 +474,105 @@ describe('marketplace API (real Postgres)', { skip }, () => {
     assert.equal((await put('u4')).status, 429);
     assert.equal((await put('u2')).status, 200);      // another user has their own window
     assert.equal((await call('/v1/marketplace/listings', { user: 'u4', origin: limitedBase })).status, 200);   // reads are not limited
+  });
+
+
+  // ── previews, docs, files, sort (read-only views into a version's package)
+  describe('package views', () => {
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5]);
+    const enc = (t: string) => new TextEncoder().encode(t);
+    const pkg = (type: string, id: string, files: Record<string, Uint8Array>, payload: Record<string, unknown>) => {
+      const manifest = { schema: 'agentic.marketplace/1', id, type, version: '1.0.0', title: 'T', summary: 'S', license: 'MIT', compat: { app: '*' }, dependencies: [], permissions: [],
+        files: Object.entries(files).map(([path, b]) => ({ path, sha256: sha256Hex(b), size: b.length })), payload };
+      const bytes = zipSync({ 'agentic.marketplace.json': enc(JSON.stringify(manifest)), ...files });
+      return { manifest, bytes };
+    };
+    before(async () => {
+      const tpl = pkg('template', 'pa/tpl', { 'doc.docx': enc('x'), 'p/one.png': PNG, 'p/fake.png': enc('<svg onload=alert(1)/>') }, { format: 'docx', file: 'doc.docx', previews: ['p/one.png', 'p/fake.png', 'missing.png'] });
+      const skill = pkg('skill', 'pa/skl', { 'SKILL.md': enc('---\nname: skl\ndescription: d\n---\n# Hi\n') }, { name: 'skl', entry: 'SKILL.md' });
+      const secret = pkg('template', 'pa/tplsecret', { 'p/one.png': PNG }, { format: 'docx', file: 'doc.docx', previews: ['p/one.png'] });
+      for (const [id, p, vis, ver] of [['pa/tpl', tpl, 'public', 'v_tpl'], ['pa/skl', skill, 'public', 'v_skl'], ['pa/tplsecret', secret, 'private', 'v_tplsecret']] as const) {
+        const { sha256, size } = await putArtifact(store, p.bytes);
+        await admin.query(`INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1,$2,'k') ON CONFLICT DO NOTHING`, [sha256, size]);
+        await admin.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title, summary) VALUES ($1,$2,'pa','u1',$3,'Pkg ' || $1,'pkg view')`, [id, p.manifest.type, vis]);
+        await admin.query(`INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size, scan_verdict) VALUES ($1,$2,'1.0.0',1,0,0,'published',$3,$4,$5,'clean')`, [ver, id, JSON.stringify(p.manifest), sha256, size]);
+      }
+    });
+
+    test('preview_serves_the_nth_image_with_a_type_from_the_magic_bytes', async () => {
+      const r = await fetch(`${base}/v1/marketplace/versions/v_tpl/preview/0`);
+      assert.equal(r.status, 200);
+      assert.equal(r.headers.get('content-type'), 'image/png');
+      assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+      assert.deepEqual(new Uint8Array(await r.arrayBuffer()), PNG);
+    });
+    test('preview_refuses_non_images_missing_files_and_out_of_range_indexes', async () => {
+      for (const n of [1, 2, 3, 99]) assert.equal((await call(`/v1/marketplace/versions/v_tpl/preview/${n}`)).status, 404, `preview ${n}`);  // svg-looking bytes, missing path, past the end
+      assert.equal((await call('/v1/marketplace/versions/v_skl/preview/0')).status, 404);                                                // a skill has no previews
+    });
+    test('preview_and_doc_follow_artifact_visibility', async () => {
+      assert.equal((await call('/v1/marketplace/versions/v_tplsecret/preview/0')).status, 404);
+      assert.equal((await call('/v1/marketplace/versions/v_tplsecret/preview/0', { user: 'u2' })).status, 404);
+      assert.equal((await call('/v1/marketplace/versions/v_tplsecret/preview/0', { user: 'u1' })).status, 200);
+      assert.equal((await call('/v1/marketplace/versions/v_revoked/preview/0', { user: 'u1' })).status, 410);
+      assert.equal((await call('/v1/marketplace/versions/nope/doc')).status, 404);
+    });
+    test('doc_serves_the_skill_entry_as_markdown_and_404s_for_templates', async () => {
+      const r = await fetch(`${base}/v1/marketplace/versions/v_skl/doc`);
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get('content-type') ?? '', /^text\/markdown/);
+      assert.match(await r.text(), /# Hi/);
+      assert.equal((await call('/v1/marketplace/versions/v_tpl/doc')).status, 404);
+    });
+    test('cards_report_the_latest_version_id_and_the_declared_preview_count; detail lists file hashes', async () => {
+      const list = await call('/v1/marketplace/listings?q=pkg');
+      const tpl = (list.json.items as any[]).find((i) => i.id === 'pa/tpl');
+      assert.equal(tpl.latestVersionId, 'v_tpl');
+      assert.equal(tpl.previews, 3);
+      assert.equal((list.json.items as any[]).find((i) => i.id === 'pa/skl').previews, 0);
+      const d = await call('/v1/marketplace/listings/pa/tpl');
+      assert.equal(d.json.manifest.files.length, 3);
+      assert.deepEqual(Object.keys(d.json.manifest.files[0]).sort(), ['path', 'sha256', 'size']);
+      assert.deepEqual((await call('/v1/marketplace/listings/pa/open')).json.manifest.files, []);   // a version whose stored manifest has no file list
+    });
+    test('cards_list_the_distinct_capabilities_of_the_latest_version', async () => {
+      const open = (await call('/v1/marketplace/listings?q=toolkit')).json.items[0];
+      assert.deepEqual(open.capabilities, ['network']);
+      assert.deepEqual((await call('/v1/marketplace/listings?q=unrated')).json.items[0].capabilities, []);
+    });
+    test('reviews_list_is_newest_first_hides_identity_and_marks_the_callers_own', async () => {
+      const anon = await call('/v1/marketplace/listings/pa/rated/reviews');
+      assert.equal(anon.status, 200);
+      assert.equal(anon.json.reviews.length, 3);
+      assert.ok(anon.json.reviews.every((r: any) => r.mine === false && !('userId' in r) && !('user_id' in r)));
+      const mine = await call('/v1/marketplace/listings/pa/rated/reviews', { user: 'u2' });
+      assert.deepEqual(mine.json.reviews.filter((r: any) => r.mine).map((r: any) => r.stars), [5]);
+      assert.equal((await call('/v1/marketplace/listings/pa/secret/reviews')).status, 404);
+    });
+    test('sort_updated_ignores_text_rank_and_pages_cleanly; a bad sort is 400', async () => {
+      const seen: string[] = [];
+      let page: string | null = null;
+      do {
+        const r = await call(`/v1/marketplace/listings?q=bulkword&sort=updated&limit=7${page ? `&page=${page}` : ''}`);
+        assert.equal(r.status, 200);
+        seen.push(...ids(r)); page = r.json.nextPage;
+      } while (page);
+      assert.equal(seen.length, 30);
+      assert.equal(new Set(seen).size, 30);
+      assert.equal((await call('/v1/marketplace/listings?sort=popular')).status, 400);
+    });
+  });
+
+  test('cors_preflight_answers_without_a_token_and_every_response_allows_the_renderer_origin', async () => {
+    const pre = await fetch(`${base}/v1/marketplace/listings/pa/open/review`, { method: 'OPTIONS', headers: { origin: 'vscode-file://vscode-app', 'access-control-request-method': 'PUT', 'access-control-request-headers': 'authorization, content-type' } });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get('access-control-allow-origin'), '*');
+    assert.match(pre.headers.get('access-control-allow-methods') ?? '', /PUT/);
+    assert.match(pre.headers.get('access-control-allow-headers') ?? '', /authorization/);
+    for (const path of ['/v1/marketplace/listings', '/v1/marketplace/versions/v_dl/artifact', '/v1/marketplace/nothing-here']) {
+      assert.equal((await fetch(base + path)).headers.get('access-control-allow-origin'), '*', path);
+    }
+    assert.equal((await fetch(`${base}/v1/marketplace/versions/v_dl/artifact`)).headers.get('access-control-expose-headers')?.includes('x-content-sha256'), true);
   });
 
   test('unknown_routes_are_404_json', async () => {
