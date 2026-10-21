@@ -91,6 +91,13 @@ export const PREVIEW_COUNT = `(CASE WHEN jsonb_typeof(lv.manifest #> '{payload,p
 /** The distinct capability names the latest version declares (manifest.permissions[].capability), sorted; empty for none. */
 export const CAPABILITIES = `(SELECT coalesce(array_agg(DISTINCT x.p->>'capability' ORDER BY x.p->>'capability'), '{}') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(lv.manifest->'permissions') = 'array' THEN lv.manifest->'permissions' ELSE '[]'::jsonb END) AS x(p) WHERE jsonb_typeof(x.p) = 'object')`;
 
+/**
+ * The newest verification result recorded for EXACTLY the latest published version's artifact (sha256 must match, so a swapped artifact
+ * never inherits an old pass). jsonb {verdict, skipped} or NULL. Fail closed lives in `verificationOf` (store.ts). No scores.
+ */
+export const VERIFICATION = `(SELECT jsonb_build_object('verdict', x.verdict, 'skipped', (SELECT count(*) FROM jsonb_array_elements(x.stages) st WHERE st->>'status' = 'skipped'))
+   FROM marketplace_verifications x WHERE x.version_id = lv.id AND x.sha256 = lv.sha256 ORDER BY x.seq DESC LIMIT 1)`;
+
 /** Live install states: the ones that count as "installed" (same set the counter trigger uses). */
 export const LIVE_INSTALL = `('installed','configured','enabled','disabled','update_available')`;
 
@@ -121,7 +128,7 @@ export function buildListQuery(p: ListParams): { text: string; values: unknown[]
         FROM marketplace_listings l WHERE ${where.join(' AND ')})
     SELECT b.id, b.type, b.title, b.summary, b.publisher_id, b.trust, b.visibility,
            b.rank::text AS rank_raw, to_char(b.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_raw,
-           lv.version AS latest_version, lv.id AS latest_version_id, ${PREVIEW_COUNT} AS previews, ${CAPABILITIES} AS capabilities,
+           lv.version AS latest_version, lv.id AS latest_version_id, ${PREVIEW_COUNT} AS previews, ${CAPABILITIES} AS capabilities, ${VERIFICATION} AS verification,
            s.rating_avg, s.rating_count, s.favorite_count, s.install_count,
            EXISTS (SELECT 1 FROM marketplace_favorites f WHERE f.listing_id = b.id) AS favorited,
            (SELECT st.version FROM marketplace_installs i JOIN marketplace_installed_status() st ON st.version_id = i.version_id AND st.listing_id = i.listing_id

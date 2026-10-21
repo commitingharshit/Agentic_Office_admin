@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import type pg from 'pg';
 import { compareSemver, isRange, satisfies } from './manifest.ts';
 import { evaluate, loadEffectivePolicy, type EffectivePolicy } from './policy.ts';
-import { buildListQuery, encodeCursor, latestPublished, CAPABILITIES, LIVE_INSTALL, PREVIEW_COUNT, type ListParams } from './search.ts';
+import { buildListQuery, encodeCursor, latestPublished, CAPABILITIES, VERIFICATION, LIVE_INSTALL, PREVIEW_COUNT, type ListParams } from './search.ts';
 import type { InstallState } from './types.ts';
 
 export const INSTALL_STATES: readonly InstallState[] = ['requested', 'permission_review', 'installed', 'configured', 'enabled', 'disabled', 'update_available', 'failed', 'uninstalled'];
@@ -43,9 +43,16 @@ const statsOf = (r: any): Stats => ({
   ratingAvg: r?.rating_avg === null || r?.rating_avg === undefined ? null : Number(r.rating_avg),
   ratingCount: Number(r?.rating_count ?? 0), favoriteCount: Number(r?.favorite_count ?? 0), installCount: Number(r?.install_count ?? 0),
 });
+/** `verified` is true only for a passed newest result with no skipped stage for this exact sha256; everything else (none, fail, incomplete, any skip) is false. */
+export const verificationOf = (r: any) => {
+  const v = r?.verification;
+  const verdict = v?.verdict === 'pass' || v?.verdict === 'fail' || v?.verdict === 'incomplete' ? v.verdict as 'pass' | 'fail' | 'incomplete' : null;
+  const skipped = verdict ? Number(v.skipped) || 0 : 0;
+  return { verified: verdict === 'pass' && skipped === 0, verdict, skipped };
+};
 const cardOf = (r: any) => ({
   id: r.id, type: r.type, title: r.title, summary: r.summary, publisher: r.publisher_id, trust: r.trust, visibility: r.visibility,
-  latestVersion: r.latest_version ?? null, latestVersionId: r.latest_version_id ?? null, previews: Number(r.previews ?? 0), capabilities: (r.capabilities ?? []) as string[], stats: statsOf(r),
+  latestVersion: r.latest_version ?? null, latestVersionId: r.latest_version_id ?? null, previews: Number(r.previews ?? 0), capabilities: (r.capabilities ?? []) as string[], verification: verificationOf(r), stats: statsOf(r),
   viewer: { favorited: !!r.favorited, ...(r.installed_version ? { installedVersion: r.installed_version } : {}) },
 });
 
@@ -72,7 +79,7 @@ export async function getListing(c: pg.PoolClient, id: string) {
   const r = (await c.query(`
     SELECT l.id, l.type, l.title, l.summary, l.tags, l.publisher_id, l.trust, l.visibility, l.created_at, l.updated_at, l.team_id, l.forked_from, l.forked_from_version, l.forked_base_sha256,
            p.display_name AS publisher_name, p.verified AS publisher_verified,
-           lv.id AS lv_id, lv.id AS latest_version_id, ${PREVIEW_COUNT} AS previews, ${CAPABILITIES} AS capabilities, lv.version AS latest_version, lv.scan_verdict, lv.published_at, lv.manifest, lv.sha256, lv.size,
+           lv.id AS lv_id, lv.id AS latest_version_id, ${PREVIEW_COUNT} AS previews, ${CAPABILITIES} AS capabilities, ${VERIFICATION} AS verification, lv.version AS latest_version, lv.scan_verdict, lv.published_at, lv.manifest, lv.sha256, lv.size,
            s.rating_avg, s.rating_count, s.favorite_count, s.install_count,
            EXISTS (SELECT 1 FROM marketplace_favorites f WHERE f.listing_id = l.id) AS favorited,
            (SELECT st.version FROM marketplace_installs i JOIN marketplace_installed_status() st ON st.version_id = i.version_id AND st.listing_id = i.listing_id
