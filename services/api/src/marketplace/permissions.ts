@@ -3,10 +3,10 @@
 // permissionsOf(role). When rbac.ts lands, replace the body of this file with a re-export of the marketplace
 // entries from it (or fold MARKETPLACE_PERMISSIONS into its permission table); nothing else needs to change,
 // because src/api/marketplace-admin.ts only calls can() and permissionsOf().
-export const ADMIN_ROLES = ['superadmin', 'engineer', 'support', 'finance', 'analyst'] as const;
+export const ADMIN_ROLES = ['superadmin', 'engineer', 'support', 'finance', 'analyst', 'verifier'] as const;
 export type AdminRole = typeof ADMIN_ROLES[number];
 
-export const MARKETPLACE_PERMISSIONS = ['marketplace.read', 'marketplace.write', 'marketplace.review', 'marketplace.moderate'] as const;
+export const MARKETPLACE_PERMISSIONS = ['marketplace.read', 'marketplace.write', 'marketplace.review', 'marketplace.moderate', 'marketplace.verify_worker'] as const;
 export type MarketplacePermission = typeof MARKETPLACE_PERMISSIONS[number];
 
 const GRANTS: Record<AdminRole, readonly MarketplacePermission[]> = {
@@ -15,6 +15,9 @@ const GRANTS: Record<AdminRole, readonly MarketplacePermission[]> = {
   analyst: ['marketplace.read'],
   support: [],
   finance: [],
+  // The out-of-process verifier worker's service identity: claim jobs and deliver results, nothing else (it cannot read the
+  // catalog, review, approve or publish). A leaked worker token is therefore not an admin token.
+  verifier: ['marketplace.verify_worker'],
 };
 
 export const isAdminRole = (v: unknown): v is AdminRole => typeof v === 'string' && (ADMIN_ROLES as readonly string[]).includes(v);
