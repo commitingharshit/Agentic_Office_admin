@@ -13,7 +13,7 @@ import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const migration = readFileSync(join(here, '..', 'db', 'migrations', '0016_marketplace.sql'), 'utf8');
+const migration = readFileSync(join(here, '..', 'db', 'migrations', '0021_marketplace.sql'), 'utf8');
 const STUB = `
   CREATE TABLE users (id text PRIMARY KEY, email text);
   CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);

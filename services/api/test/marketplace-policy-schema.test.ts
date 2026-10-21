@@ -20,7 +20,7 @@ describe('marketplace policy schema (pglite)', () => {
   let db: PGlite;
   before(async () => {
     db = new PGlite();
-    await db.exec(STUB); await db.exec(mig('0016_marketplace.sql')); await db.exec(mig('0017_marketplace_agents.sql'));
+    await db.exec(STUB); await db.exec(mig('0021_marketplace.sql')); await db.exec(mig('0022_marketplace_agents.sql'));
     await db.exec(`
       INSERT INTO users(id) VALUES ('u1'),('u2');
       INSERT INTO marketplace_publishers(id, display_name, owner_user_id) VALUES ('pa','A','u1');

@@ -20,7 +20,7 @@ const migrations = readdirSync(migDir).filter((f) => /^\d{4}_.*\.sql$/.test(f)).
 const ALLOWED_REDEFINITIONS: Record<string, string[]> = {
   // 0016 original; 0018 added the risk_tier freeze; 0019 is the UNION of all of them (see its comment block).
   // 0018's manual-review rule is a separate function and is not part of this redefinition chain.
-  marketplace_versions_guard: ['0016_marketplace.sql', '0018_marketplace_advanced.sql', '0019_marketplace_hardening.sql'],
+  marketplace_versions_guard: ['0021_marketplace.sql', '0023_marketplace_advanced.sql', '0024_marketplace_hardening.sql'],
 };
 
 describe('migration redefinition meta-test', () => {

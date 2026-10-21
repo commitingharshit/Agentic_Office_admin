@@ -6,7 +6,7 @@ toolchain: "Node 24 (TypeScript by type stripping), npm (part of accounts-sync)"
 build: "cd services/accounts-sync && npm ci"
 test: "cd services/accounts-sync && node --test test/marketplace-verify-worker.test.ts (sandbox attacks run anywhere; the macOS jail, network and fork tests run on macOS only; the queue tests use embedded Postgres)"
 run: "scripts/dev/marketplace-verify-worker (AO_VERIFY_API, AO_VERIFY_TOKEN; the API runs with AO_VERIFY_MODE=queue)"
-owns_data: "marketplace_verify_jobs (migration 0024_marketplace_verify_jobs.sql); results go to marketplace_verifications through the admin API"
+owns_data: "marketplace_verify_jobs (migration 0027_marketplace_verify_jobs.sql); results go to marketplace_verifications through the admin API"
 depends_on: []
 status: "active"
 tags: [marketplace, verification, sandbox, worker]

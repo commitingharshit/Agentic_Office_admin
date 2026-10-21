@@ -1,6 +1,6 @@
 -- Marketplace Plan 3, Task 1: type policy, risk tier on versions, and a database backstop so a type that needs manual
 -- review can never reach 'published' without a recorded approval by someone other than the submitter.
--- Depends on 0016_marketplace.sql only. (0017 belongs to Plan 2; numbers are allocated by the controller.)
+-- Depends on 0021_marketplace.sql only. (0017 belongs to Plan 2; numbers are allocated by the controller.)
 
 CREATE TABLE marketplace_type_policy (
   type                text PRIMARY KEY,

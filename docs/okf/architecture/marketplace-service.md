@@ -30,9 +30,10 @@ installs, failures and removals through `installs/sync`, which also returns the 
 revocations the device must act on. Ratings, favorite and install counts are read from
 `marketplace_listing_stats`, never stored or invented.
 
-Migration number: the schema is `db/migrations/0016_marketplace.sql` (renumbered from 0015 when another branch took
-0015_email_deliveries). Re-check that the number is still free at merge time and renumber again (the schema and RLS
-tests, the test helper and this page name it) if another migration landed first.
+Migration number: the schema is `db/migrations/0021_marketplace.sql` (renumbered 0015 -> 0016 -> 0021 as other branches
+took numbers; the marketplace series is 0021-0028 and growth follows at 0029-0030). `test/migration-numbers.test.ts`
+refuses a duplicate numeric prefix, so a clash at the next merge fails a test. Renumber again (the schema and RLS tests,
+the test helper and this page name it) if another migration landed first.
 
 ## Creating, forking and sharing
 
@@ -125,7 +126,7 @@ machine lives; approve and publish require the latest overall scan to be ok AND 
 Each transition also writes a `marketplace_release_events` row naming the actor, which is what
 `marketplace_installed_status()` reads to tell installed devices a version was quarantined or revoked.
 
-Verification results (migration `0021_marketplace_verifications.sql`, `src/marketplace/verifyStore.ts`): the
+Verification results (migration `0025_marketplace_verifications.sql`, `src/marketplace/verifyStore.ts`): the
 append-only `marketplace_verifications` table is keyed to the artifact sha256 (a trigger refuses a result for
 other bytes), stages are explicit pass|fail|skipped with evidence references, never a score. Only ao_admin
 inserts (`POST /admin/marketplace/versions/:id/verification` records a worker's result, strictly validated with

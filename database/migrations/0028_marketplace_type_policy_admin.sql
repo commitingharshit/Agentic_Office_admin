@@ -1,7 +1,7 @@
 -- Marketplace Plan 3, Task 12: a superadmin may RAISE a type's policy (stricter risk tier, manual review on, higher minimum publisher
 -- trust) through the admin API. The code floor (TYPE_POLICY in src/marketplace/support.ts) is authoritative; this migration adds a database
 -- backstop so that not even a bug in the handler can store a value below the floor recorded here, and so the floor itself cannot be edited.
--- Depends on 0018_marketplace_advanced.sql. (Number allocated by the controller; renumber at merge time if it clashes.)
+-- Depends on 0023_marketplace_advanced.sql. (Number allocated by the controller; renumber at merge time if it clashes.)
 
 ALTER TABLE marketplace_type_policy
   ADD COLUMN floor_risk_tier           text,
