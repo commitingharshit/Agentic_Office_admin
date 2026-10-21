@@ -4,7 +4,8 @@
 // row-level security in Postgres (the store runs as ao_app with app.user_id set), never here.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
-import { ArtifactCorruptError, openArtifact, unpack, UnpackError, type ArtifactStore } from '../marketplace/artifacts.ts';
+import { ArtifactCorruptError, extractOne, openArtifact, UnpackError, type ArtifactStore } from '../marketplace/artifacts.ts';
+import { ByteLru } from '../marketplace/lru.ts';
 import { createLimiter, type Limiter } from '../marketplace/ratelimit.ts';
 import { BadQuery, parseListParams } from '../marketplace/search.ts';
 import * as store from '../marketplace/store.ts';
@@ -19,7 +20,11 @@ export interface MarketplaceDeps {
   limiter?: Limiter;
   /** GET routes: per user, or per client address when anonymous; defaults to 300 requests per minute. */
   readLimiter?: Limiter;
+  /** Preview/doc entries (shared; visibility is still checked per request). */
+  cache?: ByteLru;
 }
+
+const MAX_PREVIEW = 2 * 1024 * 1024, MAX_DOC = 256 * 1024;
 
 const LISTING_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 const OPAQUE_ID = /^[A-Za-z0-9_.:-]{1,120}$/;
@@ -57,6 +62,7 @@ export function imageType(b: Uint8Array): string | undefined {
 export function marketplaceHandler(deps: MarketplaceDeps) {
   const limiter = deps.limiter ?? createLimiter();
   const readLimiter = deps.readLimiter ?? createLimiter({ limit: 300 });
+  const cache = deps.cache ?? new ByteLru();
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -117,7 +123,8 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (sub === 'reviews' && m === 'GET') {
           return send(200, await q(async (c) => {
             if (!(await store.listingVisible(c, id))) throw notFound();
-            return { reviews: await store.listReviews(c, uid, id) };
+            const p = url.searchParams.get('page');
+            return store.listReviews(c, uid, id, p ? store.decodeReviewCursor(p) : null);
           })), true;
         }
         if (sub === 'favorite' && (m === 'PUT' || m === 'DELETE')) {
@@ -163,27 +170,36 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         const access = await q((c) => store.versionAccess(c, vid, signedIn));
         if (access === 'missing') throw notFound();
         if (access === 'gone') throw new HttpError(410, 'This version was withdrawn.');
-        const a = await openArtifact(deps.app, deps.store, { userId: uid }, vid);
-        if (!a) throw notFound();
-        let pkg;
-        try { pkg = unpack(a.bytes); } catch (e) { if (e instanceof UnpackError) throw notFound(); throw e; }
-        const payload = (pkg.manifest.payload ?? {}) as Record<string, unknown>;
-        if (pm[2] === 'doc') {
-          const entry = pkg.manifest.type === 'skill' ? (typeof payload.entry === 'string' ? payload.entry : 'SKILL.md') : undefined;
-          const file = entry ? pkg.files.get(entry) : undefined;
-          if (!file || file.byteLength > 256 * 1024) throw notFound();
-          res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8', 'content-length': file.byteLength, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' });
-          res.end(Buffer.from(file.buffer, file.byteOffset, file.byteLength));
-          return true;
+        // Visibility is decided here, as the caller, on EVERY request: the cache below is only a byte store.
+        const view = await q((c) => store.versionForView(c, vid));
+        if (!view) throw notFound();
+        const payload = (view.manifest.payload ?? {}) as Record<string, unknown>;
+        const isDoc = pm[2] === 'doc';
+        let path: unknown;
+        if (isDoc) path = view.manifest.type === 'skill' ? (typeof payload.entry === 'string' ? payload.entry : 'SKILL.md') : undefined;
+        else path = Array.isArray(payload.previews) ? payload.previews[Number(pm[3])] : undefined;
+        if (typeof path !== 'string') throw notFound();
+        const cap = isDoc ? MAX_DOC : MAX_PREVIEW;
+        const key = `${view.sha256}\0${path}`;
+        let file = cache.get(key);
+        if (!file) {
+          const a = await openArtifact(deps.app, deps.store, { userId: uid }, vid);
+          if (!a) throw notFound();
+          try { file = extractOne(a.bytes, path, { maxBytes: cap }); }
+          catch (e) {
+            if (e instanceof UnpackError) throw e.code === 'too-large' ? new HttpError(413, 'That file is too large to preview.') : notFound();
+            throw e;
+          }
+          if (!file) throw notFound();
+          cache.set(key, file);
         }
-        const previews = Array.isArray(payload.previews) ? payload.previews : [];
-        const path = previews[Number(pm[3])];
-        const img = typeof path === 'string' ? pkg.files.get(path) : undefined;
-        const type = img && imageType(img);
-        if (!img || !type) throw notFound();
-        // the type comes from the bytes, never from the file name; SVG is not served (it can carry script)
-        res.writeHead(200, { 'content-type': type, 'content-length': img.byteLength, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'" });
-        res.end(Buffer.from(img.buffer, img.byteOffset, img.byteLength));
+        const type = isDoc ? 'text/markdown; charset=utf-8' : imageType(file);
+        if (!type) throw notFound();
+        // a public, published version never changes: browsers may keep it; anything else is never stored
+        const cc = view.cacheable ? 'private, max-age=3600, immutable' : 'private, no-store';
+        res.writeHead(200, { 'content-type': type, 'content-length': file.byteLength, 'cache-control': cc, 'x-content-type-options': 'nosniff',
+          ...(isDoc ? {} : { 'content-security-policy': "default-src 'none'" }) });
+        res.end(Buffer.from(file.buffer, file.byteOffset, file.byteLength));
         return true;
       }
 

@@ -195,6 +195,20 @@ export function readZipFiles(bytes: Uint8Array, opts: { maxTotal?: number; maxFi
   return out;
 }
 
+/**
+ * Reads ONE entry of a package zip by exact name, through the same hardened central-directory reader and bounded inflater as
+ * unpack(), without inflating anything else. The requested path is checked like an archive path (zip-slip refused), an entry
+ * that declares more than `maxBytes` is refused before it is inflated, and a name that is not in the archive is undefined.
+ */
+export function extractOne(bytes: Uint8Array, path: string, opts: { maxBytes: number }): Uint8Array | undefined {
+  checkEntryPath(path);
+  const e = readCentralDirectory(bytes).find((x) => x.name === path);
+  if (!e) return undefined;
+  if ((e.mode & S_IFMT) === S_IFLNK) throw new UnpackError('symlink', `symlink entry in archive: ${JSON.stringify(path)}`);
+  if (e.declared > opts.maxBytes) throw new UnpackError('too-large', `entry ${JSON.stringify(path)} is ${e.declared} bytes, over the ${opts.maxBytes} limit`);
+  return extract(bytes, e);
+}
+
 const S_IFMT = 0o170000, S_IFLNK = 0o120000;
 
 function checkEntryPath(rel: string): void {

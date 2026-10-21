@@ -105,6 +105,12 @@ export async function listVersions(c: pg.PoolClient, id: string) {
   }));
 }
 
+/** What a preview/doc request needs from a version, read as the caller (RLS decides whether the row exists). */
+export async function versionForView(c: pg.PoolClient, versionId: string) {
+  const r = (await c.query(`SELECT v.sha256, v.manifest, v.state, l.visibility FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id WHERE v.id = $1`, [versionId])).rows[0];
+  return r ? { sha256: r.sha256 as string, manifest: (r.manifest ?? {}) as Record<string, any>, cacheable: r.state === 'published' && r.visibility === 'public' } : undefined;
+}
+
 /** 'ok' | 'gone' (revoked/quarantined, for the owner or someone who installed it) | 'missing'. */
 export async function versionAccess(c: pg.PoolClient, versionId: string, signedIn: boolean): Promise<'ok' | 'gone' | 'missing'> {
   const v = (await c.query(`SELECT state FROM marketplace_versions WHERE id = $1`, [versionId])).rows[0];
@@ -115,10 +121,31 @@ export async function versionAccess(c: pg.PoolClient, versionId: string, signedI
   return s ? 'gone' : 'missing';
 }
 
-/** Newest first. The reviewer's identity is never exposed: only whether a review is the caller's own. */
-export async function listReviews(c: pg.PoolClient, uid: string, id: string) {
-  return (await c.query(`SELECT stars, body, created_at, (user_id = $2) AS mine FROM marketplace_reviews WHERE listing_id = $1 ORDER BY created_at DESC, id LIMIT 50`, [id, uid]))
-    .rows.map((r) => ({ stars: Number(r.stars), body: r.body as string | null, createdAt: r.created_at, mine: !!r.mine }));
+export const REVIEWS_PAGE = 50;
+export interface ReviewCursor { t: string; id: string }
+export const encodeReviewCursor = (c: ReviewCursor) => Buffer.from(JSON.stringify(c)).toString('base64url');
+const REVIEW_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+export function decodeReviewCursor(s: string): ReviewCursor {
+  try {
+    const c = JSON.parse(Buffer.from(s, 'base64url').toString('utf8'));
+    if (c && typeof c.t === 'string' && REVIEW_TIME.test(c.t) && !Number.isNaN(Date.parse(c.t.slice(0, 19) + 'Z')) && typeof c.id === 'string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(c.id)) return { t: c.t, id: c.id };
+  } catch { /* fall through */ }
+  throw new StoreError(400, 'page is not a valid cursor.');
+}
+
+/** Newest first, 50 per page with a keyset cursor. The reviewer's identity is never exposed: only whether a review is the caller's own. */
+export async function listReviews(c: pg.PoolClient, uid: string, id: string, cursor: ReviewCursor | null = null) {
+  const rows = (await c.query(
+    `SELECT id, stars, body, created_at, (user_id = $2) AS mine, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_raw
+       FROM marketplace_reviews WHERE listing_id = $1
+        AND ($3::text IS NULL OR created_at < $3::timestamptz OR (created_at = $3::timestamptz AND id > $4::text))
+      ORDER BY created_at DESC, id ASC LIMIT ${REVIEWS_PAGE + 1}`, [id, uid, cursor?.t ?? null, cursor?.id ?? null])).rows;
+  const page = rows.slice(0, REVIEWS_PAGE);
+  const last = page[page.length - 1];
+  return {
+    reviews: page.map((r) => ({ stars: Number(r.stars), body: r.body as string | null, createdAt: r.created_at, mine: !!r.mine })),
+    nextPage: rows.length > REVIEWS_PAGE && last ? encodeReviewCursor({ t: last.created_raw, id: last.id }) : null,
+  };
 }
 
 export async function getStats(c: pg.PoolClient, id: string): Promise<Stats> {

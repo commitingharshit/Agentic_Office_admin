@@ -1,7 +1,7 @@
 // DEV ONLY. A real marketplace API on your machine, seeded with a few real packages, so the desktop Marketplace UI can be
 // run and looked at against real data instead of mocks. Never deploy this: it accepts a fixed bearer token.
 //
-//   node scripts/marketplace-dev-server.ts [--port 8791] [--http] [--bulk 30] [--state <file>]
+//   node scripts/marketplace-dev-server.ts [--port 8791] [--http] [--bulk 30] [--hostile] [--state <file>]
 //
 // What it does
 //   1. starts embedded Postgres in a temp directory (the harness of test/helpers/marketplace-pg.ts: stub users/devices/
@@ -15,7 +15,8 @@
 //        dev-community/docx-outline     skill, from scripts/dev-seed/docx-outline/ (ships a python script: exec.script)
 //      previews are rendered with `officecli view <file> screenshot` (skipped, and said so, when officecli is missing),
 //      plus a few reviews and favorites by fake users so the stats are not all zero. `--bulk N` adds N more template
-//      listings (copies of board-memo under other ids) to exercise paging.
+//      listings (copies of board-memo under other ids) to exercise paging. `--hostile` adds dev-community/hostile-docs, a skill
+//      whose SKILL.md is hostile markdown (inserted WITHOUT the publish validators on purpose: it checks the viewer, not the gate).
 //
 // It serves https with a throwaway self-signed certificate by default, because the workbench's content security policy only
 // lets the renderer connect to https: start the test window with --ignore-certificate-errors. `--http` serves plain http.
@@ -52,6 +53,7 @@ const PORT = Number(opt('--port') ?? 8791);
 const BULK = Number(opt('--bulk') ?? 0);
 const HTTP = args.includes('--http');
 const STATE = opt('--state');
+const HOSTILE = args.includes('--hostile');
 
 /** DEV ONLY: the one bearer this server accepts. */
 export const DEV_TOKEN = 'dev-token';
@@ -153,6 +155,11 @@ async function main() {
   await insert(await mk('agentic-office/board-memo', memo), { trust: 'official', tags: ['board', 'memo', 'docx'] });
   await insert(await mk('agentic-office/board-update', deck), { trust: 'official', tags: ['board', 'deck', 'pptx'] });
   await insert(await skillPackage(), { trust: 'community', tags: ['docx', 'outline', 'review'] });
+  if (HOSTILE) {
+    const md = new Uint8Array(readFileSync(join(here, 'dev-seed', 'hostile-docs', 'SKILL.md')));
+    await insert(await build({ schema: 'agentic.marketplace/1', id: 'dev-community/hostile-docs', type: 'skill', version: '1.0.0', title: 'Hostile Docs (fixture)', license: 'MIT',
+      summary: 'Dev fixture: documentation full of hostile markdown.', compat: { app: '*' }, dependencies: [], permissions: [], payload: { name: 'hostile-docs', entry: 'SKILL.md' } }, { 'SKILL.md': md }, false), { trust: 'community', tags: ['fixture'] });
+  }
   for (let n = 1; n <= BULK; n++) {
     const id = `dev-community/memo-copy-${String(n).padStart(2, '0')}`;
     await insert(await build({ schema: 'agentic.marketplace/1', id, type: 'template', version: '1.0.0', title: `Memo copy ${n}`, summary: `Bulk seed ${n}: the board memo again, to exercise paging.`, license: 'MIT',

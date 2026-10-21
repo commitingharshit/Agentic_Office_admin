@@ -535,6 +535,40 @@ describe('marketplace API (real Postgres)', { skip }, () => {
       assert.deepEqual(Object.keys(d.json.manifest.files[0]).sort(), ['path', 'sha256', 'size']);
       assert.deepEqual((await call('/v1/marketplace/listings/pa/open')).json.manifest.files, []);   // a version whose stored manifest has no file list
     });
+
+    test('preview_over_the_2MiB_cap_is_413_and_doc_cap_applies', async () => {
+      const big = new Uint8Array(3 * 1024 * 1024); big.set(PNG);
+      const p = pkg('template', 'pa/tplbig', { 'p/big.png': big }, { format: 'docx', file: 'doc.docx', previews: ['p/big.png'] });
+      const { sha256, size } = await putArtifact(store, p.bytes);
+      await admin.query(`INSERT INTO marketplace_artifacts(sha256, size, storage_key) VALUES ($1,$2,'k') ON CONFLICT DO NOTHING`, [sha256, size]);
+      await admin.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, title, summary) VALUES ('pa/tplbig','template','pa','u1','public','Big','b')`);
+      await admin.query(`INSERT INTO marketplace_versions(id, listing_id, version, semver_major, semver_minor, semver_patch, state, manifest, sha256, size, scan_verdict) VALUES ('v_tplbig','pa/tplbig','1.0.0',1,0,0,'published',$1,$2,$3,'clean')`, [JSON.stringify(p.manifest), sha256, size]);
+      assert.equal((await call('/v1/marketplace/versions/v_tplbig/preview/0')).status, 413);
+    });
+    test('a cached preview is never served to someone who cannot see the version (RLS runs on every request)', async () => {
+      const ok = await fetch(`${base}/v1/marketplace/versions/v_tplsecret/preview/0`, { headers: { authorization: 'Bearer u1' } });
+      assert.equal(ok.status, 200);                                        // owner: fills the cache
+      assert.equal(ok.headers.get('cache-control'), 'private, no-store');  // private listing: never cacheable by a browser
+      assert.equal((await call('/v1/marketplace/versions/v_tplsecret/preview/0')).status, 404);
+      assert.equal((await call('/v1/marketplace/versions/v_tplsecret/preview/0', { user: 'u2' })).status, 404);
+      const pub = await fetch(`${base}/v1/marketplace/versions/v_tpl/preview/0`);
+      assert.equal(pub.headers.get('cache-control'), 'private, max-age=3600, immutable');   // public + published
+      assert.equal((await fetch(`${base}/v1/marketplace/versions/v_tpl/preview/0`)).status, 200); // second call: from the cache
+    });
+    test('reviews_are_capped_at_50_with_a_cursor_that_reaches_older_ones', async () => {
+      await h.owner.query(`INSERT INTO users(id) SELECT 'rv' || n FROM generate_series(1, 60) n ON CONFLICT DO NOTHING`);
+      await admin.query(`INSERT INTO marketplace_reviews(id, listing_id, user_id, stars, created_at) SELECT 'rvw' || n, 'pa/dl', 'rv' || n, 1 + (n % 5), now() - (n || ' minutes')::interval FROM generate_series(1, 60) n`);
+      const first = await call('/v1/marketplace/listings/pa/dl/reviews');
+      assert.equal(first.json.reviews.length, 50);
+      assert.ok(first.json.nextPage);
+      const second = await call(`/v1/marketplace/listings/pa/dl/reviews?page=${first.json.nextPage}`);
+      assert.equal(second.json.reviews.length, 10);
+      assert.equal(second.json.nextPage, null);
+      const all = [...first.json.reviews, ...second.json.reviews].map((r: any) => r.createdAt);
+      assert.deepEqual([...all].sort().reverse(), all);                    // newest first across pages
+      assert.equal(new Set(all).size, 60);
+      for (const bad of ['!!', Buffer.from('{"t":"x","id":"y"}').toString('base64url')]) assert.equal((await call(`/v1/marketplace/listings/pa/dl/reviews?page=${bad}`)).status, 400);
+    });
     test('cards_list_the_distinct_capabilities_of_the_latest_version', async () => {
       const open = (await call('/v1/marketplace/listings?q=toolkit')).json.items[0];
       assert.deepEqual(open.capabilities, ['network']);
