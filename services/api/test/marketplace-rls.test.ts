@@ -1,4 +1,4 @@
-// Roles, grants and row-level security of migration 0015 on a REAL Postgres (embedded-postgres, a
+// Roles, grants and row-level security of migration 0016 on a REAL Postgres (embedded-postgres, a
 // throwaway cluster in its own temp dir). It bootstraps stub users/devices/admin_audit tables instead
 // of the full migration chain, so pgvector is not needed. Skipped if the embedded binary is unusable.
 import assert from 'node:assert/strict';

@@ -1,6 +1,6 @@
-// Marketplace schema (migration 0015).
-//  - The PGlite suite loads a minimal stub of the tables 0015 references (users, devices) and then
-//    runs the real 0015 SQL. Role GRANT/POLICY statements sit in a guarded trailing section, so they
+// Marketplace schema (migration 0016).
+//  - The PGlite suite loads a minimal stub of the tables 0016 references (users, devices) and then
+//    runs the real 0016 SQL. Role GRANT/POLICY statements sit in a guarded trailing section, so they
 //    are no-ops there; roles and RLS are only exercised by the full-chain suite below.
 //  - The full-chain suite runs the real db/migrate.ts chain and needs AO_TEST_PG (owner URL).
 import assert from 'node:assert/strict';
@@ -13,7 +13,7 @@ import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const migration = readFileSync(join(here, '..', 'db', 'migrations', '0015_marketplace.sql'), 'utf8');
+const migration = readFileSync(join(here, '..', 'db', 'migrations', '0016_marketplace.sql'), 'utf8');
 const STUB = `
   CREATE TABLE users (id text PRIMARY KEY, email text);
   CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);
@@ -266,7 +266,7 @@ const ownerUrl = process.env.AO_TEST_PG;
 const skip = !ownerUrl && 'AO_TEST_PG not set';
 
 describe('marketplace schema (full migration chain, real Postgres)', { skip }, () => {
-  test('0015 applies on top of the whole chain and ao_app is row-scoped', async () => {
+  test('0016 applies on top of the whole chain and ao_app is row-scoped', async () => {
     execFileSync('node', [join(here, '..', 'db', 'migrate.ts')], { env: { ...process.env, DATABASE_URL: ownerUrl }, stdio: 'pipe' });
     const as = (role: string, pw: string | undefined) => { const u = new URL(ownerUrl!); u.username = role; u.password = pw ?? ''; return u.toString(); };
     const tag = Date.now().toString(36);
