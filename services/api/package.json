@@ -5,7 +5,10 @@
   "scripts": {
     "migrate": "node db/migrate.ts",
     "test": "node --test test/*.test.ts",
-    "test:postgres": "bash test/run-with-postgres.sh"
+    "test:postgres": "bash test/run-with-postgres.sh",
+    "eval": "node evals/run-scan-gate.ts && node evals/run-template-validator.ts",
+    "eval:scan-gate": "node evals/run-scan-gate.ts",
+    "eval:templates": "node evals/run-template-validator.ts"
   },
   "dependencies": {
     "pg": "^8.13.1"

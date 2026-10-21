@@ -1,0 +1,9 @@
+{
+  "scan-gate": [
+    {
+      "id": "m09-remote-image",
+      "reason": "The Skills Guard and the file policy accept a SKILL.md containing a remote tracking image (![x](https://evil.example/pixel.png?...)). Not fixed here: skills_guard.py is vendored and R27 keeps it unmodified in this release. Mitigation lives in the renderer: the Marketplace UI never loads remote images from a stranger's SKILL.md (Task 9, live-verified 0 requests to the evil host). Proposed fix: flag markdown/HTML image URLs with a query string or non-allowlisted host in skill.ts."
+    }
+  ],
+  "template-validator": []
+}

@@ -1,0 +1,315 @@
+{
+  "eval": "template-validator",
+  "gates": {
+    "minRecall": 1,
+    "maxFalsePositiveRate": 0.1
+  },
+  "passed": true,
+  "confusion": {
+    "truePositive": 20,
+    "falseNegative": 0,
+    "falsePositive": 0,
+    "trueNegative": 5
+  },
+  "metrics": {
+    "recall": 1,
+    "recallExcludingKnownGaps": 1,
+    "precision": 1,
+    "falsePositiveRate": 0
+  },
+  "knownGapsStillOpen": [],
+  "failures": [],
+  "cases": [
+    {
+      "id": "t01-pptx-board-update",
+      "label": "benign",
+      "category": "real-template",
+      "note": "templates/pptx/board-update.pptx",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed (verified)",
+      "failedChecks": []
+    },
+    {
+      "id": "t02-pptx-investor-pitch",
+      "label": "benign",
+      "category": "real-template",
+      "note": "templates/pptx/investor-pitch.pptx",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed (verified)",
+      "failedChecks": []
+    },
+    {
+      "id": "t03-docx-board-memo",
+      "label": "benign",
+      "category": "real-template",
+      "note": "templates/docx/board-memo.docx",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed (verified)",
+      "failedChecks": []
+    },
+    {
+      "id": "t04-xlsx-budget-tracker",
+      "label": "benign",
+      "category": "real-template",
+      "note": "templates/xlsx/budget-tracker.xlsx",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed (verified)",
+      "failedChecks": []
+    },
+    {
+      "id": "t05-pdf-one-pager",
+      "label": "benign",
+      "category": "real-template",
+      "note": "templates/pdf/one-pager.pdf",
+      "verdict": "accept",
+      "stage": "none",
+      "reason": "all checks passed (verified)",
+      "failedChecks": []
+    },
+    {
+      "id": "x01-macro-vba",
+      "label": "malicious",
+      "category": "macro",
+      "note": "pptx with ppt/vbaProject.bin",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: macro part ppt/vbaProject.bin",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x02-macro-content-type",
+      "label": "malicious",
+      "category": "macro",
+      "note": "main part declared macroEnabled in [Content_Types].xml",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: macro/ActiveX content type \"application/vnd.ms-word.document.macroEnabled.main+xml\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x03-external-http-link",
+      "label": "malicious",
+      "category": "external-link",
+      "note": "relationship with TargetMode External to http://",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: external relationship in word/_rels/x.rels (\"attachedTemplate\" -> \"http://evil.example/t.dotm\"): only https hyperlinks are allowed",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x04-external-unc",
+      "label": "malicious",
+      "category": "external-link",
+      "note": "UNC path target (credential leak via SMB)",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: active-content relationship in word/_rels/x.rels (\"oleObject\" -> \"\\\\\\\\evil.example\\\\share\\\\x\")",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x05-external-scheme-relative",
+      "label": "malicious",
+      "category": "external-link",
+      "note": "scheme-relative //host target",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: external relationship in ppt/_rels/y.rels (\"hyperlink\" -> \"//evil.example/x\"): only https hyperlinks are allowed",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x06-external-file-uri",
+      "label": "malicious",
+      "category": "external-link",
+      "note": "file:/// target",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: external relationship in ppt/_rels/y.rels (\"hyperlink\" -> \"file:///etc/passwd\"): only https hyperlinks are allowed",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x07-dde-docx-field",
+      "label": "malicious",
+      "category": "dde",
+      "note": "DDEAUTO field launching cmd.exe in word/document.xml",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: word/document.xml: field DDEAUTO (DDE/include/link fields are not allowed)",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x08-dde-xlsx-formula",
+      "label": "malicious",
+      "category": "dde",
+      "note": "DDE formula =cmd|... in a worksheet cell",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: xl/worksheets/sheet1.xml: DDE/command formula \"cmd|' /C calc'!A0\"",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x09-zip-bomb",
+      "label": "malicious",
+      "category": "bomb",
+      "note": "a 80 MiB all-zero part (over the 64 MiB package cap once inflated)",
+      "verdict": "reject",
+      "stage": "unpack",
+      "reason": "too-large: archive declares more than 67108864 bytes uncompressed",
+      "failedChecks": [
+        "unpack:too-large"
+      ]
+    },
+    {
+      "id": "x10-truncated",
+      "label": "malicious",
+      "category": "malformed",
+      "note": "the pptx cut in half",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: not a valid zip archive: not a zip archive (no end-of-central-directory record)",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "x11-no-content-types",
+      "label": "malicious",
+      "category": "malformed",
+      "note": "[Content_Types].xml removed",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: missing [Content_Types].xml",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "x12-override-missing-part",
+      "label": "malicious",
+      "category": "malformed",
+      "note": "an Override names a part that is not in the package",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: content types name parts that do not exist: /word/ghost.xml",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "x13-svg-preview",
+      "label": "malicious",
+      "category": "disguised-file",
+      "note": "an SVG with script named previews/1.png",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "preview-images: \"previews/1.png\": not a PNG or JPEG (magic bytes)",
+      "failedChecks": [
+        "preview-images"
+      ]
+    },
+    {
+      "id": "x14-html-as-pptx",
+      "label": "malicious",
+      "category": "disguised-file",
+      "note": "an HTML page named template.pptx",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: not a valid zip archive: not a zip archive (no end-of-central-directory record)",
+      "failedChecks": [
+        "ooxml-zip"
+      ]
+    },
+    {
+      "id": "x15-elf-in-embeddings",
+      "label": "malicious",
+      "category": "executable",
+      "note": "ELF magic in a non-XML part",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: executable binary (MZ/ELF/Mach-O) ppt/media/extra.dat",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x16-case-variant-attributes",
+      "label": "malicious",
+      "category": "evasion",
+      "note": "duplicate Target attributes differing only by case, hiding a file: target",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "ooxml-zip: word/_rels/x.rels is not well-formed XML: attributes on <Relationship> collide case-insensitively: TARGET",
+      "failedChecks": [
+        "ooxml-zip",
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x17-utf16-rels",
+      "label": "malicious",
+      "category": "evasion",
+      "note": "a UTF-16LE rels file with a file: external target",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: external relationship in word/_rels/x.rels (\"hyperlink\" -> \"file:///etc/passwd\"): only https hyperlinks are allowed",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x18-nested-workbook-bomb",
+      "label": "malicious",
+      "category": "bomb",
+      "note": "40 embedded chart workbooks of 60 MiB each",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "no-active-content: embedded OLE/package ppt/embeddings/Microsoft_Excel_Sheet1.xlsx; embedded package ppt/embeddings/w2.xlsx cannot be read within budget: archive declares 62914560 bytes uncompressed, ",
+      "failedChecks": [
+        "no-active-content"
+      ]
+    },
+    {
+      "id": "x19-pdf-javascript",
+      "label": "malicious",
+      "category": "pdf-active",
+      "note": "PDF with /JavaScript in an OpenAction",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "pdf-header: contains /JavaScript (executable content is not allowed); contains /JS (executable content is not allowed)",
+      "failedChecks": [
+        "pdf-header"
+      ]
+    },
+    {
+      "id": "x20-pdf-launch",
+      "label": "malicious",
+      "category": "pdf-active",
+      "note": "PDF with a /Launch action",
+      "verdict": "reject",
+      "stage": "validate",
+      "reason": "pdf-header: contains /Launch (executable content is not allowed)",
+      "failedChecks": [
+        "pdf-header"
+      ]
+    }
+  ]
+}

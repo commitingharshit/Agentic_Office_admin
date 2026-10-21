@@ -6,7 +6,7 @@ toolchain: "Node 24 (TypeScript by type stripping), npm"
 build: "cd services/accounts-sync && npm ci"
 test: "cd services/accounts-sync && npm test (marketplace-api, -admin, -creator, -rls, -artifacts, -manifest, -schema; embedded Postgres, no setup needed)"
 run: "part of accounts-sync (node src/api/main.ts, port 8787); the routes need the sync API and MinIO configured"
-owns_data: "marketplace_* tables (listings, versions, artifacts, installs, reviews, reports) from migration 0015; artifact bytes in the MinIO bucket ao-marketplace by sha256"
+owns_data: "marketplace_* tables (listings, versions, artifacts, installs, reviews, reports) from migration 0016; artifact bytes in the MinIO bucket ao-marketplace by sha256"
 depends_on: []
 status: "active"
 tags: [marketplace, accounts, postgres]
@@ -29,6 +29,10 @@ and an invisible listing is a 404, never a 403. A download is not an install: th
 installs, failures and removals through `installs/sync`, which also returns the updates and
 revocations the device must act on. Ratings, favorite and install counts are read from
 `marketplace_listing_stats`, never stored or invented.
+
+Migration number: the schema is `db/migrations/0016_marketplace.sql` (renumbered from 0015 when another branch took
+0015_email_deliveries). Re-check that the number is still free at merge time and renumber again (the schema and RLS
+tests, the test helper and this page name it) if another migration landed first.
 
 ## Creating, forking and sharing
 
@@ -55,7 +59,7 @@ version, dependencies) are still inserted as `ao_app` under row-level security.
   `DELETE teams/:id/members/:userId`, and `GET listings?scope=mine|team&team=`. Team management is
   owner-only; a team the caller is not in is a 404; the last owner cannot leave.
 - A fork is a new private listing `<caller publisher>/<slug>` with `forked_from`,
-  `forked_from_version` and `forked_base_sha256` (migration 0015). The upstream package is
+  `forked_from_version` and `forked_base_sha256` (migration 0016). The upstream package is
   re-validated as stored (a tampered or newly failing upstream is a 422 with the report), the copy is
   rebuilt by `rewriteManifest` (new id, version `<base>-fork.1`, file hashes recomputed, deterministic
   stored-only zip, no runtime dependency on fflate) and validated again. Upstream rows are never

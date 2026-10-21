@@ -6,7 +6,7 @@
 //
 // What it does
 //   1. starts embedded Postgres in a temp directory (the harness of test/helpers/marketplace-pg.ts: stub users/devices/
-//      admin_audit, migration 0015, roles ao_app / ao_admin, so row-level security is the real one);
+//      admin_audit, migration 0016, roles ao_app / ao_admin, so row-level security is the real one);
 //   2. serves `marketplaceHandler` (src/api/marketplace.ts) on 127.0.0.1 with an in-memory artifact store. The only token
 //      it accepts is the bearer `dev-token`, which is user `usr_dev` (device `dev-device`); no token means anonymous;
 //   3. seeds, through the ao_admin connection, the packages below, built as real zips and run through the real
