@@ -15,6 +15,7 @@ import { accessSync, constants as fsConstants } from 'node:fs';
 import { createServer } from 'node:http';
 import pg from 'pg';
 import { adminHandler, authenticate as adminAuthenticate, parseTokens } from './admin.ts';
+import { roleOf as consoleRoleOf } from './admin-console.ts';
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { JwksVerifier } from '../auth/jwks.ts';
 import { httpStreamUpstream, httpUpstream, parsePricing } from './inference.ts';
@@ -139,7 +140,7 @@ if (s3) void skillScannerSelfCheck(validateArtifact).then((r) => {
 // Roles fail closed: an admin not listed in AO_MARKETPLACE_ROLES (adminName:role[,..]; Clerk admins by email or user id) is an analyst, so without it the API is read-only.
 let marketplaceRoles: ReturnType<typeof parseRoleMap>;
 try { marketplaceRoles = parseRoleMap(env.AO_MARKETPLACE_ROLES); } catch (e) { console.error((e as Error).message); process.exit(2); }
-const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools, agentsOk }) : undefined;
+const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', actingRole: async (id) => ((await consoleRoleOf(deps, id)) ? marketplaceRoles.get(id) ?? 'analyst' : null), store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools, agentsOk }) : undefined;
 // Startup self-check of the agent compiler; a failure is retried every minute so a late-starting dependency recovers without a restart.
 if (s3) {
   const check = () => void agents.selfCheck().then((r) => {

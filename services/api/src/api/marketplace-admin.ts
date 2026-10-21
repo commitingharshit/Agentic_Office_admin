@@ -31,6 +31,8 @@ export interface MarketplaceAdminDeps {
   authenticate(req: IncomingMessage): Promise<string>;
   /** The acting admin's role. FAILS CLOSED: without it every admin is an 'analyst' (read-only) until roles are configured (AO_MARKETPLACE_ROLES in main.ts). */
   roleOf?(adminId: string): AdminRole | Promise<AdminRole>;
+  /** The role of the PERSON a service token acts for (the console sends `x-ao-acting-admin`), or null when that account is not an active admin. Absent: the header is refused (400), so a token can never name someone else. FAILS CLOSED like roleOf. */
+  actingRole?(userId: string): AdminRole | null | Promise<AdminRole | null>;
   store: ArtifactStore;
   /** Validation with the real injected scanner/renderers; defaults to the global registry (validate/index.ts). */
   validate?(type: ListingType, pkg: UnpackedPackage, ctx?: ValidateContext): Promise<ValidationReport>;
@@ -1159,8 +1161,19 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       res.end(JSON.stringify(payload));
     };
     try {
-      const adminId = await deps.authenticate(req);
-      const role: AdminRole = deps.roleOf ? await deps.roleOf(adminId) : 'analyst';
+      const tokenAdmin = await deps.authenticate(req);
+      let adminId = tokenAdmin;
+      let role: AdminRole = deps.roleOf ? await deps.roleOf(tokenAdmin) : 'analyst';
+      // The web console authenticates with ONE service token and names the signed-in admin; permissions, separation of duties and the audit
+      // trail are about that PERSON. Only a superadmin-role service token may act for someone (a leaked worker or analyst token cannot).
+      const acting = String(req.headers['x-ao-acting-admin'] ?? '');
+      if (acting) {
+        if (!/^usr_[a-z0-9]{1,40}$/.test(acting) || /^Bearer\s+[^.\s]+\.[^.\s]+\.[^.\s]+$/.test(req.headers.authorization ?? '') || !deps.actingRole) throw fail(400, 'bad_request', 'x-ao-acting-admin must be a user id, sent with a service token.');
+        if (role !== 'superadmin') throw fail(403, 'forbidden', 'This service token may not act for another admin.');
+        const r = await deps.actingRole(acting);
+        if (!r) throw fail(403, 'forbidden', 'This account is not an active admin.');
+        adminId = acting; role = r;
+      }
       const need = (p: MarketplacePermission) => { if (!can(role, p)) throw fail(403, 'forbidden', `Your role (${role}) does not have ${p}.`); };
       let parts: string[];
       try { parts = url.pathname.slice('/admin/marketplace'.length).split('/').filter(Boolean).map(decodeURIComponent); } catch { throw fail(400, 'bad_request', 'Malformed path.'); }
