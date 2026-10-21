@@ -1,9 +1,11 @@
 // File-level comparison of two unpacked packages, with a small unified diff for text files. Pure: no I/O.
 import { sha256Hex } from './artifacts.ts';
 
-export const MAX_DIFF_FILE = 256 * 1024;   // text files up to this size get a line diff
+export const MAX_DIFF_FILE = 64 * 1024;    // text files up to this size get a line diff
 export const MAX_DIFF_CHARS = 20_000;      // a diff string is cut at this length
 const MAX_CELLS = 4_000_000;               // LCS table cap; beyond it the changed block is shown as replaced
+export const MAX_DIFFED_FILES = 50;        // text diffs per comparison
+export const CELL_BUDGET = 8_000_000;      // LCS cells across one whole comparison
 
 type Op = { k: ' ' | '-' | '+'; s: string };
 
@@ -15,7 +17,8 @@ function lines(s: string): string[] {
 }
 
 /** Line edit script: common prefix/suffix trimmed, LCS on the middle (or a plain replace when it is too large). */
-function editScript(a: string[], b: string[]): Op[] {
+/** `budget.left` is reduced by the LCS cells used; null when the middle block would not fit in what is left. */
+function editScript(a: string[], b: string[], budget?: { left: number }): Op[] | null {
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
   let suf = 0;
@@ -23,10 +26,12 @@ function editScript(a: string[], b: string[]): Op[] {
   const am = a.slice(pre, a.length - suf), bm = b.slice(pre, b.length - suf);
   const ops: Op[] = a.slice(0, pre).map((s) => ({ k: ' ', s }));
   const n = am.length, m = bm.length;
+  if (budget && n * m <= MAX_CELLS && n * m > budget.left) return null;
   if (n * m > MAX_CELLS || n === 0 || m === 0) {
     for (const s of am) ops.push({ k: '-', s });
     for (const s of bm) ops.push({ k: '+', s });
   } else {
+    if (budget) budget.left -= n * m;
     const w = m + 1, t = new Uint32Array((n + 1) * w);
     for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
       t[i * w + j] = am[i] === bm[j] ? t[(i + 1) * w + j + 1] + 1 : Math.max(t[(i + 1) * w + j], t[i * w + j + 1]);
@@ -44,8 +49,9 @@ function editScript(a: string[], b: string[]): Op[] {
 }
 
 /** A unified diff (3 lines of context). Empty string when the texts are equal. */
-export function unifiedDiff(a: string, b: string, context = 3): string {
-  const ops = editScript(lines(a), lines(b));
+export function unifiedDiff(a: string, b: string, context = 3, budget?: { left: number }): string | null {
+  const ops = editScript(lines(a), lines(b), budget);
+  if (!ops) return null;
   const ai: number[] = [], bi: number[] = [];   // line numbers (0-based) before each op
   let x = 0, y = 0;
   for (const o of ops) { ai.push(x); bi.push(y); if (o.k !== '+') x++; if (o.k !== '-') y++; }
@@ -69,34 +75,52 @@ export interface FileSide { sha256: string; size: number }
 export interface FileChange {
   path: string; status: 'added' | 'removed' | 'changed';
   base?: FileSide; head?: FileSide;
-  /** Only for text files up to 256 KB that changed or were added/removed. */
-  diff?: string; diffTruncated?: boolean;
-  /** True when the file is not text (or too big): only hashes are reported. */
+  /** A unified diff for a text file; null when none was computed (see `reason`); absent for binary files. */
+  diff?: string | null; diffTruncated?: boolean;
+  /** Why `diff` is null: 'budget' (too many files or too much work in this comparison) or 'too-large' (over 64 KB). */
+  reason?: 'budget' | 'too-large';
+  /** True when the file is not text: only hashes are reported. */
   binary?: boolean;
 }
 
 function asText(b: Uint8Array): string | undefined {
-  if (b.length > MAX_DIFF_FILE || b.includes(0)) return undefined;
+  if (b.includes(0)) return undefined;
   try { return new TextDecoder('utf-8', { fatal: true }).decode(b); } catch { return undefined; }
 }
 
-export function comparePackages(base: Map<string, Uint8Array>, head: Map<string, Uint8Array>): { files: FileChange[]; unchanged: number } {
+const tick = () => new Promise<void>((r) => setImmediate(r));
+
+/**
+ * Per-file status, hashes and (for small text files) a line diff. Bounded per comparison: at most MAX_DIFFED_FILES text
+ * diffs, CELL_BUDGET LCS cells in total, nothing over 64 KB; the rest report hashes and sizes with `diff: null` and a
+ * reason. The event loop is yielded to between files, so a big comparison cannot monopolise the process.
+ */
+export async function comparePackages(base: Map<string, Uint8Array>, head: Map<string, Uint8Array>): Promise<{ files: FileChange[]; unchanged: number; budgetLimited: boolean }> {
   const files: FileChange[] = [];
-  let unchanged = 0;
+  let unchanged = 0, diffed = 0, budgetLimited = false;
+  const budget = { left: CELL_BUDGET };
   const side = (b: Uint8Array): FileSide => ({ sha256: sha256Hex(b), size: b.length });
   for (const path of [...new Set([...base.keys(), ...head.keys()])].sort()) {
+    await tick();
     const a = base.get(path), b = head.get(path);
     const ch: FileChange = { path, status: a && b ? 'changed' : a ? 'removed' : 'added' };
     if (a) ch.base = side(a);
     if (b) ch.head = side(b);
     if (a && b && ch.base!.sha256 === ch.head!.sha256) { unchanged++; continue; }
-    const ta = a ? asText(a) : '', tb = b ? asText(b) : '';
-    if (ta === undefined || tb === undefined) ch.binary = true;
+    const big = (a?.length ?? 0) > MAX_DIFF_FILE || (b?.length ?? 0) > MAX_DIFF_FILE;
+    const ta = a && !big ? asText(a) : a ? undefined : '', tb = b && !big ? asText(b) : b ? undefined : '';
+    if (!big && (ta === undefined || tb === undefined)) ch.binary = true;
+    else if (big) {
+      // large: binary if either side is not text, else a text file we choose not to diff
+      const isText = (x: Uint8Array | undefined) => !x || asText(x) !== undefined;
+      if (isText(a) && isText(b)) { ch.diff = null; ch.reason = 'too-large'; } else ch.binary = true;
+    } else if (diffed >= MAX_DIFFED_FILES) { ch.diff = null; ch.reason = 'budget'; budgetLimited = true; }
     else {
-      const d = unifiedDiff(ta, tb);
-      if (d.length > MAX_DIFF_CHARS) { ch.diff = d.slice(0, MAX_DIFF_CHARS); ch.diffTruncated = true; } else ch.diff = d;
+      const d = unifiedDiff(ta!, tb!, 3, budget);
+      if (d === null) { ch.diff = null; ch.reason = 'budget'; budgetLimited = true; }
+      else { diffed++; if (d.length > MAX_DIFF_CHARS) { ch.diff = d.slice(0, MAX_DIFF_CHARS); ch.diffTruncated = true; } else ch.diff = d; }
     }
     files.push(ch);
   }
-  return { files, unchanged };
+  return { files, unchanged, budgetLimited };
 }

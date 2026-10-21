@@ -2,7 +2,7 @@
 // roles, RLS on). The package fixtures are the dev-seed skill (scripts/dev-seed/docx-outline) built into real zips.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import { createServer, request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -12,6 +12,7 @@ import type pg from 'pg';
 import { HttpError } from '../src/api/sync.ts';
 import { marketplaceHandler } from '../src/api/marketplace.ts';
 import { memoryArtifactStore, putArtifact, sha256Hex, unpack } from '../src/marketplace/artifacts.ts';
+import { publisherIdFor } from '../src/marketplace/creator.ts';
 import { comparePackages, unifiedDiff } from '../src/marketplace/diff.ts';
 import { createLimiter } from '../src/marketplace/ratelimit.ts';
 import type { PermissionRequest } from '../src/marketplace/types.ts';
@@ -94,7 +95,7 @@ describe('marketplace creator API (real Postgres)', { skip }, () => {
     registerValidator('skill', createSkillValidator({ scanner }));
     h = await startMarketplacePg();
     admin = h.admin;
-    await h.owner.query(`INSERT INTO users(id) VALUES ('u1'),('u2'),('u3'),('u4'),('u5')`);
+    await h.owner.query(`INSERT INTO users(id) VALUES ('u1'),('u2'),('u3'),('u4'),('u5'),('u6')`);
     ({ origin: base } = await serve());
     ({ origin: limitedBase } = await serve({ limiter: createLimiter({ limit: 3 }) }));
     ({ origin: smallBase } = await serve({ maxUploadBytes: 2048 }));
@@ -400,16 +401,191 @@ describe('marketplace creator API (real Postgres)', { skip }, () => {
     });
   });
 
+
+  // ── review round: membership, demotion, quotas, gate, cleanup, compare budget
+  test('a_removed_member_cannot_publish_to_the_team_and_their_team_listings_are_demoted_to_private', async () => {
+    const tid = (await call('/v1/marketplace/teams', { user: 'u1', body: { name: 'Demote' } })).json.id as string;
+    await call(`/v1/marketplace/teams/${tid}/members`, { user: 'u1', body: { userId: 'u2' } });
+    const mine = await create('u2', { id: 'u-u2/shared' }, `visibility=team&team=${tid}`);
+    assert.equal(mine.status, 201, JSON.stringify(mine.json));
+    const theirs = await create('u1', { id: 'u-u1/team-only' }, `visibility=team&team=${tid}`);
+    assert.equal((await call('/v1/marketplace/listings/u-u2/shared', { user: 'u1' })).status, 200, 'the team sees it while u2 is a member');
+    assert.equal((await call('/v1/marketplace/listings/u-u1/team-only', { user: 'u2' })).status, 200);
+    const del = await call(`/v1/marketplace/teams/${tid}/members/u2`, { user: 'u1', method: 'DELETE' });
+    assert.equal(del.status, 200);
+    const row = (await admin.query(`SELECT visibility, team_id FROM marketplace_listings WHERE id = 'u-u2/shared'`)).rows[0];
+    assert.deepEqual(row, { visibility: 'private', team_id: null });
+    assert.equal((await admin.query(`SELECT visibility FROM marketplace_listings WHERE id = 'u-u1/team-only'`)).rows[0].visibility, 'team', "others' team listings stay");
+    assert.equal((await call('/v1/marketplace/listings/u-u2/shared', { user: 'u1' })).status, 404, 'the team keeps no foreign-controlled content');
+    // the former member can no longer see the team's other listing, nor fetch its artifact
+    assert.equal((await call('/v1/marketplace/listings/u-u1/team-only', { user: 'u2' })).status, 404);
+    assert.equal((await call(`/v1/marketplace/versions/${theirs.json.versionId}/artifact`, { user: 'u2' })).status, 404);
+    // defence in depth: a team listing whose owner lost membership by any other route cannot take new versions
+    const t2 = (await call('/v1/marketplace/teams', { user: 'u1', body: { name: 'Direct' } })).json.id as string;
+    await call(`/v1/marketplace/teams/${t2}/members`, { user: 'u1', body: { userId: 'u2' } });
+    assert.equal((await create('u2', { id: 'u-u2/direct' }, `visibility=team&team=${t2}`)).status, 201);
+    await admin.query(`DELETE FROM marketplace_team_members WHERE team_id = $1 AND user_id = 'u2'`, [t2]);
+    const r = await call('/v1/marketplace/listings/u-u2/direct/versions', { user: 'u2', zip: pack({ id: 'u-u2/direct', version: '2.0.0' }) });
+    assert.equal(r.status, 403); assert.equal(r.json.code, 'not_a_member');
+    assert.equal(await count(`SELECT count(*) n FROM marketplace_versions WHERE listing_id = 'u-u2/direct'`), 1);
+  });
+
+  test('flipping_a_team_listing_to_private_hides_listing_artifact_preview_and_doc_from_former_members', async () => {
+    const tid = (await call('/v1/marketplace/teams', { user: 'u1', body: { name: 'Flip' } })).json.id as string;
+    await call(`/v1/marketplace/teams/${tid}/members`, { user: 'u1', body: { userId: 'u3' } });
+    const c = await create('u1', { id: 'u-u1/flip' }, `visibility=team&team=${tid}`);
+    const v = c.json.versionId as string;
+    for (const p of [`listings/u-u1/flip`, `versions/${v}/artifact`, `versions/${v}/doc`]) assert.equal((await call(`/v1/marketplace/${p}`, { user: 'u3' })).status, 200, p);
+    assert.equal((await call('/v1/marketplace/listings/u-u1/flip/visibility', { user: 'u1', method: 'PUT', body: { visibility: 'private' } })).status, 200);
+    for (const p of [`listings/u-u1/flip`, `versions/${v}/artifact`, `versions/${v}/doc`, `versions/${v}/preview/0`, `listings/u-u1/flip/versions`]) assert.equal((await call(`/v1/marketplace/${p}`, { user: 'u3' })).status, 404, p);
+  });
+
+  test('members_can_leave_and_the_owner_can_transfer_ownership', async () => {
+    const tid = (await call('/v1/marketplace/teams', { user: 'u4', body: { name: 'Handover' } })).json.id as string;
+    await call(`/v1/marketplace/teams/${tid}/members`, { user: 'u4', body: { userId: 'u5' } });
+    await call(`/v1/marketplace/teams/${tid}/members`, { user: 'u4', body: { userId: 'u2' } });
+    assert.equal((await call(`/v1/marketplace/teams/${tid}/members/u2`, { user: 'u2', method: 'DELETE' })).status, 200, 'leave');
+    assert.equal((await call(`/v1/marketplace/teams/${tid}`, { user: 'u2' })).status, 404);
+    assert.equal((await call(`/v1/marketplace/teams/${tid}/members/u4`, { user: 'u4', method: 'DELETE' })).json.code, 'transfer_ownership_first');
+    assert.equal((await call(`/v1/marketplace/teams/${tid}/owner`, { user: 'u5', body: { userId: 'u5' } })).status, 403, 'only the owner transfers');
+    assert.equal((await call(`/v1/marketplace/teams/${tid}/owner`, { user: 'u4', body: { userId: 'u3' } })).status, 404, 'the new owner must be a member');
+    assert.equal((await call(`/v1/marketplace/teams/${tid}/owner`, { user: 'u4', body: { userId: 'u5' } })).status, 200);
+    const g = await call(`/v1/marketplace/teams/${tid}`, { user: 'u5' });
+    assert.deepEqual(g.json.members.map((m: any) => [m.userId, m.role]).sort(), [['u4', 'member'], ['u5', 'owner']]);
+    assert.equal((await call(`/v1/marketplace/teams/${tid}/members/u4`, { user: 'u4', method: 'DELETE' })).status, 200, 'the former owner can now leave');
+    assert.equal((await call(`/v1/marketplace/teams/${tid}/members`, { user: 'u4', body: { userId: 'u3' } })).status, 404);
+  });
+
+  test('adding_team_members_is_rate_limited_per_owner', async () => {
+    const lim = await serve({ memberAddLimiter: createLimiter({ limit: 2 }) });
+    const tid = (await call('/v1/marketplace/teams', { user: 'u5', body: { name: 'Enum' }, origin: lim.origin })).json.id as string;
+    const st: number[] = [];
+    for (const u of ['nobody1', 'nobody2', 'nobody3']) st.push((await call(`/v1/marketplace/teams/${tid}/members`, { user: 'u5', body: { userId: u }, origin: lim.origin })).status);
+    assert.deepEqual(st, [404, 404, 429]);
+  });
+
+  test('publisher_ids_are_injective_over_user_ids', () => {
+    const ids = ['a_b', 'a-b', 'A-b', 'usr_01HX', 'usr-01hx', 'u1', 'x'.repeat(80), 'x'.repeat(81), '', '--', 'a--b'];
+    const out = ids.map(publisherIdFor);
+    assert.equal(new Set(out).size, ids.length, JSON.stringify(out));
+    for (const o of out) assert.match(o, /^[a-z0-9][a-z0-9-]*$/), assert.ok(o.length <= 80);
+    assert.equal(publisherIdFor('u1'), 'u-u1');
+  });
+
+  test('quotas_cap_listings_versions_and_stored_bytes_per_user', async () => {
+    const L = await serve({ limits: { maxListings: 1 } });
+    assert.equal((await call('/v1/marketplace/listings?visibility=private', { user: 'u4', zip: pack({ id: 'u-u4/one' }), origin: L.origin })).status, 201);
+    const q1 = await call('/v1/marketplace/listings?visibility=private', { user: 'u4', zip: pack({ id: 'u-u4/two' }), origin: L.origin });
+    assert.equal(q1.status, 409); assert.equal(q1.json.code, 'quota_exceeded'); assert.equal(q1.json.quota, 'listings');
+    assert.equal(await count(`SELECT count(*) n FROM marketplace_listings WHERE id = 'u-u4/two'`), 0);
+
+    const V = await serve({ limits: { maxVersionsPerListing: 1 } });
+    assert.equal((await call('/v1/marketplace/listings?visibility=private', { user: 'u5', zip: pack({ id: 'u-u5/v' }), origin: V.origin })).status, 201);
+    const q2 = await call('/v1/marketplace/listings/u-u5/v/versions', { user: 'u5', zip: pack({ id: 'u-u5/v', version: '1.1.0' }), origin: V.origin });
+    assert.equal(q2.status, 409); assert.equal(q2.json.quota, 'versions');
+
+    const size = pack({ id: 'u-u3/b1' }).length;
+    const used = Number((await admin.query(`SELECT coalesce(sum(v.size),0) n FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id WHERE l.owner_user_id = 'u3'`)).rows[0].n);
+    const B = await serve({ limits: { maxBytesPerUser: used + size + 100 } });
+    assert.equal((await call('/v1/marketplace/listings?visibility=private', { user: 'u3', zip: pack({ id: 'u-u3/b1' }), origin: B.origin })).status, 201);
+    const blobs = store.blobs.size;
+    const q3 = await call('/v1/marketplace/listings?visibility=private', { user: 'u3', zip: pack({ id: 'u-u3/b2' }), origin: B.origin });
+    assert.equal(q3.status, 409); assert.equal(q3.json.quota, 'bytes');
+    assert.equal(store.blobs.size, blobs, 'a quota refusal stores nothing');
+    for (const o of [L, V, B]) o.s.close();
+  });
+
+  test('ingest_concurrency_is_bounded_and_the_overflow_gets_429_with_retry_after', async () => {
+    let release!: () => void, entered = 0;
+    const gate = new Promise<void>((r) => { release = r; });
+    const slow: SkillScanner = async (files, name) => { entered++; await gate; return scanner(files, name); };
+    registerValidator('skill', createSkillValidator({ scanner: slow }));
+    const G = await serve({ limits: { ingestConcurrency: 1, ingestQueue: 1 } });
+    try {
+      const done: { i: number; status: number; ra: string | null }[] = [];
+      const all = [0, 1, 2, 3].map((i) => fetch(`${G.origin}/v1/marketplace/listings?visibility=private`, { method: 'POST', headers: { authorization: 'Bearer u2', 'content-type': 'application/zip' }, body: pack({ id: `u-u2/g${i}` }) as any })
+        .then((r) => { done.push({ i, status: r.status, ra: r.headers.get('retry-after') }); return r.status; }));
+      for (let t = 0; t < 100 && (done.length < 2 || entered < 1); t++) await new Promise((r) => setTimeout(r, 30));
+      assert.equal(done.length, 2, 'two overflow requests answered while the first is still scanning');
+      assert.ok(done.every((d) => d.status === 429 && d.ra && Number(d.ra) >= 1), JSON.stringify(done));
+      assert.equal(entered, 1);
+      release();
+      const statuses = (await Promise.all(all)).sort();
+      assert.deepEqual(statuses, [201, 201, 429, 429]);
+    } finally { release(); registerValidator('skill', createSkillValidator({ scanner })); G.s.close(); }
+  });
+
+  test('a_failed_insert_after_the_upload_removes_the_blob_when_nothing_else_references_it', async () => {
+    const blobs = store.blobs.size, arts = await count(`SELECT count(*) n FROM marketplace_artifacts`);
+    const r = await call('/v1/marketplace/listings/u-u1/outline/versions', { user: 'u1', zip: pack({ id: 'u-u1/outline', version: '1.1.0', extra: '\nA different 1.1.0.\n' }) });
+    assert.equal(r.status, 409);
+    assert.equal(store.blobs.size, blobs, 'the orphan blob is gone');
+    assert.equal(await count(`SELECT count(*) n FROM marketplace_artifacts`), arts, 'and so is its artifact row');
+    // bytes that another version already uses are never deleted
+    const dup = await call('/v1/marketplace/listings/u-u1/outline/versions', { user: 'u1', zip: pack({ id: 'u-u1/outline', version: '1.1.0', extra: '\nMore.\n' }) });
+    assert.equal(dup.status, 409);
+    assert.equal(store.blobs.size, blobs);
+    const keep = (await admin.query(`SELECT sha256 FROM marketplace_versions WHERE listing_id = 'u-u1/outline' AND version = '1.1.0'`)).rows[0].sha256;
+    assert.ok(store.blobs.has(keep));
+  });
+
+  test('compare_is_budgeted_against_many_large_changed_files', async () => {
+    const mk = (prefix: string, version: string) => {
+      const files: Record<string, Uint8Array> = {};
+      for (let f = 0; f < 300; f++) files[`f${f}.md`] = enc(Array.from({ length: 2000 }, (_, i) => `${prefix}${f}-${i}`).join('\n'));
+      return zipSync({ 'agentic.marketplace.json': enc(JSON.stringify({ schema: 'agentic.marketplace/1', id: 'pa/big', type: 'skill', version, title: 'Big', summary: 'S', license: 'MIT', compat: { app: '*' }, dependencies: [], permissions: [], files: [], payload: { name: 'big', entry: 'f0.md' } })), ...files });
+    };
+    const a = await seedPublic('pa/big', '1.0.0', mk('a', '1.0.0')), b = await seedPublic('pa/big', '2.0.0', mk('b', '2.0.0'));
+    const t0 = Date.now();
+    const r = await call(`/v1/marketplace/listings/pa/big/compare?base=${a.vid}&head=${b.vid}`, { user: 'u2' });
+    const ms = Date.now() - t0;
+    assert.equal(r.status, 200, JSON.stringify(r.json).slice(0, 300));
+    assert.ok(ms < 2000, `took ${ms} ms`);
+    assert.equal(r.json.budgetLimited, true);
+    assert.equal(r.json.files.length, 300);
+    const diffed = r.json.files.filter((f: any) => typeof f.diff === 'string');
+    assert.ok(diffed.length >= 1 && diffed.length <= 50, `${diffed.length} diffed`);
+    const limited = r.json.files.filter((f: any) => f.diff === null);
+    assert.ok(limited.length >= 250 && limited.every((f: any) => f.reason === 'budget' && f.base.sha256 && f.head.sha256));
+  });
+
+  test('compare_refuses_packages_over_the_unpacked_cap_with_413', async () => {
+    const big = (v: string) => zipSync({ 'agentic.marketplace.json': enc(JSON.stringify({ schema: 'agentic.marketplace/1', id: 'pa/huge', type: 'skill', version: v, title: 'H', summary: 'S', license: 'MIT', compat: { app: '*' }, dependencies: [], permissions: [], files: [], payload: {} })), 'blob.bin': new Uint8Array(33 * 1024 * 1024) }, { level: 1 });
+    const a = await seedPublic('pa/huge', '1.0.0', big('1.0.0')), b = await seedPublic('pa/huge', '1.1.0', big('1.1.0'));
+    const r = await call(`/v1/marketplace/listings/pa/huge/compare?base=${a.vid}&head=${b.vid}`, { user: 'u2' });
+    assert.equal(r.status, 413);
+  });
+
+  test('a_chunked_upload_over_the_cap_is_a_413_too', async () => {
+    const blobs = store.blobs.size;
+    const status = await new Promise<number>((resolve, reject) => {
+      const u = new URL(smallBase);
+      const rq = httpRequest({ host: u.hostname, port: u.port, path: '/v1/marketplace/listings?visibility=private', method: 'POST', headers: { authorization: 'Bearer u1', 'content-type': 'application/zip', 'transfer-encoding': 'chunked' } }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
+      rq.on('error', reject);
+      for (let i = 0; i < 4; i++) rq.write(Buffer.alloc(1000, 1));
+      rq.end();
+    });
+    assert.equal(status, 413);
+    assert.equal(store.blobs.size, blobs);
+  });
+
+  test('team_membership_is_checked_before_the_zip_body_is_read', async () => {
+    // a bogus team with a body that is not even a zip: the answer is the 403, not the 400 the body would earn
+    const r = await call('/v1/marketplace/listings?visibility=team&team=team_000000000000000000', { user: 'u1', zip: enc('not a zip') });
+    assert.equal(r.status, 403);
+  });
+
   // ── teams and my creations
   test('team_membership_is_managed_by_the_team_owner_only', async () => {
     const t = (await call('/v1/marketplace/teams', { user: 'u3', body: { name: 'Crew' } })).json.id as string;
     assert.equal((await call('/v1/marketplace/teams', { user: 'u3', body: { name: '' } })).status, 400);
     assert.equal((await call(`/v1/marketplace/teams/${t}/members`, { user: 'u3', body: { userId: 'u4' } })).status, 201);
     assert.equal((await call(`/v1/marketplace/teams/${t}/members`, { user: 'u3', body: { userId: 'u4' } })).status, 200, 'adding twice is a no-op');
-    assert.equal((await call(`/v1/marketplace/teams/${t}/members`, { user: 'u3', body: { userId: 'nobody' } })).status, 404);
+    const unk = await call(`/v1/marketplace/teams/${t}/members`, { user: 'u3', body: { userId: 'nobody' } });
+    assert.equal(unk.status, 404); assert.equal(unk.json.code, 'unknown_user');
     // a plain member cannot add, remove or rename anyone; a stranger sees nothing
     assert.equal((await call(`/v1/marketplace/teams/${t}/members`, { user: 'u4', body: { userId: 'u5' } })).status, 403);
-    assert.equal((await call(`/v1/marketplace/teams/${t}/members/u3`, { user: 'u4', method: 'DELETE' })).status, 403);
+    assert.equal((await call(`/v1/marketplace/teams/${t}/members/u3`, { user: 'u4', method: 'DELETE' })).status, 403, 'a member can only remove themself');
     assert.equal((await call(`/v1/marketplace/teams/${t}/members`, { user: 'u5', body: { userId: 'u5' } })).status, 404);
     assert.equal((await call(`/v1/marketplace/teams/${t}`, { user: 'u5' })).status, 404);
     assert.equal((await call(`/v1/marketplace/teams/${t}`)).status, 401);
@@ -419,10 +595,12 @@ describe('marketplace creator API (real Postgres)', { skip }, () => {
     assert.deepEqual(Object.keys(g.json.members[0]).sort(), ['role', 'userId'], 'ids and roles only');
     // the owner cannot remove themselves while they are the last owner
     const self = await call(`/v1/marketplace/teams/${t}/members/u3`, { user: 'u3', method: 'DELETE' });
-    assert.equal(self.status, 409); assert.equal(self.json.code, 'last_owner');
+    assert.equal(self.status, 409); assert.equal(self.json.code, 'transfer_ownership_first');
     assert.equal((await call(`/v1/marketplace/teams/${t}/members/u4`, { user: 'u3', method: 'DELETE' })).status, 200);
     assert.equal((await call(`/v1/marketplace/teams/${t}`, { user: 'u4' })).status, 404);
     assert.equal(await count(`SELECT count(*) n FROM marketplace_team_members WHERE team_id = $1`, [t]), 1);
+    const alone = await call(`/v1/marketplace/teams/${t}/members/u3`, { user: 'u3', method: 'DELETE' });
+    assert.equal(alone.status, 409); assert.equal(alone.json.code, 'last_owner');
   });
 
   test('me_lists_my_creations_with_their_latest_version_and_my_teams', async () => {
@@ -436,7 +614,7 @@ describe('marketplace creator API (real Postgres)', { skip }, () => {
     assert.equal((await call('/v1/marketplace/me/listings')).status, 401);
     const teams = await call('/v1/marketplace/me/teams', { user: 'u1' });
     assert.ok(teams.json.items.length >= 2); assert.ok(teams.json.items.every((t: any) => t.role === 'owner' && t.id && t.name));
-    assert.deepEqual((await call('/v1/marketplace/me/teams', { user: 'u5' })).json.items, []);
+    assert.deepEqual((await call('/v1/marketplace/me/teams', { user: 'u6' })).json.items, []);
     const m2 = await call('/v1/marketplace/me/listings', { user: 'u2' });
     const fk = m2.json.items.find((i: any) => i.id === 'u-u2/up');
     assert.equal(fk.forkedFrom, 'pa/up');
@@ -461,11 +639,11 @@ describe('diff', () => {
     const big = Array.from({ length: 3000 }, (_, i) => `a${i}`).join('\n'), big2 = Array.from({ length: 3000 }, (_, i) => `b${i}`).join('\n');
     assert.ok(unifiedDiff(big, big2).startsWith('@@ -1,3000 +1,3000 @@'));
   });
-  test('comparePackages: binary files carry hashes only, long diffs are truncated', () => {
+  test('comparePackages: binary files carry hashes only, long diffs are truncated', async () => {
     const base = new Map([['a.txt', enc('x\n')], ['b.bin', new Uint8Array([0, 1, 2])], ['same.txt', enc('s')]]);
     const long = Array.from({ length: 3000 }, (_, i) => `line ${i}`).join('\n');
     const head = new Map([['a.txt', enc(long)], ['b.bin', new Uint8Array([0, 1, 3])], ['same.txt', enc('s')]]);
-    const r = comparePackages(base, head);
+    const r = await comparePackages(base, head);
     assert.equal(r.unchanged, 1);
     const a = r.files.find((f) => f.path === 'a.txt')!, b = r.files.find((f) => f.path === 'b.bin')!;
     assert.equal(a.diffTruncated, true); assert.ok(a.diff!.length <= 20_000);

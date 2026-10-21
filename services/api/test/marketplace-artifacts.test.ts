@@ -6,7 +6,7 @@ import type pg from 'pg';
 import { S3 } from '../src/api/s3.ts';
 import { ManifestError } from '../src/marketplace/manifest.ts';
 import {
-  ArtifactCorruptError, MANIFEST_NAME, UnpackError, memoryArtifactStore, openArtifact, putArtifact, rewriteManifest, sha256Hex, unpack,
+  ArtifactCorruptError, MANIFEST_NAME, MAX_ARTIFACT_BYTES, UnpackError, memoryArtifactStore, openArtifact, putArtifact, rewriteManifest, sha256Hex, unpack,
 } from '../src/marketplace/artifacts.ts';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
@@ -293,5 +293,16 @@ describe('rewriteManifest', () => {
     assert.ok(unpack(rewriteManifest(p, {})).files.has('référence.md'));
     assert.throws(() => rewriteManifest(p, { id: 'Not Valid' }), ManifestError);
     assert.throws(() => rewriteManifest(p, { version: 'nope' }), ManifestError);
+  });
+  test('tampered input: file bytes that no longer match the old manifest hashes are described by their ACTUAL hashes', () => {
+    const p = base();
+    p.files.set('SKILL.md', enc('# tampered after the manifest was written'));
+    const out = unpack(rewriteManifest(p, { id: 'u-me/x' }));
+    for (const f of out.manifest.files) assert.equal(sha256Hex(out.files.get(f.path)!), f.sha256, f.path);
+    assert.equal(out.manifest.files.find((f: any) => f.path === 'SKILL.md')!.sha256, sha256Hex(enc('# tampered after the manifest was written')));
+  });
+  test('a rewrite that would exceed the artifact size cap is refused as too-large before anything is written', () => {
+    const p = base(); p.files.set('big.bin', new Uint8Array(MAX_ARTIFACT_BYTES));
+    assert.throws(() => rewriteManifest(p, {}), (e: any) => e instanceof UnpackError && e.code === 'too-large');
   });
 });

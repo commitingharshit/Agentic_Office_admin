@@ -18,6 +18,8 @@ export interface ArtifactStore {
   has(sha256: string): Promise<boolean>;
   put(sha256: string, bytes: Uint8Array): Promise<void>;
   get(sha256: string): Promise<Uint8Array | undefined>;
+  /** Removes a blob nothing references any more (creator cleanup). Optional: a store that cannot delete just keeps it. */
+  delete?(sha256: string): Promise<void>;
 }
 
 const SHA_RE = /^[0-9a-f]{64}$/;
@@ -30,6 +32,7 @@ export function memoryArtifactStore(): ArtifactStore & { blobs: Map<string, Uint
     async has(sha) { assertSha(sha); return blobs.has(sha); },
     async put(sha, bytes) { assertSha(sha); blobs.set(sha, new Uint8Array(bytes)); },
     async get(sha) { assertSha(sha); const b = blobs.get(sha); return b && new Uint8Array(b); },
+    async delete(sha) { assertSha(sha); blobs.delete(sha); },
   };
 }
 
@@ -40,6 +43,7 @@ export function s3ArtifactStore(s3: S3, bucket: string): ArtifactStore {
     async has(sha) { assertSha(sha); return (await s3.head(bucket, artifactKey(sha))) !== undefined; },
     async put(sha, bytes) { assertSha(sha); await s3.putBytes(bucket, artifactKey(sha), bytes); },
     async get(sha) { assertSha(sha); return s3.getBytes(bucket, artifactKey(sha), MAX_ARTIFACT_BYTES); },
+    async delete(sha) { assertSha(sha); await s3.delete(bucket, artifactKey(sha)); },
   };
 }
 
@@ -274,6 +278,10 @@ function writeStoredZip(entries: [string, Uint8Array][]): Uint8Array {
   const DATE = 0x0021;                       // 1980-01-01
   const sorted = [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   if (sorted.length >= 0xffff) throw new UnpackError('too-many-files', 'too many entries to write');
+  // the size is known before a byte is allocated or copied
+  let total = 22;
+  for (const [name, data] of sorted) total += 30 + 46 + 2 * te.encode(name).length + data.length;
+  if (total > MAX_ARTIFACT_BYTES) throw new UnpackError('too-large', `the rewritten package would be ${total} bytes, over the ${MAX_ARTIFACT_BYTES} limit`);
   const parts: Uint8Array[] = [], central: Uint8Array[] = [];
   let off = 0;
   for (const [name, data] of sorted) {

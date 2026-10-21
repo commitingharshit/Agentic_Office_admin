@@ -10,6 +10,7 @@ import type pg from 'pg';
 import { openArtifact, putArtifact, rewriteManifest, sha256Hex, unpack, UnpackError, artifactKey, type ArtifactStore } from './artifacts.ts';
 import { comparePackages } from './diff.ts';
 import { compareSemver, ManifestError } from './manifest.ts';
+import { createGate, defaultLimits, type Gate, type Limits } from './limits.ts';
 import { latestPublished } from './search.ts';
 import { newId, SHOWN, StoreError, withUser } from './store.ts';
 import type { ListingType, ManifestV1, UnpackedPackage, ValidationReport } from './types.ts';
@@ -20,7 +21,13 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_TEAMS_OWNED = 20, MAX_TEAM_MEMBERS = 100;
 const INT4 = 2_147_483_647;
 
-export interface CreatorDeps { app: pg.Pool; admin: pg.Pool; store: ArtifactStore }
+export interface CreatorDeps { app: pg.Pool; admin: pg.Pool; store: ArtifactStore; limits: Limits; gate: Gate }
+/** The handler builds one of these per process, so the ingest gate is process-wide. */
+export function creatorDeps(app: pg.Pool, admin: pg.Pool, store: ArtifactStore, limits: Partial<Limits> = {}): CreatorDeps {
+  const l = defaultLimits(limits);
+  return { app, admin, store, limits: l, gate: createGate(l.ingestConcurrency, l.ingestQueue) };
+}
+const COMPARE_MAX_UNPACKED = 32 * 1024 * 1024;
 
 const err = (status: number, code: string, message: string, extra?: Record<string, unknown>) => new StoreError(status, message, code, extra);
 
@@ -34,10 +41,15 @@ async function withAdmin<T>(pool: pg.Pool, fn: (c: pg.PoolClient) => Promise<T>)
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
 }
 
-/** `u-<user id>` as a publisher id: lowercase [a-z0-9-], never longer than 80 characters (a long id is hashed). */
+/**
+ * `u-<user id>` as a publisher id, injective over user ids: an id that is already a plain lowercase slug maps to `u-<id>`;
+ * anything else (case, `_`, long ...) maps to `u-<slug>--<hash of the raw id>`. A plain slug never contains `--`, so the two
+ * forms cannot meet, and two raw ids with the same slug differ in the hash.
+ */
 export function publisherIdFor(uid: string): string {
-  const slug = uid.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return slug && slug.length <= 60 ? `u-${slug}` : `u-${sha256Hex(new TextEncoder().encode(uid)).slice(0, 32)}`;
+  if (/^[a-z0-9]+(-[a-z0-9]+)*$/.test(uid) && uid.length <= 60) return `u-${uid}`;
+  const slug = uid.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+  return `u-${slug}--${sha256Hex(new TextEncoder().encode(uid)).slice(0, 16)}`;
 }
 
 // ---------------------------------------------------------------- ingesting a package
@@ -52,7 +64,13 @@ export function outcomeOf(r: ValidationReport): Outcome {
 export interface Ingested { pkg: UnpackedPackage; bytes: Uint8Array; report: ValidationReport }
 
 /** Unpack (hardened) and validate. Hostile or malformed archives throw a 400 and nothing has been stored. */
-export async function ingest(bytes: Uint8Array, expectType?: ListingType, precheck?: (m: ManifestV1) => Promise<void>): Promise<Ingested> {
+export function ingest(d: Pick<CreatorDeps, 'gate'>, bytes: Uint8Array, expectType?: ListingType, precheck?: (m: ManifestV1) => Promise<void>): Promise<Ingested> {
+  return d.gate.run(() => ingestNow(bytes, expectType, precheck));
+}
+
+// Validation goes through the registry (validate/index.ts), whose skill validator carries the injected scanner: this path and
+// the admin submission path share that one registration, nothing here wires or duplicates a scanner.
+async function ingestNow(bytes: Uint8Array, expectType?: ListingType, precheck?: (m: ManifestV1) => Promise<void>): Promise<Ingested> {
   let pkg: UnpackedPackage;
   try { pkg = unpack(bytes); }
   catch (e) {
@@ -83,6 +101,34 @@ export async function ensurePublisher(admin: pg.Pool, uid: string, wanted: strin
 export async function requireTeamMember(app: pg.Pool, uid: string, team: string): Promise<void> {
   const role = await withUser(app, uid, async (c) => (await c.query(`SELECT 1 FROM marketplace_team_members WHERE team_id = $1`, [team])).rowCount);
   if (!role) throw err(403, 'not_team_member', 'You are not a member of that team.');
+}
+
+// ---------------------------------------------------------------- quotas and cleanup
+
+const quota = (which: string, limit: number, what: string) => err(409, 'quota_exceeded', `Quota exceeded: ${what} (limit ${limit}).`, { quota: which, limit });
+
+/** Counts the caller's own rows (RLS shows owners everything of theirs). `listingId` null = a new listing is being added. */
+async function checkQuota(d: CreatorDeps, uid: string, listingId: string | null, addBytes: number): Promise<void> {
+  const r = await withUser(d.app, uid, async (c) => ({
+    listings: Number((await c.query(`SELECT count(*) n FROM marketplace_listings WHERE owner_user_id = current_setting('app.user_id', true)`)).rows[0].n),
+    bytes: Number((await c.query(`SELECT coalesce(sum(v.size), 0) n FROM marketplace_versions v JOIN marketplace_listings l ON l.id = v.listing_id WHERE l.owner_user_id = current_setting('app.user_id', true)`)).rows[0].n),
+    versions: listingId ? Number((await c.query(`SELECT count(*) n FROM marketplace_versions WHERE listing_id = $1`, [listingId])).rows[0].n) : 0,
+  }));
+  if (listingId === null && r.listings >= d.limits.maxListings) throw quota('listings', d.limits.maxListings, 'too many listings');
+  if (listingId !== null && r.versions >= d.limits.maxVersionsPerListing) throw quota('versions', d.limits.maxVersionsPerListing, 'too many versions on this listing');
+  if (r.bytes + addBytes > d.limits.maxBytesPerUser) throw quota('bytes', d.limits.maxBytesPerUser, 'too much stored package data');
+}
+
+/**
+ * Best effort: after a failed insert, drop the artifact row and the blob unless some version still references the sha. A
+ * REJECTED version keeps its blob on purpose: the version row references it (and the owner can still diff it); its size
+ * counts against the owner's byte quota, which is what bounds garbage.
+ */
+async function cleanupBlob(d: CreatorDeps, sha256: string): Promise<void> {
+  try {
+    await d.admin.query(`DELETE FROM marketplace_artifacts a WHERE a.sha256 = $1 AND NOT EXISTS (SELECT 1 FROM marketplace_versions v WHERE v.sha256 = a.sha256)`, [sha256]);
+    if (!(await d.admin.query(`SELECT 1 FROM marketplace_artifacts WHERE sha256 = $1`, [sha256])).rowCount) await d.store.delete?.(sha256);
+  } catch (e) { console.error(`marketplace: could not clean up orphan artifact ${sha256}:`, e); }
 }
 
 // ---------------------------------------------------------------- committing a version
@@ -120,6 +166,7 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
       for (const dep of m.dependencies) await c.query(`INSERT INTO marketplace_dependencies(version_id, depends_on_listing, range) VALUES ($1,$2,$3)`, [versionId, dep.id, dep.range]);
     });
   } catch (e: any) {
+    await cleanupBlob(d, sha256);
     if (e?.code === '23505') {
       if (/versions_listing_id_version_key/.test(e.constraint ?? '')) throw err(409, 'version_not_greater', `Version ${m.version} already exists.`);
       throw err(409, 'listing_exists', `${listing.id} already exists.`);
@@ -141,6 +188,7 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
   } catch (e) {
     // do not leave a half-made draft (or listing) behind
     await d.admin.query(isNew ? `DELETE FROM marketplace_listings WHERE id = $1` : `DELETE FROM marketplace_versions WHERE id = $1 AND state = 'draft'`, [isNew ? listing.id : versionId]).catch(() => {});
+    await cleanupBlob(d, sha256);
     throw e;
   }
   return { listingId: listing.id, versionId, version: m.version, state: out.state, scanVerdict: out.scan, installable: out.state === 'published', validation: ing.report };
@@ -148,10 +196,16 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
 
 // ---------------------------------------------------------------- the operations
 
-export async function createListing(d: CreatorDeps, uid: string, bytes: Uint8Array, o: { visibility: 'private' | 'team'; team: string | null }): Promise<Committed> {
+/** Cheap checks that need no body: the visibility ceiling and team membership. The handler runs this BEFORE reading the zip. */
+export async function precheckCreate(d: CreatorDeps, uid: string, o: { visibility: 'private' | 'team'; team: string | null }): Promise<void> {
   if (o.visibility === 'team') { if (!o.team) throw err(400, 'team_required', 'team is required when visibility is team.'); await requireTeamMember(d.app, uid, o.team); }
+}
+
+export async function createListing(d: CreatorDeps, uid: string, bytes: Uint8Array, o: { visibility: 'private' | 'team'; team: string | null }): Promise<Committed> {
+  await precheckCreate(d, uid, o);
+  await checkQuota(d, uid, null, bytes.length);
   let publisherId = '';
-  const ing = await ingest(bytes, undefined, async (mf) => {
+  const ing = await ingest(d, bytes, undefined, async (mf) => {
     publisherId = await ensurePublisher(d.admin, uid, mf.id.split('/')[0]);
     if ((await d.admin.query(`SELECT 1 FROM marketplace_listings WHERE id = $1`, [mf.id])).rowCount) throw err(409, 'listing_exists', `${mf.id} already exists.`);
   });
@@ -161,10 +215,17 @@ export async function createListing(d: CreatorDeps, uid: string, bytes: Uint8Arr
 
 /** The listing as its owner may extend it: 404 when invisible, 403 when not theirs or already public. */
 async function ownedListing(app: pg.Pool, uid: string, id: string) {
-  const l = await withUser(app, uid, async (c) => (await c.query(`SELECT l.id, l.type, l.owner_user_id, l.visibility, l.team_id FROM marketplace_listings l WHERE l.id = $1 AND ${SHOWN}`, [id])).rows[0]);
+  const l = await withUser(app, uid, async (c) => {
+    const row = (await c.query(`SELECT l.id, l.type, l.owner_user_id, l.visibility, l.team_id FROM marketplace_listings l WHERE l.id = $1 AND ${SHOWN}`, [id])).rows[0];
+    if (row && row.owner_user_id === uid && row.visibility === 'team')
+      row.member = (await c.query(`SELECT 1 FROM marketplace_team_members WHERE team_id = $1`, [row.team_id])).rowCount === 1;
+    return row;
+  });
   if (!l) throw new StoreError(404, 'Not found.');
   if (l.owner_user_id !== uid) throw err(403, 'not_owner', 'Only the owner can change this listing.');
   if (l.visibility === 'public' || l.visibility === 'org') throw err(403, 'public_requires_review', 'Changes to a public listing go through review.');
+  // a team listing is only controlled by someone who is CURRENTLY in the team
+  if (l.visibility === 'team' && !l.member) throw err(403, 'not_a_member', 'You are no longer a member of this listing\'s team.');
   return l as { id: string; type: ListingType; visibility: string; team_id: string | null };
 }
 
@@ -173,7 +234,8 @@ export async function checkCanAddVersion(d: CreatorDeps, uid: string, id: string
 
 export async function addVersion(d: CreatorDeps, uid: string, id: string, bytes: Uint8Array): Promise<Committed> {
   const l = await ownedListing(d.app, uid, id);
-  const ing = await ingest(bytes, l.type, async (mf) => { if (mf.id !== id) throw err(400, 'manifest_mismatch', `The package id ${mf.id} is not ${id}.`); });
+  await checkQuota(d, uid, id, bytes.length);
+  const ing = await ingest(d, bytes, l.type, async (mf) => { if (mf.id !== id) throw err(400, 'manifest_mismatch', `The package id ${mf.id} is not ${id}.`); });
   const m = ing.pkg.manifest;
   return commit(d, uid, ing, { id }, async (c) => {
     // inside the insert transaction, over every state the owner can see (rejected ones count too)
@@ -217,8 +279,17 @@ export async function forkListing(d: CreatorDeps, uid: string, id: string, slug:
   const version = up.manifest.version.includes('-') ? `${up.manifest.version}.fork.1` : `${up.manifest.version}-fork.1`;
   let rewritten: Uint8Array;
   try { rewritten = rewriteManifest(up, { id: forkId, version }); }
-  catch (e) { if (e instanceof ManifestError) throw err(400, 'bad_slug', `The fork id is not valid: ${e.message}`); throw e; }
-  const ing = await ingest(rewritten, src.type);   // the copy is validated too: this is what gets stored
+  catch (e) {
+    if (e instanceof UnpackError && e.code === 'too-large') throw err(413, 'too_large', 'The package is too large to fork.');
+    if (e instanceof ManifestError) {
+      if (e.path === 'id') throw err(400, 'bad_slug', `The fork id is not valid: ${e.message}`);
+      if (e.path === 'version') throw err(400, 'bad_version', `The fork version is not valid: ${e.message}`);
+      throw err(400, 'bad_package', `The package cannot be forked: ${e.message}`);
+    }
+    throw e;
+  }
+  await checkQuota(d, uid, null, rewritten.length);
+  const ing = await ingest(d, rewritten, src.type);   // the copy is validated too: this is what gets stored
   if (!ing.report.ok) throw fail(ing.report);
   const m = ing.pkg.manifest;
   const r = await commit(d, uid, ing, { id: forkId, type: src.type, publisherId, visibility: 'private', teamId: null, title: m.title, summary: m.summary,
@@ -240,13 +311,17 @@ export async function compareVersions(d: CreatorDeps, uid: string, id: string, b
     const a = await openArtifact(d.app, d.store, { userId: uid }, vid);
     if (!a) throw new StoreError(404, 'Version not found.');
     let pkg: UnpackedPackage;
-    try { pkg = unpack(a.bytes); } catch (e) { if (e instanceof UnpackError) throw err(422, 'unreadable_artifact', `Version ${v.version} cannot be read: ${e.message}`); throw e; }
+    try { pkg = unpack(a.bytes, { maxTotal: COMPARE_MAX_UNPACKED }); }
+    catch (e) {
+      if (e instanceof UnpackError) throw e.code === 'too-large' ? err(413, 'too_large', `Version ${v.version} is too large to compare.`) : err(422, 'unreadable_artifact', `Version ${v.version} cannot be read: ${e.message}`);
+      throw e;
+    }
     return { info: { versionId: v.id as string, listingId: v.listing_id as string, version: v.version as string, sha256: v.sha256 as string }, pkg };
   };
   const [b, h] = [await side(base), await side(head)];
-  const cmp = comparePackages(b.pkg.files, h.pkg.files);
+  const cmp = await comparePackages(b.pkg.files, h.pkg.files);
   const count = (s: string) => cmp.files.filter((f) => f.status === s).length;
-  return { listingId: id, base: b.info, head: h.info, summary: { added: count('added'), removed: count('removed'), changed: count('changed'), unchanged: cmp.unchanged }, files: cmp.files };
+  return { listingId: id, base: b.info, head: h.info, summary: { added: count('added'), removed: count('removed'), changed: count('changed'), unchanged: cmp.unchanged }, budgetLimited: cmp.budgetLimited, files: cmp.files };
 }
 
 // ---------------------------------------------------------------- teams
@@ -272,22 +347,48 @@ export async function addMember(d: CreatorDeps, uid: string, team: string, userI
   await ownerOf(d, uid, team);
   return withAdmin(d.admin, async (c) => {
     if (Number((await c.query(`SELECT count(*) n FROM marketplace_team_members WHERE team_id = $1`, [team])).rows[0].n) >= MAX_TEAM_MEMBERS) throw err(409, 'team_full', `A team has ${MAX_TEAM_MEMBERS} members at most.`);
-    // an unknown user id is a foreign-key violation (23503): the same 404 as any other missing user
+    // an unknown user id is a foreign-key violation (23503); one uniform answer for it
     const r = await c.query(`INSERT INTO marketplace_team_members(team_id, user_id, role) VALUES ($1,$2,'member') ON CONFLICT (team_id, user_id) DO NOTHING RETURNING role`, [team, userId])
-      .catch((e: any) => { throw e?.code === '23503' ? new StoreError(404, 'User not found.') : e; });
+      .catch((e: any) => { throw e?.code === '23503' ? err(404, 'unknown_user', 'No such user.') : e; });
     return { userId, role: r.rows[0]?.role ?? (await c.query(`SELECT role FROM marketplace_team_members WHERE team_id = $1 AND user_id = $2`, [team, userId])).rows[0].role, created: r.rowCount === 1 };
   });
 }
 
+/** Moves every team listing `userId` owns back to private, in the caller's transaction: the team keeps no foreign-controlled content. */
+const demoteListings = (c: pg.PoolClient, team: string, userId: string) =>
+  c.query(`UPDATE marketplace_listings SET visibility = 'private', team_id = NULL, updated_at = now() WHERE team_id = $1 AND owner_user_id = $2`, [team, userId]);
+
+/**
+ * The owner removes anyone; a member may remove only themself (leave). The owner cannot leave while other members exist
+ * (`transfer_ownership_first`) and cannot leave an empty-of-others team either (`last_owner`). Whoever goes, the team
+ * listings they own are demoted to private in the same transaction.
+ */
 export async function removeMember(d: CreatorDeps, uid: string, team: string, userId: string): Promise<void> {
-  await ownerOf(d, uid, team);
+  const role = await withUser(d.app, uid, async (c) => (await c.query(`SELECT role FROM marketplace_team_members WHERE team_id = $1`, [team])).rows[0]?.role as string | undefined);
+  if (!role) throw new StoreError(404, 'Not found.');
+  if (role !== 'owner' && userId !== uid) throw err(403, 'owner_only', 'Only the team owner can remove other members.');
   await withAdmin(d.admin, async (c) => {
     const t = (await c.query(`SELECT role FROM marketplace_team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE`, [team, userId])).rows[0];
     if (!t) throw new StoreError(404, 'Member not found.');
-    if (t.role === 'owner' && Number((await c.query(`SELECT count(*) n FROM marketplace_team_members WHERE team_id = $1 AND role = 'owner'`, [team])).rows[0].n) <= 1)
-      throw err(409, 'last_owner', 'The last owner cannot leave the team.');
+    if (t.role === 'owner') {
+      const others = Number((await c.query(`SELECT count(*) n FROM marketplace_team_members WHERE team_id = $1 AND user_id <> $2`, [team, userId])).rows[0].n);
+      throw others > 0 ? err(409, 'transfer_ownership_first', 'Transfer ownership before leaving the team.') : err(409, 'last_owner', 'The last owner cannot leave the team.');
+    }
+    await demoteListings(c, team, userId);
     await c.query(`DELETE FROM marketplace_team_members WHERE team_id = $1 AND user_id = $2`, [team, userId]);
   });
+}
+
+/** The owner hands the team to an existing member (single-owner model: the former owner becomes a member). */
+export async function transferOwner(d: CreatorDeps, uid: string, team: string, userId: string): Promise<{ owner: string }> {
+  await ownerOf(d, uid, team);
+  await withAdmin(d.admin, async (c) => {
+    if (!(await c.query(`SELECT 1 FROM marketplace_team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE`, [team, userId])).rowCount) throw err(404, 'unknown_member', 'That user is not a member of the team.');
+    await c.query(`UPDATE marketplace_team_members SET role = 'member' WHERE team_id = $1 AND user_id = $2`, [team, uid]);
+    await c.query(`UPDATE marketplace_team_members SET role = 'owner' WHERE team_id = $1 AND user_id = $2`, [team, userId]);
+    await c.query(`UPDATE marketplace_teams SET owner_user_id = $2 WHERE id = $1`, [team, userId]);
+  });
+  return { owner: userId };
 }
 
 /** Members see ids and roles only. A non-member gets 404. */

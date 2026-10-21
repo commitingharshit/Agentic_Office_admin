@@ -64,6 +64,14 @@ version, dependencies) are still inserted as `ao_app` under row-level security.
   base = the recorded upstream version, head = its latest, and returns per-file status, hashes and a
   unified diff for text files up to 256 KB (20 KB cap per file).
 
+Limits (`src/marketplace/limits.ts`, env `AO_MKT_*` or handler `limits`): 100 listings per user, 50
+versions per listing, 1 GiB of stored versions per user (409 `quota_exceeded` with `quota`), and an
+ingest gate of 2 concurrent validations with 8 queued (429 `busy`, `Retry-After`). A comparison does
+at most 50 text diffs, 8M LCS cells and nothing over 64 KB (`diff: null`, `reason`, `budgetLimited`),
+and refuses packages over 32 MiB unpacked (413). Removing a member, or a member leaving, demotes the
+team listings they own to private; a team listing only takes new versions from a current member.
+Members can leave; the owner transfers with `POST teams/:id/owner` first.
+
 # Citations
 
 - [`docs/superpowers/plans/2026-10-21-extension-marketplace.md`](/../docs/superpowers/plans/2026-10-21-extension-marketplace.md)

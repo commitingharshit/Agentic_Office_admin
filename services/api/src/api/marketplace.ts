@@ -28,6 +28,10 @@ export interface MarketplaceDeps {
   admin?: pg.Pool;
   /** Largest accepted package upload; defaults to 64 MiB. */
   maxUploadBytes?: number;
+  /** Quotas and the ingest gate (marketplace/limits.ts); env-overridable defaults. */
+  limits?: Partial<import('../marketplace/limits.ts').Limits>;
+  /** Adding team members: 10 per minute per owner by default, to blunt user-id enumeration. */
+  memberAddLimiter?: Limiter;
 }
 
 const MAX_PREVIEW = 2 * 1024 * 1024, MAX_DOC = 256 * 1024;
@@ -89,6 +93,8 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
   const readLimiter = deps.readLimiter ?? createLimiter({ limit: 300 });
   const cache = deps.cache ?? new ByteLru();
   const maxUpload = deps.maxUploadBytes ?? MAX_UPLOAD;
+  const memberAddLimiter = deps.memberAddLimiter ?? createLimiter({ limit: 10 });
+  const creatorShared = deps.admin ? creator.creatorDeps(deps.app, deps.admin, deps.store, deps.limits) : undefined;
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -121,8 +127,8 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       const q = <T>(fn: (c: pg.PoolClient) => Promise<T>) => store.withUser(deps.app, uid, fn);
       const needAuth = () => { if (!signedIn) throw new HttpError(401, 'Sign in first.'); };
       const cdeps = (): creator.CreatorDeps => {
-        if (!deps.admin) throw new HttpError(503, 'Creating and sharing is not configured on this server.');
-        return { app: deps.app, admin: deps.admin, store: deps.store };
+        if (!creatorShared) throw new HttpError(503, 'Creating and sharing is not configured on this server.');
+        return creatorShared;
       };
 
       // ── catalog
@@ -150,6 +156,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (visibility !== 'private' && visibility !== 'team') throw bad('visibility must be private or team.');
         const team = url.searchParams.get('team');
         if (team !== null && !TEAM_ID.test(team)) throw bad('team is not a valid team id.');
+        await creator.precheckCreate(cd, uid, { visibility, team });   // team membership before the body is read
         const bytes = await zipBody(req, maxUpload);
         return send(201, await creator.createListing(cd, uid, bytes, { visibility, team })), true;
       }
@@ -162,20 +169,28 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
         if (!name) throw bad('name is required.');
         return send(201, await creator.createTeam(cd, uid, name)), true;
       }
-      const tm = /^teams\/([^/]+)(?:\/(members)(?:\/([^/]+))?)?$/.exec(rest);
+      const tm = /^teams\/([^/]+)(?:\/(members|owner)(?:\/([^/]+))?)?$/.exec(rest);
       if (tm) {
         const [, tid, members, member] = tm;
         if (!TEAM_ID.test(tid)) throw notFound();
         if (!members && m === 'GET') { needAuth(); return send(200, await creator.getTeam(cdeps(), uid, tid)), true; }
-        if (members && !member && m === 'POST') {
+        if (members === 'owner' && !member && m === 'POST') {
           const cd = cdeps();
+          const d = await body(req);
+          const userId = text(d.userId, 'userId', 120);
+          if (!userId || !OPAQUE_ID.test(userId)) throw bad('userId is required.');
+          return send(200, await creator.transferOwner(cd, uid, tid, userId)), true;
+        }
+        if (members === 'members' && !member && m === 'POST') {
+          const cd = cdeps();
+          if (!memberAddLimiter.allow(uid)) throw new HttpError(429, 'Too many member additions. Try again in a minute.', { retryAfter: memberAddLimiter.retryAfter(uid) });
           const d = await body(req);
           const userId = text(d.userId, 'userId', 120);
           if (!userId || !OPAQUE_ID.test(userId)) throw bad('userId is required.');
           const r = await creator.addMember(cd, uid, tid, userId);
           return send(r.created ? 201 : 200, { userId: r.userId, role: r.role }), true;
         }
-        if (members && member && m === 'DELETE') {
+        if (members === 'members' && member && m === 'DELETE') {
           const cd = cdeps();
           if (!OPAQUE_ID.test(member)) throw notFound();
           await creator.removeMember(cd, uid, tid, member);
@@ -359,6 +374,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       else console.error(e instanceof ArtifactCorruptError ? `marketplace: ${e.message}` : e);
       // an upload refused for size may still be arriving: do not keep the connection waiting for the rest of it
       if (status === 413) extra = { ...extra, connection: 'close' };
+      if (e instanceof store.StoreError && e.code === 'busy') extra = { ...extra, 'retry-after': '5' };
       if (res.headersSent) { res.end(); return true; }
       send(status, { error: message, ...fields }, extra);
       return true;
