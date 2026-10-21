@@ -2,6 +2,7 @@
 // run and looked at against real data instead of mocks. Never deploy this: it accepts a fixed bearer token.
 //
 //   node scripts/marketplace-dev-server.ts [--port 8791] [--http] [--bulk 30] [--hostile] [--state <file>]
+//   OFFICECLI_TIMEOUT_MS=120000 raises the render-check budget (30 s) on a loaded machine.
 //
 // What it does
 //   1. starts embedded Postgres in a temp directory (the harness of test/helpers/marketplace-pg.ts: stub users/devices/
@@ -13,6 +14,7 @@
 //        agentic-office/board-memo      template (docx) from templates/docx/board-memo.docx
 //        agentic-office/board-update    template (pptx) from templates/pptx/board-update.pptx
 //        dev-community/docx-outline     skill, from scripts/dev-seed/docx-outline/ (ships a python script: exec.script)
+//        dev-community/memo-style       skill, from scripts/dev-seed/memo-style/ (SKILL.md + references only: no confirmation dialog)
 //      previews are rendered with `officecli view <file> screenshot` (skipped, and said so, when officecli is missing),
 //      plus a few reviews and favorites by fake users so the stats are not all zero. `--bulk N` adds N more template
 //      listings (copies of board-memo under other ids) to exercise paging. `--hostile` adds dev-community/hostile-docs, a skill
@@ -122,10 +124,19 @@ async function skillPackage(): Promise<Built> {
     payload: { name: 'docx-outline', entry: 'SKILL.md' } }, files);
 }
 
+async function memoStylePackage(): Promise<Built> {
+  const dir = join(here, 'dev-seed', 'memo-style');
+  const files: Record<string, Uint8Array> = {};
+  for (const rel of ['SKILL.md', 'references/checklist.md']) files[rel] = new Uint8Array(readFileSync(join(dir, rel)));
+  return build({ schema: 'agentic.marketplace/1', id: 'dev-community/memo-style', type: 'skill', version: '1.0.0', title: 'Memo Style', license: 'MIT',
+    summary: 'House style for short decision memos: decision first, then summary, plan, risks and next steps.', compat: { app: '*' }, dependencies: [], permissions: [],
+    payload: { name: 'memo-style', entry: 'SKILL.md' } }, files);
+}
+
 // ---------------------------------------------------------------- main
 
 async function main() {
-  registerValidator('template', createTemplateValidator({ officecli: officecliRenderer({ bin: OFFICECLI }) }));
+  registerValidator('template', createTemplateValidator({ officecli: officecliRenderer({ bin: OFFICECLI, ...(process.env.OFFICECLI_TIMEOUT_MS ? { timeoutMs: Number(process.env.OFFICECLI_TIMEOUT_MS) } : {}) }) }));
   try { registerValidator('skill', createSkillValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { log(`skills scanner unavailable: ${(e as Error).message}`); }
 
   const h = await startMarketplacePg();
@@ -155,6 +166,7 @@ async function main() {
   await insert(await mk('agentic-office/board-memo', memo), { trust: 'official', tags: ['board', 'memo', 'docx'] });
   await insert(await mk('agentic-office/board-update', deck), { trust: 'official', tags: ['board', 'deck', 'pptx'] });
   await insert(await skillPackage(), { trust: 'community', tags: ['docx', 'outline', 'review'] });
+  await insert(await memoStylePackage(), { trust: 'community', tags: ['memo', 'writing'] });
   if (HOSTILE) {
     const md = new Uint8Array(readFileSync(join(here, 'dev-seed', 'hostile-docs', 'SKILL.md')));
     await insert(await build({ schema: 'agentic.marketplace/1', id: 'dev-community/hostile-docs', type: 'skill', version: '1.0.0', title: 'Hostile Docs (fixture)', license: 'MIT',
@@ -191,8 +203,8 @@ async function main() {
   await new Promise<void>((ok) => server.listen(PORT, '127.0.0.1', ok));
   const url = `${HTTP ? 'http' : 'https'}://127.0.0.1:${PORT}`;
   console.log(`marketplace dev server: ${url}  (bearer: ${DEV_TOKEN} = ${DEV_USER}, device dev-device)`);
-  if (STATE) { mkdirSync(dirname(resolve(STATE)), { recursive: true }); writeFileSync(STATE, JSON.stringify({ url, pid: process.pid, token: DEV_TOKEN, user: DEV_USER, device: 'dev-device' })); }
-  log(`seeded: ${relative(repo, join(repo, 'templates'))}/… 2 templates, 1 skill${BULK ? `, ${BULK} bulk templates` : ''}`);
+  if (STATE) { mkdirSync(dirname(resolve(STATE)), { recursive: true }); writeFileSync(STATE, JSON.stringify({ url, pid: process.pid, token: DEV_TOKEN, user: DEV_USER, device: 'dev-device', ...(certDir ? { ca: join(certDir, 'c.pem') } : {}) })); }
+  log(`seeded: ${relative(repo, join(repo, 'templates'))}/… 2 templates, 2 skills${BULK ? `, ${BULK} bulk templates` : ''}`);
 
   let stopping = false;
   const stop = async () => {
