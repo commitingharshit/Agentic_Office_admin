@@ -1,16 +1,12 @@
 // Migration 0017 roles, grants and row-level security on a REAL Postgres (embedded-postgres; skipped if the
 // binary is unusable). Judged as ao_app (RLS applies) and ao_admin (bypasses RLS, triggers still fire).
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 import { parseEffectivePolicy } from '../src/marketplace/policy.ts';
 
 const SHA = (c: string) => c.repeat(64);
-const mig0017 = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations', '0017_marketplace_agents.sql'), 'utf8');
 
 describe('marketplace team assignments and policy RLS (real Postgres)', { skip }, () => {
   let h: MarketplacePg;
@@ -24,7 +20,7 @@ describe('marketplace team assignments and policy RLS (real Postgres)', { skip }
   before(async () => {
     h = await startMarketplacePg();
     ({ owner, app, admin } = h);
-    await owner.query(mig0017);
+    // 0017 is applied by the shared helper (it loads every *_marketplace*.sql in order)
     await owner.query(`
       INSERT INTO users(id) VALUES ('u1'),('u2'),('u3'),('u4'),('u5');
       INSERT INTO marketplace_publishers(id, display_name, owner_user_id) VALUES ('pa','A','u1'),('pb','B','u4');
