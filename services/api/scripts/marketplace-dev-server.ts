@@ -71,9 +71,11 @@ const log = (m: string) => console.log(`[dev-seed] ${m}`);
 
 interface Built { manifest: ManifestV1; bytes: Uint8Array; scan: 'clean' | 'pending' }
 
-async function build(manifest: Omit<ManifestV1, 'files'>, files: Record<string, Uint8Array>): Promise<Built> {
+/** `validate: false` only for the --bulk copies, whose files are byte-identical to a template that was validated in full. */
+async function build(manifest: Omit<ManifestV1, 'files'>, files: Record<string, Uint8Array>, validate = true): Promise<Built> {
   const full: ManifestV1 = { ...manifest, files: Object.entries(files).map(([path, b]) => ({ path, sha256: sha256Hex(b), size: b.length })) };
   const bytes = zipSync({ 'agentic.marketplace.json': enc(JSON.stringify(full, null, 2)), ...files });
+  if (!validate) return { manifest: full, bytes, scan: 'clean' };
   const report = await validateArtifact(full.type, unpack(bytes));
   if (!report.ok) throw new Error(`seed package ${full.id} failed validation: ${JSON.stringify(report.checks.filter((c) => !c.ok))}`);
   const skipped = report.checks.filter((c) => c.skipped).map((c) => c.name);
@@ -154,7 +156,7 @@ async function main() {
   for (let n = 1; n <= BULK; n++) {
     const id = `dev-community/memo-copy-${String(n).padStart(2, '0')}`;
     await insert(await build({ schema: 'agentic.marketplace/1', id, type: 'template', version: '1.0.0', title: `Memo copy ${n}`, summary: `Bulk seed ${n}: the board memo again, to exercise paging.`, license: 'MIT',
-      compat: { app: '*' }, dependencies: [], permissions: [], payload: memo.payload }, memo.files), { trust: 'community', tags: ['bulk'] });
+      compat: { app: '*' }, dependencies: [], permissions: [], payload: memo.payload }, memo.files, false), { trust: 'community', tags: ['bulk'] });
   }
 
   // a few reviews and favorites by fake users: stats are derived by the database from these rows, never typed in
