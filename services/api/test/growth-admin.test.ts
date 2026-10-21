@@ -87,10 +87,11 @@ test('a campaign is built, published, put live and then served to the app; going
   const cr = await post(`/admin/growth/campaigns/${id}/creatives`, { placement: 'chat_empty', kind: 'card', card: card(`Build an LBO ${tag}`) });
   assert.equal(cr.status, 200, JSON.stringify(cr.body));
   assert.equal((await post(`/admin/growth/creatives/${cr.body.creative.id}/publish`, {})).body.status, 'ready');
-  assert.equal((await post(`/admin/growth/campaigns/${id}/status`, { status: 'live' })).body.status, 'live');
+  // Only this test's person, and BEFORE going live: test files run side by side on one database, and a live priority-100
+  // campaign with no target list is served to everyone, which flaked growth-api's "eligible promotion" test.
   const u = await person('served');
-  // Only this test's person: test files run side by side on one database.
   await post(`/admin/growth/campaigns/${id}/targets`, { user_ids: [u.id] }, boss, 'PUT');
+  assert.equal((await post(`/admin/growth/campaigns/${id}/status`, { status: 'live' })).body.status, 'live');
   const got = await call('/v1/promotions/eligible?placement=chat_empty&contract=1', { token: u.tok });
   assert.equal(got.body.item?.campaign_id, id, JSON.stringify(got.body));
   assert.equal(got.body.item.card.actions[0].action.command, 'open_marketplace_item');

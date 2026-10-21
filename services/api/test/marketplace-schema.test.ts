@@ -273,10 +273,14 @@ describe('marketplace schema (full migration chain, real Postgres)', { skip }, (
     const A = `usr_mkt_a_${tag}`, B = `usr_mkt_b_${tag}`;
     const owner = new pg.Client({ connectionString: ownerUrl }); await owner.connect();
     const app = new pg.Client({ connectionString: as('ao_app', process.env.AO_APP_PASSWORD) }); await app.connect();
+    // The visibility guard blocks any session that is a member of ao_app, and a SUPERUSER owner (the throwaway
+    // Postgres in test/run-with-postgres.sh, or a docker POSTGRES_USER) is an implicit member of every role. Making a
+    // listing public is the server's (ao_admin's) job anyway, so that insert runs as ao_admin and works for either owner.
+    const admin = new pg.Client({ connectionString: as('ao_admin', process.env.AO_ADMIN_PASSWORD) }); await admin.connect();
     try {
       await owner.query(`INSERT INTO users(id) VALUES ($1),($2)`, [A, B]);
       await owner.query(`INSERT INTO marketplace_publishers(id, display_name, owner_user_id) VALUES ($1,'T',$2)`, [`pub${tag}`, A]);
-      await owner.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, trust, title, summary) VALUES ($1,'skill',$2,$3,'public','community','t','s')`, [`pub${tag}/x`, `pub${tag}`, A]);
+      await admin.query(`INSERT INTO marketplace_listings(id, type, publisher_id, owner_user_id, visibility, trust, title, summary) VALUES ($1,'skill',$2,$3,'public','community','t','s')`, [`pub${tag}/x`, `pub${tag}`, A]);
       await owner.query(`INSERT INTO marketplace_favorites(listing_id, user_id) VALUES ($1,$2),($1,$3)`, [`pub${tag}/x`, A, B]);
       await app.query('BEGIN');
       await app.query(`SELECT set_config('app.user_id', $1, true)`, [A]);
@@ -284,10 +288,12 @@ describe('marketplace schema (full migration chain, real Postgres)', { skip }, (
       assert.deepEqual(favs.rows.map((r: { user_id: string }) => r.user_id), [A]);
       await app.query('ROLLBACK');
     } finally {
+      // favorites first: deleting a listing cascades to them, and the counter trigger would then bump a counter row whose listing is gone (FK violation)
+      await owner.query('DELETE FROM marketplace_favorites WHERE listing_id = $1', [`pub${tag}/x`]);
       await owner.query('DELETE FROM marketplace_listings WHERE id = $1', [`pub${tag}/x`]);
       await owner.query('DELETE FROM marketplace_publishers WHERE id = $1', [`pub${tag}`]);
       await owner.query('DELETE FROM users WHERE id = ANY($1)', [[A, B]]);
-      await app.end(); await owner.end();
+      await app.end(); await admin.end(); await owner.end();
     }
   });
 });

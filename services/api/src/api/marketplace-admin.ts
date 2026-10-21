@@ -530,7 +530,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     if (!bytes) throw fail(409, 'artifact_missing', 'The stored artifact is missing.');
     return bytes;
   }
-  async function jobBlob(jobId: string, token: string, mime: string, bytes: Buffer) {
+  async function jobBlob(adminId: string, jobId: string, token: string, mime: string, bytes: Buffer) {
     if (!['image/png', 'text/plain', 'application/json'].includes(mime)) throw fail(400, 'bad_request', 'Evidence mime is not allowed.');
     return wrapJ(() => tx(async (c) => {
       const j = await lockLeased(c, jobId, token);
@@ -539,7 +539,18 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const clash = (await c.query('SELECT 1 FROM marketplace_artifacts WHERE sha256 = $1', [r.sha256])).rowCount;
       if (clash) throw fail(400, 'bad_request', 'Evidence must be its own blob, not a package artifact.');
       await c.query('UPDATE marketplace_verify_jobs SET blobs = blobs + 1 WHERE id = $1', [jobId]);
+      // an artifact upload: audited like claim and result; never the bytes, only what identifies them
+      await audit(c, adminId, 'verify_blob', null, { jobId, versionId: j.versionId, sha256: r.sha256, size: r.size, mime, blobs: j.blobs + 1 });
       return { sha256: r.sha256, size: r.size };
+    }));
+  }
+  /** A failed attempt: the state transition (requeue, or dead-letter once the attempts are spent) and its audit row share one transaction. */
+  async function jobFail(adminId: string, jobId: string, token: string, error: string) {
+    return wrapJ(() => tx(async (c) => {
+      const j = await lockLeased(c, jobId, token);
+      const out = await failJob(c, jobId, token, error);
+      await audit(c, adminId, 'verify_fail', null, { jobId, versionId: j.versionId, attempt: j.attempts, maxAttempts: j.maxAttempts, to: out.status, error: clipErr(error), worker: j.leaseOwner });
+      return out;
     }));
   }
   /** Delivers the result: lease-checked, bound to the job's artifact sha AND the version's CURRENT sha, idempotent per job. */
@@ -1156,9 +1167,10 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       if (a === 'verify-jobs' && id && sub === 'blob' && m === 'POST') {
         need('marketplace.verify_worker');
         const mime = String(req.headers['content-type'] ?? '').split(';')[0].trim();
-        return send(200, await jobBlob(vid(id), tokenOf(req), mime, await readBytes(req, 2 * 1024 * 1024))), true;
+        return send(200, await jobBlob(adminId, vid(id), tokenOf(req), mime, await readBytes(req, 2 * 1024 * 1024))), true;
       }
       if (a === 'verify-jobs' && id && sub === 'heartbeat' && m === 'POST') {
+        // deliberately NOT audited: a lease renewal every few seconds per running job would bury the audit log, and it changes no outcome
         need('marketplace.verify_worker');
         const b = await jsonBody(req), token = tokenOf(req);
         return send(200, await wrapJ(() => tx((c) => heartbeatJob(c, vid(id), token, clampLease(b.leaseSec))))), true;
@@ -1167,7 +1179,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       if (a === 'verify-jobs' && id && sub === 'fail' && m === 'POST') {
         need('marketplace.verify_worker');
         const b = await jsonBody(req), token = tokenOf(req);
-        return send(200, await wrapJ(() => tx((c) => failJob(c, vid(id), token, clipErr(b.error))))), true;
+        return send(200, await jobFail(adminId, vid(id), token, clipErr(b.error))), true;
       }
       if (a === 'versions' && id && sub === 'rescan' && m === 'POST') { need('marketplace.write'); return send(200, await rescan(adminId, vid(id))), true; }
       if (a === 'installations' && !id && m === 'GET') { need('marketplace.read'); return send(200, await installations(adminId, sp)), true; }

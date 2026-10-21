@@ -357,7 +357,7 @@ test('reliability and analytics are computed from shared runs only, exactly, and
   const r = (await call('GET', '/admin/reliability?days=30')).body;
   assert.deepEqual([r.totals.runs, r.totals.succeeded, r.totals.failed, r.totals.cancelled, r.totals.running, r.totals.finished], [7, 3, 2, 1, 1, 5]);
   assert.equal(r.totals.success_rate, 3 / 5, 'cancelled and running are not in the rate');
-  assert.equal(r.totals.p50_s, 9, 'median of 2,5,8,10,20,30'); assert.equal(r.totals.p95_s, 27.5);
+  assert.equal(r.totals.p50_s, 9, 'median of 2,5,8,10,20,30'); assert.ok(Math.abs(r.totals.p95_s - 27.5) < 1e-6, `p95 of 2,5,8,10,20,30 is 27.5 (percentile_cont interpolates in float8; got ${r.totals.p95_s})`);
   assert.deepEqual(r.failures.map((f: any) => [f.category, f.runs]).sort(), [['timeout', 1], ['tool_error', 1]]);
   assert.deepEqual(r.tools, [{ name: 'docx.insert_table', steps: 2, failed: 1, retries: 2 }]);
   assert.deepEqual(r.models.map((m: any) => [m.name, m.runs, m.failed]).sort(), [['m-big', 1, 1], ['m-small', 6, 1]]);

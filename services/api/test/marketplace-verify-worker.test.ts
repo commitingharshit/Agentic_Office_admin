@@ -280,6 +280,33 @@ describe('verify job queue, worker protocol and worker (real Postgres)', { skip 
     await h.owner.query(`UPDATE marketplace_verify_jobs SET status = 'dead' WHERE id = $1`, [again.json.jobId]);
   });
 
+  test('fail and blob are audited in the same transaction as the change; heartbeat is deliberately not', async () => {
+    const { vid } = await mkVersion(); const q = await enqueue(vid);
+    const audits = async (action: string) => (await h.owner.query(`SELECT detail FROM admin_audit WHERE action = $1 AND detail->>'jobId' = $2 ORDER BY id`, [`marketplace.${action}`, q.json.jobId])).rows.map((r) => r.detail);
+    const j1 = (await claim()).json.job;
+    assert.equal((await call(`/admin/marketplace/verify-jobs/${j1.id}/heartbeat`, { as: 'wrk', lease: j1.leaseToken, body: {} })).status, 200);
+    const blob = await call(`/admin/marketplace/verify-jobs/${j1.id}/blob`, { as: 'wrk', lease: j1.leaseToken, raw: strToU8('evidence-1'), mime: 'text/plain' });
+    assert.equal(blob.status, 200, JSON.stringify(blob.json));
+    const [b] = await audits('verify_blob');
+    assert.equal(b.sha256, blob.json.sha256); assert.equal(b.size, blob.json.size); assert.equal(b.versionId, vid); assert.equal(b.mime, 'text/plain');
+    assert.ok(!JSON.stringify(b).includes('evidence-1'), 'the bytes never reach the audit row');
+    // a rejected blob (lost lease) changes nothing and is not audited
+    assert.equal((await call(`/admin/marketplace/verify-jobs/${j1.id}/blob`, { as: 'wrk', lease: 'f'.repeat(48), raw: strToU8('x') })).status, 409);
+    assert.equal((await audits('verify_blob')).length, 1);
+    const f1 = await call(`/admin/marketplace/verify-jobs/${j1.id}/fail`, { as: 'wrk', lease: j1.leaseToken, body: { error: 'infra one' } });
+    assert.equal(f1.json.status, 'queued');
+    assert.equal((await call(`/admin/marketplace/verify-jobs/${j1.id}/fail`, { as: 'wrk', lease: j1.leaseToken, body: { error: 'again' } })).status, 409);
+    const a1 = await audits('verify_fail');
+    assert.equal(a1.length, 1, 'a rejected fail is not audited');
+    assert.deepEqual([a1[0].to, a1[0].attempt, a1[0].error, a1[0].versionId], ['queued', 1, 'infra one', vid]);
+    for (let i = 2; i <= 3; i++) { const j = (await claim()).json.job; await call(`/admin/marketplace/verify-jobs/${j.id}/fail`, { as: 'wrk', lease: j.leaseToken, body: { error: `infra ${i}` } }); }
+    const all = await audits('verify_fail');
+    assert.deepEqual(all.map((d) => d.to), ['queued', 'queued', 'dead']);
+    assert.equal((await audits('verify_heartbeat')).length, 0);
+    const hb = (await h.owner.query(`SELECT count(*)::int AS n FROM admin_audit WHERE action LIKE '%heartbeat%'`)).rows[0].n;
+    assert.equal(hb, 0, 'heartbeat is high-frequency and stays unaudited');
+  });
+
   test('lease expiry that exhausts the attempts dead-letters on the next claim (a crash loop cannot wedge a version)', async () => {
     const { vid } = await mkVersion(); const q = await enqueue(vid);
     for (let i = 0; i < 3; i++) { await claim(); await expire(q.json.jobId); }

@@ -27,6 +27,12 @@ else: no catalog reads, no approve, no publish, no enqueue. Superadmin also hold
 | `POST verify-jobs/claim {worker, leaseSec}` | Takes the oldest queued job, or a running one whose lease expired (`FOR UPDATE SKIP LOCKED`, so two workers never get one). Returns a per-claim `leaseToken`. Jobs with no attempts left are dead-lettered first. |
 | `GET verify-jobs/:id/artifact`, `POST .../blob`, `POST .../heartbeat`, `POST .../result`, `POST .../fail` | Every call presents `x-lease-token`; a worker whose lease was taken over gets 409 `lease_lost` on all of them. |
 
+Audit (`admin_audit`, written in the same transaction as the change): `claim` -> `marketplace.verify_claim`, `blob` ->
+`marketplace.verify_blob` (job, version, sha256, size, mime; never the bytes), `result` -> `marketplace.verification_record`,
+`fail` -> `marketplace.verify_fail` (attempt, the `queued`/`dead` transition, the clipped error). `heartbeat` is deliberately NOT
+audited: it renews a lease every few seconds per running job, changes no outcome, and would bury the log. A call rejected with
+`lease_lost` changes nothing and writes no row. Test: `marketplace-verify-worker.test.ts` ("fail and blob are audited").
+
 State machine (`src/marketplace/verify/jobs.ts`): queued -> running (attempt n of 3) -> done. A failed or abandoned attempt goes
 back to queued; the third failure or expired lease makes the job `dead` and records an explicit `incomplete` verification
 (`dead-letter:attempts-exhausted`), so a version is never left silently pending and the approval gate sees a real record.
