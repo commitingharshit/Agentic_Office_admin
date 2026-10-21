@@ -1,0 +1,311 @@
+{
+ "task": "marketplace plan 4 task 0",
+ "date": "2026-10-21",
+ "machine": {
+  "os": "Darwin 25.5.0 (macOS)",
+  "cores": 10,
+  "ram_gb": 24,
+  "other_agents_running": true,
+  "load_average": {
+   "desktop_unit_master": "8.60 8.49 9.00",
+   "desktop_unit_branch": "5.39 7.78 8.77",
+   "layers_check_and_accounts_sync": "47.12 20.23 13.36 (both layers-checks plus accounts-sync ran concurrently)"
+  }
+ },
+ "desktop_unit": {
+  "command": "cd apps/desktop && node build/next/index.ts transpile && node test/unit/node/index.js",
+  "master": {
+   "commit": "f624e036a",
+   "passing": 11678,
+   "failing": 24,
+   "pending": 191,
+   "transpile_s": 9,
+   "run_s": 51,
+   "failures": [
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > handleAction \u2014 session/turnStarted > parses protocol attachment URI strings before passing them to the agent"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > handleAction \u2014 session/turnStarted > passes protocol selection attachment range straight through to the agent"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > pending message sync > syncs queued message to agent on ChatPendingMessageSet"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > pending message sync > parses queued protocol attachment URI strings before passing them to the agent"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > queued message consumption > auto-starts turn from queued message on idle"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > queued message consumption > intercepts queued /rename and drains the message queued behind it"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > queued message consumption > drains a peer chat queued message to the owning session with the chat arg"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > getProtectedResources returns the GitHub resource"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > createSession before authenticate throws ProtocolError(AHP_AUTH_REQUIRED) with protected resources"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate populates models filtered to Claude family"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate populates full pricing metadata from billing tokenPrices"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate surfaces the CAPI chat-default model first; ties preserve insertion order"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate sources configSchema enum from each model's reasoning_effort list (Phase 6.1 / Cycle D3 / I5)"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate rejects non-GitHub resources without disturbing state"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate with the same token does not restart the proxy"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate with a different token restarts the proxy and disposes the old handle"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate retries proxy startup after a transient failure"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > model filter excludes non-Claude entries"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > dispose disposes the proxy handle and is idempotent"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > stale model writes from an old token are dropped"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > first sendMessage on a provisional session materializes it (single startup, single materialize event)"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > proxy credit reports are summed and attached to the turn ChatUsage as copilotUsage"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > dispose releases the proxy handle even with no materialized sessions"
+    },
+    {
+     "suite": "ChatModeService",
+     "title": "ChatModeService > should return builtin modes"
+    }
+   ]
+  },
+  "branch": {
+   "commit": "ea9081e49",
+   "passing": 11882,
+   "failing": 24,
+   "pending": 192,
+   "transpile_s": 9,
+   "run_s": 34,
+   "failures": [
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > handleAction \u2014 session/turnStarted > parses protocol attachment URI strings before passing them to the agent"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > handleAction \u2014 session/turnStarted > passes protocol selection attachment range straight through to the agent"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > pending message sync > syncs queued message to agent on ChatPendingMessageSet"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > pending message sync > parses queued protocol attachment URI strings before passing them to the agent"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > queued message consumption > auto-starts turn from queued message on idle"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > queued message consumption > intercepts queued /rename and drains the message queued behind it"
+    },
+    {
+     "suite": "AgentSideEffects",
+     "title": "AgentSideEffects > queued message consumption > drains a peer chat queued message to the owning session with the chat arg"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > getProtectedResources returns the GitHub resource"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > createSession before authenticate throws ProtocolError(AHP_AUTH_REQUIRED) with protected resources"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate populates models filtered to Claude family"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate populates full pricing metadata from billing tokenPrices"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate surfaces the CAPI chat-default model first; ties preserve insertion order"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate sources configSchema enum from each model's reasoning_effort list (Phase 6.1 / Cycle D3 / I5)"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate rejects non-GitHub resources without disturbing state"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate with the same token does not restart the proxy"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate with a different token restarts the proxy and disposes the old handle"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > authenticate retries proxy startup after a transient failure"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > model filter excludes non-Claude entries"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > dispose disposes the proxy handle and is idempotent"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > stale model writes from an old token are dropped"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > first sendMessage on a provisional session materializes it (single startup, single materialize event)"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > proxy credit reports are summed and attached to the turn ChatUsage as copilotUsage"
+    },
+    {
+     "suite": "ClaudeAgent",
+     "title": "ClaudeAgent > dispose releases the proxy handle even with no materialized sessions"
+    },
+    {
+     "suite": "ChatModeService",
+     "title": "ChatModeService > should return builtin modes"
+    }
+   ]
+  },
+  "new_failures_on_branch": [],
+  "fixed_on_branch": [],
+  "delta_passing": 204
+ },
+ "valid_layers_check": {
+  "cap_s": 900,
+  "master": {
+   "finished": true,
+   "exit": 0,
+   "wall_s": 193
+  },
+  "branch": {
+   "finished": true,
+   "exit": 0,
+   "wall_s": 193
+  },
+  "note": "both ran concurrently under load ~47; single run, not 3; per-step times not captured"
+ },
+ "accounts_sync": {
+  "npm_ci_s": 14,
+  "npm_test": {
+   "tests": 354,
+   "suites": 39,
+   "pass": 333,
+   "fail": 0,
+   "skipped": 21,
+   "wall_s": 55.6
+  },
+  "npm_run_eval": {
+   "wall_s": 13.9,
+   "scan_gate": "12/12 recall, 0/12 FP",
+   "templates": "20/20 recall, 0/5 FP",
+   "gate": "PASSED"
+  },
+  "check_okf_s": 0.2,
+  "check_okf": "64 concepts, 21 units, 0 problems",
+  "note": "measured while load average was ~38-47"
+ },
+ "live_verification_gaps": [
+  {
+   "id": 1,
+   "gap": "Native confirmation dialog for executable skills",
+   "needs": "macOS Accessibility permission for terminal/Orca app",
+   "status": "open (Plan 4 Task 16)"
+  },
+  {
+   "id": 2,
+   "gap": "Revoke through real Hermes",
+   "needs": "dev server admin token, throwaway Hermes home, reconcile command",
+   "status": "open (Task 16)"
+  },
+  {
+   "id": 3,
+   "gap": "Signed-in gate (requireSetup true)",
+   "needs": "second window profile; real browser OAuth is not scriptable, stays manual",
+   "status": "open (Task 16)"
+  },
+  {
+   "id": 4,
+   "gap": "Acceptance flows 6,7,8 in the real window",
+   "needs": "fork build, gateway, dev server; flow 6 lockfile tamper needs window restart",
+   "status": "open (Task 16)"
+  },
+  {
+   "id": 5,
+   "gap": "Task 8 IPC/dialog wiring never run in a window",
+   "needs": "Accessibility (dialog)",
+   "status": "open"
+  },
+  {
+   "id": 6,
+   "gap": "Seed-skill install live",
+   "needs": "Accessibility (native dialog)",
+   "status": "open"
+  },
+  {
+   "id": 7,
+   "gap": "valid-layers-check green on integration",
+   "needs": "idle-ish machine",
+   "status": "closed by this task: exit 0 on branch and master"
+  }
+ ]
+}
