@@ -1,0 +1,27 @@
+{
+  "type": "workflow",
+  "mode": null,
+  "script": "scripts/e2e/plan/marketplace-workflow-flow.mjs",
+  "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/workflowHermes.integration.test.ts",
+  "commit": "70e7335a1358af678ab48d85964d7674f7855e07",
+  "dirty": true,
+  "passedAt": "2026-10-21T10:57:09.615Z",
+  "result": "pass",
+  "covered": [
+    "publish through the real admin handlers with the real validator, the real dag-runtime validate-plan check and the real scanner (manual review, ack, second admin)",
+    "install with the native confirmation while the DAG runtime is stopped: state \"Needs configuration: DAG runtime (not running)\", and a run answers runtime_unavailable \"DAG runtime not running\" (never a success)",
+    "a REAL dag_runtime serve process on a free port: install is configured, a bad parameter and an undeclared parameter are refused before launch, a run with a valid path reaches succeeded with both tool nodes succeeded",
+    "only runs this workflow started can be queried",
+    "server-side revoke + reconcile marks the ledger revoked and a second run is refused at the point of effect",
+    "uninstall removes the ledger entry, the stored plan and any temp plan files"
+  ],
+  "harness": [
+    "GET /v1/marketplace/capabilities is answered by the harness with workflow supported (OPERATIONAL is flipped only by Task 15 on this evidence)",
+    "the tool server is a deterministic stdio stub named docx (scripts/e2e/plan/fixtures/workflow-stub-docx.py), not the real Rust-backed docx MCP"
+  ],
+  "notExercised": [
+    "agent-node workflows (they need the worker profiles on :8661-8664)",
+    "the workbench window (no CDP): the Marketplace UI for workflows lands with Task 11",
+    "cancelling an in-flight run on revoke (the stub finishes instantly; covered by the handler unit tests with a fake runtime CLI)"
+  ]
+}
