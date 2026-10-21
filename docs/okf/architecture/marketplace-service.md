@@ -4,7 +4,7 @@ title: "Marketplace catalog service"
 description: "Marketplace catalog, search, artifact download, favorites, reviews, install sync and reports: public routes inside accounts-sync."
 toolchain: "Node 24 (TypeScript by type stripping), npm"
 build: "cd services/accounts-sync && npm ci"
-test: "cd services/accounts-sync && npm test (marketplace-api, -creator, -rls, -artifacts, -manifest, -schema; embedded Postgres, no setup needed)"
+test: "cd services/accounts-sync && npm test (marketplace-api, -admin, -creator, -rls, -artifacts, -manifest, -schema; embedded Postgres, no setup needed)"
 run: "part of accounts-sync (node src/api/main.ts, port 8787); the routes need the sync API and MinIO configured"
 owns_data: "marketplace_* tables (listings, versions, artifacts, installs, reviews, reports) from migration 0015; artifact bytes in the MinIO bucket ao-marketplace by sha256"
 depends_on: []
@@ -71,6 +71,41 @@ at most 50 text diffs, 8M LCS cells and nothing over 64 KB (`diff: null`, `reaso
 and refuses packages over 32 MiB unpacked (413). Removing a member, or a member leaving, demotes the
 team listings they own to private; a team listing only takes new versions from a current member.
 Members can leave; the owner transfers with `POST teams/:id/owner` first.
+
+## Admin API
+
+Publishing, review, lifecycle and moderation live under `/admin/marketplace/*`
+(`src/api/marketplace-admin.ts`, `marketplaceAdminHandler`, registered in `main.ts` just before the admin
+handler; it needs MinIO). Every route authenticates with `admin.ts`'s bearer-token/Clerk path, checks a
+permission, does the work as `ao_admin`, and writes `admin_audit` (`marketplace.<verb>`, ids and states only,
+never artifact bytes) in the same transaction. A denied request changes nothing and is not audited.
+
+Permissions (`src/marketplace/permissions.ts`, same shape as the control-plane `rbac.ts`, which is not in this
+branch): `marketplace.read|write|review|moderate`; superadmin all, engineer read+write+review, analyst read,
+support and finance none. Roles fail closed: `roleOf(adminId)` comes from `AO_MARKETPLACE_ROLES`
+(`adminName:role,...`; unknown role is a startup error; Clerk admins map by email or user id), and an admin not
+listed is an analyst, so **without `AO_MARKETPLACE_ROLES` the marketplace admin API is read-only**. Separation of
+duties: only a superadmin creates publishers (an unknown publisher is 400 `unknown_publisher`; a failed package never
+creates one), and a non-superadmin cannot approve or publish a version they submitted (409 `self_review`). A DB
+trigger additionally refuses to move a version to approved/published unless its scan verdict is clean or warnings. Replace `permissions.ts` with a re-export of `rbac.ts` when it
+lands. User emails are never returned; the endpoints expose user ids only.
+
+Routes: `POST submissions` (body the package zip, 64 MiB cap enforced while reading; `visibility`,
+`publisher`, `team`) unpacks, validates with the real injected scanner/renderers, stores the artifact, and
+inserts the version as `submitted` (or `rejected` at once when a required check failed), with one
+`marketplace_security_scans` row per check plus an overall `validation` row (`findings.ok/verified`).
+`GET submissions?state` is the review queue; `POST versions/:id/{claim|approve|reject|publish|deprecate|quarantine|revoke}`
+body `{reason}`; `GET catalog`, `GET versions/:id`, `GET installations`, `GET users/:id/installs`,
+`GET|DELETE reviews`, `GET reports` and `POST reports/:id/resolve`, `GET|POST publishers` (superadmin to
+write), `GET analytics`. All state changes go through `transition(from, action)`, the one place the state
+machine lives; approve and publish require the latest overall scan to be ok AND verified (409
+`scan_failed` / `scan_required`), so an unverified skill (no scanner configured) can never be published.
+Each transition also writes a `marketplace_release_events` row naming the actor, which is what
+`marketplace_installed_status()` reads to tell installed devices a version was quarantined or revoked.
+
+Analytics are computed from rows only. Metrics this release does not collect (`invocations`,
+`workflow_completions`, `first_use_activation`) are listed in `notCollected`, and `telemetryCoverage`
+reports devices with install rows against devices known, so partial telemetry is visible as partial.
 
 # Citations
 
