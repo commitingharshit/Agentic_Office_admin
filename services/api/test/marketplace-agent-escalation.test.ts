@@ -62,6 +62,15 @@ describe('validator: escalation, wildcards and risk tier', () => {
     assert.equal(get(cs, 'permissions-subset').ok, false);
     assert.match(get(cs, 'permissions-subset').detail, /acme\/s/);
   });
+  test('a passing permissions-subset says what the compiler derived and what the manifest declared, so a reviewer can compare them', async () => {
+    const bridge = fakeBridge({ check: { ok: true, findings: [], report: okReport(['network']), skills: [] } });
+    const cs = await run(baseBp(), [], [P('network', 'https://a.example'), P('fs.workspace.read')], bridge);
+    const c = get(cs, 'permissions-subset');
+    assert.equal(c.ok, true);
+    assert.equal(c.detail, 'derived: network; declared: fs.workspace.read, network');
+    const none = get(await run(baseBp(), [], []), 'permissions-subset');
+    assert.equal(none.detail, 'derived: none; declared: none');
+  });
   test('the compiler-derived capabilities feed E1', async () => {
     const bridge = fakeBridge({ check: { ok: true, findings: [], report: okReport(['network']), skills: [] } });
     const cs = await run(baseBp(), [], [], bridge);

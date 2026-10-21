@@ -11,11 +11,13 @@ an end-to-end evidence record** (see [`docs/audits/marketplace-truth-table.md`](
 enforcement test `test/marketplace-enablement.test.ts`). Operational: template, skill, routine, memory, hook (declarative mode only),
 bridge, connector (none, api_key, bearer; not oauth2), workflow, agent and bundle (install and use from the marketplace only; evidence in
 `docs/audits/marketplace-type-evidence/agent.json` and `bundle.json`; `GET /capabilities` reports them supported only while the blueprint compiler's
-startup self-check passed). NOT operational: surface (no sandbox), hook scripts and oauth2 connectors. For agents and bundles the Agent Builder form is
-not wired to save, test or publish, there is no Team Library UI and there are no admin pages for them. The
+startup self-check passed). NOT operational: surface (no sandbox), hook scripts and oauth2 connectors. For agents and bundles the Agent Builder is wired to
+save, test (hermetic dry run) and publish from My Creations (`workbench.action.marketplace.createAgent`), and the console has review pages for them
+(`services/control-plane`, see [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)); the Team Library UI is
+tracked separately (acceptance: [`docs/audits/2026-10-21-marketplace-plan2-acceptance.md`](/../docs/audits/2026-10-21-marketplace-plan2-acceptance.md)). The
 desktop reads `GET /v1/marketplace/capabilities` to decide which Discover categories are available; anything it cannot read or does not
-recognise stays "Not available yet". The admin web pages are a patch ([`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)),
-not committed in the control-plane tree here; until applied the admin API (`/admin/marketplace/*`) is driven by tokens and scripts.
+recognise stays "Not available yet". The admin web pages are committed in `services/control-plane` ([`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md));
+they show the permissions that `GET /admin/marketplace/me` reports and set `AO_MARKETPLACE_ROLES` on the API.
 
 One listing identity with immutable, content-hashed versions lives in the accounts-sync Postgres
 ([service](/architecture/marketplace-service.md)). The desktop gets one Marketplace editor tab and a local
@@ -91,8 +93,8 @@ The local index is `~/.agentic-office/marketplace/installed.lock.json`.
 
 # Not built yet
 
-The Agent Builder save/test/publish wiring, the Team Library and admin pages for agents and bundles, surfaces, hook scripts, oauth2 connectors,
-the Configure/Grant UI for advanced types (in progress as a separate step), admin web pages in the control-plane tree, org visibility,
+The Team Library UI for bundles and assignments, live Hermes capabilities in the Agent Builder (it shows the built-in lists), surfaces, hook scripts, oauth2 connectors,
+the Configure/Grant UI for advanced types (in progress as a separate step), org visibility,
 payments, and revocation of an advanced item inside an already-running process for every type (bridge, connector, hook and workflow have
 it with e2e evidence; see the truth table).
 

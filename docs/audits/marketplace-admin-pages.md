@@ -1,12 +1,12 @@
-# Marketplace admin console pages (overlay patch)
+# Marketplace admin console pages
 
-Task 13 of the extension-marketplace plan. The control-plane console (`services/control-plane`, Next.js) is not
-committed on this branch, so the pages are delivered as a patch against that tree instead of files here.
+Task 13 of the extension-marketplace plan, applied into `services/control-plane` by the Plan 2 follow-up (T14). The pages are
+committed code now; the overlay patch `marketplace-admin-pages.patch` was applied (two hunks, in `nav.ts` and `admin-api.ts`,
+were merged by hand against the newer files) and then deleted rather than kept.
 
-## What the patch contains
+## What the pages are
 
-`docs/audits/marketplace-admin-pages.patch` (paths relative to `services/control-plane`, 24 files). It adds a
-**Marketplace** nav group and these pages under `src/app/admin/marketplace/`:
+Paths are relative to `services/control-plane`. The **Marketplace** nav group and these pages under `src/app/admin/marketplace/`:
 
 | Page | Route | Data source |
 |---|---|---|
@@ -33,25 +33,15 @@ Overview item matches its own path exactly, so it is not highlighted on every su
 (`bytes` option for a binary POST, `AdminApiError.body`), `next.config.ts` (`serverActions.bodySizeLimit: '64mb'`
 for package uploads), `users/[id]/page.tsx` (the tab).
 
-## Apply
-
-From the repo root, once `services/control-plane` exists:
-
-    git apply --check --directory=services/control-plane docs/audits/marketplace-admin-pages.patch
-    git apply         --directory=services/control-plane docs/audits/marketplace-admin-pages.patch
-
-The patch was made with `git diff --binary --relative=control-plane <base>..HEAD` in a scratch repo whose base is a
-clone of the umibozu control-plane working tree (uncommitted, as of 2026-10-21). Both applications below succeeded.
-
 ## Required configuration
 
 - On the API (accounts-sync): `AO_MARKETPLACE_ROLES=adminName:role,...`. Without it every admin is an analyst and
   the console's write buttons are refused by the API (403).
-- The console must be told the marketplace permissions: it shows an item only if `/admin/me` lists its `perm`.
-  **`services/accounts-sync/src/api/rbac.ts` in the control-plane tree does not list `marketplace.*` today**, so
-  until its `permissionsOf` includes `marketplace.read|write|review|moderate` (same grants as
-  `src/marketplace/permissions.ts` here), the nav group is hidden. That change is NOT in this patch (it is
-  accounts-sync, not control-plane) and the admin handler must also mount `marketplaceAdminHandler` (main.ts).
+- Permissions: the console no longer needs `marketplace.*` in accounts-sync `rbac.ts`. `adminContext()` (`src/lib/session.ts`) also
+  asks `GET /admin/marketplace/me` (added in the Plan 2 follow-up) and merges exactly the marketplace permissions the marketplace API
+  itself enforces for that admin (`withMarketplacePermissions`, unit-tested). If that endpoint does not answer, the admin has no
+  marketplace permissions (fail closed) and the nav group is hidden. `marketplaceAdminHandler` is mounted in accounts-sync `main.ts`
+  when object storage is configured.
 - The console's usual: `AO_ADMIN_API_URL`, `AO_ADMIN_API_TOKEN`, `ADMIN_HOSTS`.
 
 ## Verified
@@ -79,3 +69,21 @@ clone of the umibozu control-plane working tree (uncommitted, as of 2026-10-21).
 - Non-superadmin views (the dev server ran as superadmin); `allowedActions` is unit-tested for roles.
 - The skipped-check ("not verified") path was exercised only by unit test, not live (the dev machine ran every check).
 - Template uploads (needs OfficeCLI render) were not tried; mobile layout not looked at.
+
+## Plan 2 additions (agents and bundles, T14)
+
+| Page / change | What it does | Data source |
+|---|---|---|
+| Version detail, agent | Blueprint component table (supported / not available yet / unknown), compiler and dry-run result, derived vs declared permissions, dependency list | stored manifest and recorded validation checks; `permissions-subset` now carries `derived: ...; declared: ...` |
+| Version detail, bundle | Members and pins (manifest dependencies, `=version`), closure and union checks, manual-review notice | stored manifest and checks |
+| Version detail, manual review | The server-built summary and a button that sends back the server's own `summarySha256` (only with `marketplace.review`) | `GET submissions/:id`, `POST versions/:id/approve` with `ack_summary_sha256` |
+| `/admin/marketplace/policies` | Organization install policy form (mode, minimum trust, clean scan, rules); disabled and never fetched without `marketplace.policy` | `GET|PUT policies/org` |
+| `/admin/marketplace/team-assignments` | Read-only table with pinned version and `blocked` status | `GET team-assignments` |
+| `/admin/marketplace/collections` (now "Agents & Bundles") | Agents and bundles with their latest version | `GET catalog?type=agent|bundle` |
+| Publish New | Offers `agent` and `bundle` with their package layout | `POST submissions` |
+
+Not shown, because the API does not store it: the dry run's step list (only the outcome and a step count), a bundle's install order
+and sha256 pins (they live in `bundle.json`, which the version detail does not return). The pages say so.
+
+Tests: `node --import tsx --test test/marketplace-plan2.test.ts` (pure helpers) and `test/marketplace-pages.test.ts` (a real
+`next start` against a stub admin API that records requests; needs `npm run build`).

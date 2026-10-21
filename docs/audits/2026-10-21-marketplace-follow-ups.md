@@ -5,7 +5,7 @@ Source of truth for what works today: `marketplace-truth-table.md`, `2026-10-21-
 
 ## Plan 2 (agents, bundles) — server side done, desktop side not
 - Update: the agent adapter is registered, the bundle transaction, policy gate, assignments sync and the publish-to-install flow exist (T10), and agent and bundle are operational for install and use from the marketplace (T15, evidence `marketplace-type-evidence/agent.json`, `bundle.json`). The `AGENT_BUNDLE_INSTALLABLE` hold-back is gone; support still needs the server's compiler self-check.
-- Tasks not started: T8 (fixtures and eval corpora for blueprint/bundle validators), T10 (desktop bundle transaction, policy gate, assignments sync, testAgent), T12 (builder wiring: test agent, dependency graph, save, publish), T13 (Team Library / bundle detail UI), T14 (admin pages patch for agents), T15 (acceptance flows A1 to A8).
+- Update (Plan 2 follow-up, 2026-10-21): T12 builder wiring (test agent on a draft, dependency graph, save, publish), T14 admin pages (committed in services/control-plane) and T15 acceptance (`2026-10-21-marketplace-plan2-acceptance.md`) are done. T13 (Team Library / bundle detail / installed agent UI) is tracked on another branch. T8 and T10 exist in code (fixtures, corpora, bundle transaction, policy gate); their entries here were stale.
 - Open design points: bundle `permissions-union` rejects wildcard scopes; dry run lacks child blueprints and `declared` capabilities; skill trees over about 640 KiB drop out of the dry run; the lockfile `(id, scope)` helpers must replace id-only lookups (~15 places in `marketplaceInstaller.ts`) before agent-scoped skills are recorded.
 
 ## Plan 3 (advanced types) — six types operational, rest open
@@ -19,6 +19,6 @@ Source of truth for what works today: `marketplace-truth-table.md`, `2026-10-21-
 
 ## Cross-cutting
 - Migrations 0016 to 0024 must be renumbered against the other session's 0006 to 0015 at merge time (the compose test guards silent function overwrites).
-- Admin console pages ship as a patch (`marketplace-admin-pages.patch`) for the control-plane tree, which is not on master; needs `marketplace.*` permissions in its `rbac.ts` and `AO_MARKETPLACE_ROLES` on the API.
+- Admin console pages are committed in `services/control-plane` (the overlay patch was applied and removed). They need `AO_MARKETPLACE_ROLES` on the API; permissions come from `GET /admin/marketplace/me`. The Plan 3 overlay `marketplace-admin-pages-advanced.patch` no longer applies cleanly (nav.ts, admin-api.ts and actions.ts moved); re-apply it by hand.
 - Known pre-existing desktop unit failures on master (24: ClaudeAgent 16, AgentSideEffects 7, ChatModeService 1) are unrelated.
 - Discover search box and chips still say "templates and skills".

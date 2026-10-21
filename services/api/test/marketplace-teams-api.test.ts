@@ -8,6 +8,7 @@ import { agentPkg, startHarness, zipOf, type Harness } from './helpers/agents-ha
 import { pkgOf } from './helpers/bundle-fixtures.ts';
 import { baseBp, fakeBridge, safeScanner } from './marketplace-agent-helpers.ts';
 import { parsePolicyDoc } from '../src/api/marketplace-teams.ts';
+import { permissionsOf } from '../src/marketplace/permissions.ts';
 
 const T1 = 'team_' + '1'.repeat(18), T2 = 'team_' + '2'.repeat(18);
 
@@ -201,6 +202,17 @@ describe('team assignments, policy and install-time resolution (real Postgres)',
     for (const raw of ['null', '[]', '{bad']) assert.equal((await t.call(url, { user: 'u2', method: 'PUT', raw })).status, 400, raw);
     const r = await rows(); assert.equal(r.p, before.p); assert.equal(r.r, before.r); assert.equal(r.au, before.au);
     assert.throws(() => parsePolicyDoc({ mode: 'open', rules: [{ effect: 'allow', matchKind: 'publisher', matchValue: 'x'.repeat(121) }] }), /matchValue/);
+  });
+  test('GET /admin/marketplace/me tells the console the caller\'s marketplace role and permissions from the same table the API enforces (no token: 401)', async () => {
+    assert.equal((await t.call('/admin/marketplace/me', { origin: t.adminApi })).status, 401);
+    const root = await t.call('/admin/marketplace/me', { as: 'root' });
+    assert.equal(root.status, 200, JSON.stringify(root.json)); assert.equal(root.json.role, 'superadmin');
+    assert.deepEqual(root.json.permissions, [...permissionsOf('superadmin')]);
+    const ana = await t.call('/admin/marketplace/me', { as: 'ana' });
+    assert.deepEqual(ana.json, { role: 'analyst', permissions: ['marketplace.read'] });
+    assert.equal((await t.call('/admin/marketplace/me', { as: 'not-an-admin-token-at-all-0123456789' })).status, 403);
+    assert.deepEqual([...permissionsOf('support')], [], 'a role with no marketplace grant is told it has none');
+    assert.equal((await t.call('/admin/marketplace/me', { as: 'root', method: 'POST', body: {} })).status, 404);
   });
   test('effective policy: org layer plus every team of the caller, merged by the shared evaluator (deny wins); never another user\'s teams', async () => {
     assert.equal((await t.call('/v1/marketplace/policy/effective')).status, 401);

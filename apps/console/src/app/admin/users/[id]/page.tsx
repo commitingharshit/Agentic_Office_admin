@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'User' };
 const TABS = [
   { key: 'overview', label: 'Overview' }, { key: 'auth', label: 'Authentication & Devices' }, { key: 'sessions', label: 'Workspace Sessions' },
-  { key: 'runs', label: 'Agent Runs' }, { key: 'usage', label: 'Usage & Credits' }, { key: 'support', label: 'Support & Communications' }, { key: 'audit', label: 'Security & Audit' },
+  { key: 'runs', label: 'Agent Runs' }, { key: 'usage', label: 'Usage & Credits' }, { key: 'support', label: 'Support & Communications' }, { key: 'audit', label: 'Security & Audit' }, { key: 'marketplace', label: 'Marketplace' },
 ];
 
 export default async function UserPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -36,6 +36,7 @@ export default async function UserPage({ params, searchParams }: { params: Promi
     tab === 'auth' && can('sessions.read') ? load<any>(`/admin/users/${encodeURIComponent(id)}/keycloak`, person.id) : null,
     tab === 'auth' && can('sessions.read') ? load<any>(`/admin/users/${encodeURIComponent(id)}/sign-ins`, person.id) : null,
   ]);
+  const mkt = tab === 'marketplace' && can('marketplace.read') ? await load<any>(`/admin/marketplace/users/${encodeURIComponent(id)}/installs`, person.id) : null;
   const label = u.email ?? u.id;
 
   return (
@@ -187,6 +188,36 @@ export default async function UserPage({ params, searchParams }: { params: Promi
         </>) : credits ? <ErrorState message={credits.error} /> : <Notice icon="alert">Your role cannot view credits.</Notice>)}
 
       {tab === 'support' && <div className="table-wrap"><EmptyState icon="support" title="No tickets or messages yet">Support tickets, messages sent to this person, and diagnostics they choose to share will be listed here once the Support and Communications modules are switched on.</EmptyState></div>}
+
+      {tab === 'marketplace' && (mkt?.ok ? (
+        <>
+          <div className="grid kpis">
+            <MetricCard icon="device" label="Installed" value={num((mkt.data.items as any[]).filter((i) => ['installed', 'configured', 'enabled', 'disabled', 'update_available'].includes(i.state)).length)} hint={`${num((mkt.data.items as any[]).length)} install records`} />
+            <MetricCard icon="alert" label="Failed installs" value={num((mkt.data.items as any[]).filter((i) => i.state === 'failed').length)} />
+            <MetricCard icon="gift" label="Favorites" value={num(mkt.data.favorites.length)} /><MetricCard icon="support" label="Reviews" value={num(mkt.data.reviews.length)} />
+          </div>
+          <Section title="Installed extensions" count={mkt.data.items.length}>
+            <div className="table-wrap"><table className="dt"><thead><tr><th>Extension</th><th>Version</th><th>State</th><th>Enabled</th><th>Scan</th><th>Scope</th><th>Device</th><th>Installed</th><th>Last error</th></tr></thead>
+              <tbody>{(mkt.data.items as any[]).map((i) => (
+                <tr key={i.id}><td><Link className="mono" href={`/admin/marketplace/catalog?q=${encodeURIComponent(i.listingId)}`}>{i.listingId}</Link></td><td className="mono">{i.version ?? '—'}</td>
+                  <td><StatusBadge status={['installed', 'enabled', 'configured'].includes(i.state) ? 'active' : i.state === 'failed' ? 'failed' : ''}>{String(i.state).replace(/_/g, ' ')}</StatusBadge></td><td>{i.enabled ? 'yes' : 'no'}</td>
+                  <td>{i.scanVerdict === 'clean' ? 'clean' : i.scanVerdict === 'blocked' ? 'blocked' : i.scanVerdict ? 'not verified' : '—'}</td><td>{i.scope ?? '—'}</td><td className="mono">{i.deviceId ?? '—'}</td><td>{when(i.installedAt)}</td><td className="muted">{i.lastError ?? ''}</td></tr>))}
+                {!mkt.data.items.length && <tr><td colSpan={9} className="dt-empty">This person has no marketplace installs.</td></tr>}</tbody></table></div>
+          </Section>
+          <Section title="Teams" count={mkt.data.teams.length}>
+            <div className="table-wrap"><table className="dt"><thead><tr><th>Team id</th><th>Role</th></tr></thead>
+              <tbody>{(mkt.data.teams as any[]).map((t) => <tr key={t.teamId}><td className="mono">{t.teamId}</td><td>{t.role}</td></tr>)}
+                {!mkt.data.teams.length && <tr><td colSpan={2} className="dt-empty">Not a member of any marketplace team.</td></tr>}</tbody></table></div>
+          </Section>
+          <Section title="Favorites" count={mkt.data.favorites.length}>
+            {mkt.data.favorites.length ? <ul>{(mkt.data.favorites as any[]).map((f) => <li key={f.listingId}><span className="mono">{f.listingId}</span> <span className="faint">{ago(f.createdAt)}</span></li>)}</ul> : <p className="hint">No favorites.</p>}
+          </Section>
+          <Section title="Reviews" count={mkt.data.reviews.length}>
+            <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th>Stars</th><th>Review</th><th>When</th></tr></thead>
+              <tbody>{(mkt.data.reviews as any[]).map((r) => <tr key={r.id}><td className="mono">{r.listingId}</td><td>{r.stars}</td><td>{r.body ?? <span className="faint">rating only</span>}</td><td>{ago(r.createdAt)}</td></tr>)}
+                {!mkt.data.reviews.length && <tr><td colSpan={4} className="dt-empty">No reviews.</td></tr>}</tbody></table></div>
+          </Section>
+        </>) : mkt ? <ErrorState message={mkt.error} /> : <Notice icon="alert">Your role cannot view marketplace data.</Notice>)}
 
       {tab === 'audit' && (audit?.ok ? (
         audit.data.entries.length

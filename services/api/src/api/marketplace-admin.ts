@@ -8,7 +8,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
 import { artifactKey, putArtifact, UnpackError, unpack, MAX_ARTIFACT_BYTES, type ArtifactStore } from '../marketplace/artifacts.ts';
-import { can, type AdminRole, type MarketplacePermission } from '../marketplace/permissions.ts';
+import { can, permissionsOf, type AdminRole, type MarketplacePermission } from '../marketplace/permissions.ts';
 import { LIVE_INSTALL, latestPublished } from '../marketplace/search.ts';
 import { INSTALL_STATES } from '../marketplace/store.ts';
 import { BRIDGE_TYPES, OPERATIONAL, TYPE_POLICY, maxTier, needsManualReview, trustAtLeast, type TypePolicy } from '../marketplace/support.ts';
@@ -1140,6 +1140,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
       const sp = url.searchParams;
       const vid = (v: string) => { if (!OPAQUE_ID.test(v)) throw fail(404, 'not_found', 'Not found.'); return v; };
 
+      // The console's permission source for the Marketplace pages: the same table `need()` enforces, so a button is shown exactly when the API would accept it. Reads nothing from the database.
+      if (a === 'me' && !id && m === 'GET') return send(200, { role, permissions: [...permissionsOf(role)] }), true;
       if (a === 'submissions' && !id && m === 'POST') { need('marketplace.write'); const r = await submit(adminId, role, req, sp); return send(r.status, r.body), true; }
       if (a === 'type-policy' && !id && m === 'GET') { need('marketplace.read'); return send(200, await typePolicy(adminId)), true; }
       if (a === 'type-policy' && id && !sub && m === 'PUT') { need('marketplace.policy'); return send(200, await setTypePolicy(adminId, typeParam(id), await jsonBody(req))), true; }
