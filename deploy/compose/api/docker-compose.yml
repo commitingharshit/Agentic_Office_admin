@@ -55,7 +55,7 @@ services:
     image: chainguard/minio-client@sha256:d8a93c5d335509ff353774eefec8f82fa2a2a975e800139702232d8be3dbe6b9
     depends_on: [minio]
     restart: on-failure
-    command: ["mb", "--ignore-existing", "ao/ao-backups", "ao/ao-user-blobs"]
+    command: ["mb", "--ignore-existing", "ao/ao-backups", "ao/ao-user-blobs", "ao/ao-growth-media"]
     environment:
       MC_HOST_ao: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio:9000
 
@@ -131,6 +131,8 @@ services:
       AO_APP_PASSWORD: ${AO_APP_PASSWORD}
       # Our own sign-in (services/control-plane). AUTH_ISSUER is its public base URL; the keys are fetched over the compose network.
       # Announcement email (off unless both are set): Resend's API key and the verified sender address.
+      # Signs the app's links to promotion media (32+ characters; without it links only last for one API process).
+      AO_MEDIA_SIGNING_KEY: ${AO_MEDIA_SIGNING_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       AO_MAIL_FROM: ${AO_MAIL_FROM:-}
       # Keycloak (the identity service). Empty = not in use yet. KEYCLOAK_ISSUER is the realm URL exactly as it appears in tokens (the public one);
@@ -161,6 +163,27 @@ services:
       - ${AO_SERVER_DIR:-..}/package.json:/srv/package.json:ro
     ports:
       - "${BIND_IP}:${API_PORT:-8787}:8787"
+
+  # Turns uploaded promotion images and clips into what the app may play (ffmpeg: trim to 12 s, mute, MP4/WebM, poster, WebP).
+  # Polls media_jobs as ao_admin; reads sources from and writes variants to the ao-growth-media bucket. Never reachable from outside.
+  media-worker:
+    build: { context: ., dockerfile: media-worker.Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    working_dir: /srv
+    command: ["node", "src/growth/media-worker.ts"]
+    environment:
+      PG_HOST: postgres
+      AO_ADMIN_PASSWORD: ${AO_ADMIN_PASSWORD}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ${AO_SERVER_DIR:-..}/src:/srv/src:ro
+      - ${AO_SERVER_DIR:-..}/node_modules:/srv/node_modules:ro
+      - ${AO_SERVER_DIR:-..}/package.json:/srv/package.json:ro
 
   # pgAdmin: a database workbench in the browser. On the host itself open http://localhost:5050;
   # from the tailnet, http://<BIND_IP>:5050. It signs in with PGADMIN_EMAIL / PGADMIN_PASSWORD and
