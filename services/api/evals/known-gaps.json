@@ -1,4 +1,5 @@
 {
   "scan-gate": [],
-  "template-validator": []
+  "template-validator": [],
+  "template-differential": []
 }

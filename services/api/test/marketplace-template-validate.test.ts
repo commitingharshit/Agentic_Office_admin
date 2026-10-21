@@ -277,11 +277,15 @@ describe('no-active-content: parser-based hardening (review round 1)', () => {
       assert.equal((await active(pkgOf('docx', mutate(DOCX, z => { z[part] = strToU8('<a/>'); })))).ok, false, part);
   });
   test('minor: Override existence is case-insensitive and percent-decoded; case-colliding part names rejected', async () => {
-    const p = pkgOf('docx', mutate(DOCX, z => {
-      const ct = new TextDecoder().decode(z['[Content_Types].xml']);
-      z['[Content_Types].xml'] = strToU8(ct.replace('</Types>', '<Override PartName="/WORD/Document.xml" ContentType="application/xml"/><Override PartName="/word/doc%75ment.xml" ContentType="application/xml"/></Types>'));
-    }));
-    assert.equal(get(await run(p), 'ooxml-zip')!.ok, true);
+    // (one Override per part: Task 11 refuses a second declaration for the same part, so each spelling gets its own package)
+    for (const pn of ['/WORD/Extra.xml', '/word/ext%72a.xml']) {
+      const p = pkgOf('docx', mutate(DOCX, z => {
+        z['word/extra.xml'] = strToU8('<a/>');
+        const ct = new TextDecoder().decode(z['[Content_Types].xml']);
+        z['[Content_Types].xml'] = strToU8(ct.replace('</Types>', `<Override PartName="${pn}" ContentType="application/xml"/></Types>`));
+      }));
+      assert.equal(get(await run(p), 'ooxml-zip')!.ok, true, pn);
+    }
     const q2 = pkgOf('docx', mutate(DOCX, z => { z['word/Document.xml'] = strToU8('<a/>'); }));
     assert.equal(get(await run(q2), 'ooxml-zip')!.ok, false);
   });

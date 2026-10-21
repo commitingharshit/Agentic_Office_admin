@@ -8,7 +8,8 @@
     "test:postgres": "bash test/run-with-postgres.sh",
     "eval": "node evals/run-scan-gate.ts && node evals/run-template-validator.ts",
     "eval:scan-gate": "node evals/run-scan-gate.ts",
-    "eval:templates": "node evals/run-template-validator.ts"
+    "eval:templates": "node evals/run-template-validator.ts",
+    "eval:differential": "node evals/run-template-differential.ts"
   },
   "dependencies": {
     "pg": "^8.13.1"
