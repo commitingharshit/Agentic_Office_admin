@@ -2,9 +2,9 @@
   "type": "hook",
   "mode": "declarative",
   "script": "scripts/e2e/plan/marketplace-hook-flow.mjs",
-  "commit": "5ec9a9dd6d747fa6015533c39c8ff73646f3bdcb",
-  "workingTreeDirty": true,
-  "passedAt": "2026-10-21T12:52:01.578Z",
+  "commit": "81acf4edb29b3ed3953cd5638604a00725bcdd1f",
+  "workingTreeDirty": false,
+  "passedAt": "2026-10-21T16:58:27.893Z",
   "result": "pass",
   "layers": [
     "accounts-sync admin+public handlers on embedded Postgres (RLS)",
@@ -87,11 +87,11 @@
       "ok": true
     },
     {
-      "name": "the adapter revoke (what Task 14 wires into reconcile) marks the ledger revoked and removes the stored rules",
+      "name": "reconcile ALONE (no direct adapter call) marked the ledger revoked and removed the stored rules",
       "ok": true
     },
     {
-      "name": "after the revoke the SAME gateway process lets the edit through (hook inert, no restart)",
+      "name": "after reconcile alone the SAME gateway process lets the edit through (hook inert, no restart)",
       "ok": true
     },
     {

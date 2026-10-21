@@ -2,9 +2,9 @@
   "type": "memory",
   "mode": null,
   "script": "scripts/e2e/plan/marketplace-memory-flow.mjs",
-  "commit": "5ec9a9dd6d747fa6015533c39c8ff73646f3bdcb",
+  "commit": "81acf4edb29b3ed3953cd5638604a00725bcdd1f",
   "tree": "dirty",
-  "passedAt": "2026-10-21T12:52:12.043Z",
+  "passedAt": "2026-10-21T16:58:41.558Z",
   "result": "pass",
   "tests": {
     "passing": 5,
@@ -17,12 +17,12 @@
     "desktop install service -> real hermes CLI in a throwaway HERMES_HOME: config.yaml memory.provider bound, `hermes memory status` and `marketplace status --verify` agree",
     "replacing another provider fails closed without consent; with consent the previous provider is recorded",
     "uninstall and revoke restore the previous provider; a revoked item cannot be re-enabled",
+    "a server-side revoke is delivered by RECONCILE alone (no direct adapter call): the binding reverts to the previous provider, the ledger entry is a revoked tombstone, stored memory data is untouched",
     "needs-configuration is reported (not enabled) for a provider whose key is missing",
     "a memory store on disk is never read or deleted",
     "export info is hermes backup only"
   ],
   "notExercised": [
-    "server-side revoke delivery to the Hermes binding (Plan 3 Task 14)",
     "native confirmation dialog and consent UI (Plan 3 Task 11)",
     "a running gateway picking the new provider up (restart_required is reported, not simulated)"
   ]

@@ -2,9 +2,9 @@
   "type": "agent",
   "script": "scripts/e2e/plan/marketplace-agent-flow.mjs",
   "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/bundleHermes.integration.test.ts",
-  "commit": "81acf4edb29b3ed3953cd5638604a00725bcdd1f",
+  "commit": "6e48bad559c8ca1c3c43045825da77c5360f050b",
   "dirty": true,
-  "passedAt": "2026-10-21T17:03:26.273Z",
+  "passedAt": "2026-10-21T17:11:43.296Z",
   "result": "pass",
   "steps": [
     "install agent 1.0.0 through the real handlers and real hermes",
