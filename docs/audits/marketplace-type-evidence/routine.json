@@ -3,9 +3,9 @@
   "mode": null,
   "script": "scripts/e2e/plan/marketplace-routine-flow.mjs",
   "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/routineHermes.integration.test.ts",
-  "commit": "a1db3568a19ac47ab29904cb119c4cc18bdcb38e",
+  "commit": "9a07e058a0ea56c95d41bb50f6688b10b714ba06",
   "dirty": true,
-  "passedAt": "2026-10-21T11:07:05.363Z",
+  "passedAt": "2026-10-21T11:40:18.511Z",
   "result": "pass",
   "covered": [
     "publish through the real admin handlers with the real validator and scanner (manual review, ack, second admin)",

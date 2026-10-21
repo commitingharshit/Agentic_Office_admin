@@ -2,9 +2,9 @@
   "type": "connector",
   "mode": "api_key",
   "script": "scripts/e2e/plan/marketplace-connector-flow.mjs",
-  "commit": "4f0de983aa63ae928e633bcb51040c5e34ad6fc3",
+  "commit": "9a07e058a0ea56c95d41bb50f6688b10b714ba06",
   "workingTreeDirty": true,
-  "passedAt": "2026-10-21T11:21:19.625Z",
+  "passedAt": "2026-10-21T11:42:08.846Z",
   "result": "pass",
   "steps": [
     "elevated install without the native confirmation is refused and installs nothing",

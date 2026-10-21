@@ -3,9 +3,9 @@
   "mode": null,
   "script": "scripts/e2e/plan/marketplace-workflow-flow.mjs",
   "assertions": "apps/desktop/src/vs/platform/marketplace/test/node/workflowHermes.integration.test.ts",
-  "commit": "a1db3568a19ac47ab29904cb119c4cc18bdcb38e",
+  "commit": "9a07e058a0ea56c95d41bb50f6688b10b714ba06",
   "dirty": true,
-  "passedAt": "2026-10-21T11:09:16.299Z",
+  "passedAt": "2026-10-21T11:41:20.336Z",
   "result": "pass",
   "covered": [
     "publish through the real admin handlers with the real validator, the real dag-runtime validate-plan check and the real scanner (manual review, ack, second admin)",
