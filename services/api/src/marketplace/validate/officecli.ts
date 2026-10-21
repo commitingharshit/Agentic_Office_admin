@@ -23,6 +23,34 @@ async function acquire(): Promise<void> {
 }
 function release(): void { const w = waiters.shift(); if (w) w(); else active--; }
 
+export interface SpawnResult { code: number | null; stdout: string; stderr: string; timedOut?: boolean; error?: string }
+/** The one safe-spawn helper (also used by verify/tools/*): argument array (never a shell), own process group killed as a
+ *  group on timeout or abort, minimal environment, stdout/stderr captured up to a cap, resolves on the timeout itself. */
+export function spawnBounded(bin: string, args: string[], o: { cwd: string; timeoutMs: number; maxStdout?: number; maxStderr?: number; signal?: AbortSignal }): Promise<SpawnResult> {
+  const maxOut = o.maxStdout ?? 0, maxErr = o.maxStderr ?? MAX_STDERR;
+  const env = { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? o.cwd, LANG: 'C.UTF-8' };
+  return new Promise<SpawnResult>((resolve) => {
+    let stdout = '', stderr = '', settled = false;
+    if (o.signal?.aborted) { resolve({ code: null, stdout, stderr, timedOut: true }); return; }
+    const child = spawn(bin, args, { stdio: ['ignore', maxOut > 0 ? 'pipe' : 'ignore', 'pipe'], cwd: o.cwd, env, detached: true });
+    const kill = () => { try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* gone */ } } };
+    const finish = (v: { code: number | null; timedOut?: boolean; error?: string }) => {
+      if (settled) return; settled = true; clearTimeout(timer); o.signal?.removeEventListener('abort', onAbort);
+      child.stderr?.destroy(); child.stdout?.destroy();
+      resolve({ stdout, stderr, ...v });
+    };
+    const onAbort = () => { kill(); finish({ code: null, timedOut: true }); };
+    const timer = setTimeout(() => { kill(); finish({ code: null, timedOut: true }); }, o.timeoutMs);
+    o.signal?.addEventListener('abort', onAbort, { once: true });
+    child.stdout?.on('data', (d: Buffer) => { if (stdout.length < maxOut) stdout += d.toString('utf8').slice(0, maxOut - stdout.length); });
+    child.stderr.on('data', (d: Buffer) => { if (stderr.length < maxErr) stderr += d.toString('utf8').slice(0, maxErr - stderr.length); });
+    child.on('error', (e) => finish({ code: null, error: e.message }));
+    child.on('exit', (code) => finish({ code }));
+  });
+}
+/** Runs fn inside the shared concurrency cap (2 children at a time across every officecli/kernel caller). */
+export async function withSpawnSlot<T>(fn: () => Promise<T>): Promise<T> { await acquire(); try { return await fn(); } finally { release(); } }
+
 export function officecliRenderer(opts: { bin?: string; timeoutMs?: number } = {}): OfficeRenderer {
   const bin = opts.bin ?? process.env.OFFICECLI_BIN ?? 'officecli';
   const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
@@ -35,23 +63,7 @@ export function officecliRenderer(opts: { bin?: string; timeoutMs?: number } = {
       const input = join(dir, `in.${format}`), out = join(dir, 'page1.png');
       await writeFile(input, file);
       const args = ['view', input, 'screenshot', '--out', out, '--page', '1', '--screenshot-width', '900', '--screenshot-height', '700'];
-      const env = { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? dir, LANG: 'C.UTF-8' };
-      const r = await new Promise<{ code: number | null; stderr: string; timedOut?: boolean; error?: string }>((resolve) => {
-        let stderr = '', settled = false;
-        const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'], cwd: dir, env, detached: true });
-        const finish = (v: { code: number | null; timedOut?: boolean; error?: string }) => {
-          if (settled) return; settled = true; clearTimeout(timer);
-          child.stderr?.destroy();
-          resolve({ stderr, ...v });
-        };
-        const timer = setTimeout(() => {
-          try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* gone */ } }
-          finish({ code: null, timedOut: true });
-        }, timeoutMs);
-        child.stderr.on('data', (d: Buffer) => { if (stderr.length < MAX_STDERR) stderr += d.toString('utf8').slice(0, MAX_STDERR - stderr.length); });
-        child.on('error', (e) => finish({ code: null, error: e.message }));
-        child.on('exit', (code) => finish({ code }));
-      });
+      const r = await spawnBounded(bin, args, { cwd: dir, timeoutMs, maxStdout: 0 });
       if (r.error) return { ok: false, detail: `could not run officecli: ${r.error}` };
       if (r.timedOut) return { ok: false, detail: `officecli timed out after ${timeoutMs} ms` };
       if (r.code !== 0) return { ok: false, detail: `officecli exited ${r.code}: ${r.stderr.trim().slice(0, 300)}` };

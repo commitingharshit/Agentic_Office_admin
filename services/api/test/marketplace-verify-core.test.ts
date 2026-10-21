@@ -204,10 +204,15 @@ describe('adapters and tools', () => {
 });
 
 describe('conformance', () => {
-  // TODO(Tasks 3 and 4): enable once the template and skill pipelines are registered. A type with a validator but no
-  // pipeline must fail this test; that is what forces Plans 2 and 3 to bring one.
-  test('every type with a validator has a pipeline', { todo: 'enabled in Task 4' }, () => {
-    for (const t of LISTING_TYPES) if (getValidator(t)) assert.ok(getPipeline(t), `no pipeline for ${t}`);
+  // A type with a validator but no pipeline must fail this test; that is what forces Plans 2 and 3 to bring one.
+  // Types whose pipeline has landed are listed in COVERED and are checked strictly; the rest are todo until their task registers one.
+  const COVERED: ListingType[] = ['template'];
+  test('every type with a validator has a pipeline (template: covered)', async () => {
+    await import('../src/marketplace/verify/stages/template/index.ts'); // registers the template pipeline
+    for (const t of COVERED) { assert.ok(getValidator(t), `${t} has a validator`); assert.ok(getPipeline(t), `no pipeline for ${t}`); }
+  });
+  test('every type with a validator has a pipeline (remaining types)', { todo: 'skill: enabled in Task 4; Plan 3 types: when their pipelines land' }, () => {
+    for (const t of LISTING_TYPES) if (getValidator(t) && !COVERED.includes(t)) assert.ok(getPipeline(t), `no pipeline for ${t}`);
   });
   test('every registered pipeline satisfies the contract', () => { for (const d of listPipelines()) assertPipelineContract(d); });
 });

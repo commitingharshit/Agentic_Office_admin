@@ -74,6 +74,7 @@ function shape(base: { id: string; title: string; required: boolean }, out: Stag
   const { evidence, dropped } = normaliseEvidence(out.evidence);
   if (dropped) evidence.push({ kind: 'text', label: 'evidence truncated', detail: `${dropped} evidence item(s) were malformed or over the per-stage cap` });
   const r: StageResult = { ...base, status: out.status, evidence, durationMs: 0 };
+  if (out.required === false) r.required = false;
   if (out.status !== 'pass') {
     if (typeof out.reason !== 'string' || !out.reason) return bad(`${out.status} without a reason`);
     r.reason = clip(out.reason, MAX_REASON);

@@ -41,7 +41,7 @@ export interface TaskRun { [k: string]: unknown }
 export interface PipelineTools {
   officecli?: { validate(file: Uint8Array, fmt: string): Promise<{ ok: boolean; output: string }>;
                 issues(file: Uint8Array, fmt: string, types?: string[]): Promise<{ type: string; message: string; path?: string }[]>;
-                renderPages(file: Uint8Array, fmt: string, o: { maxPages: number }): Promise<{ pages: { png: Uint8Array; page: number }[]; totalPages: number }> };
+                renderPages(file: Uint8Array, fmt: string, o: { maxPages: number; width?: number; height?: number; signal?: AbortSignal }): Promise<{ pages: { png: Uint8Array; page: number }[]; totalPages: number }> };
   kernel?: { run(kernel: 'xlsx' | 'docpatch' | 'pptx' | 'pdf', args: string[], file: Uint8Array): Promise<{ code: number; json?: unknown; stderr: string }> };
   visual?: { compare(ref: Uint8Array, rendered: Uint8Array, o: { clip: boolean; dino: boolean }): Promise<{ pixel: Measured; ssim: Measured; clip?: Measured; dino?: Measured }>;
              layout(file: Uint8Array, fmt: string): Promise<{ rule: string; blocking: boolean; slide: number; message: string }[]> };
@@ -50,7 +50,8 @@ export interface PipelineTools {
 }
 export interface EvidenceSink { addBlob(mime: BlobMime, bytes: Uint8Array): Promise<NonNullable<Evidence['blob']>> }
 export interface StageContext { pkg: UnpackedPackage; tools: PipelineTools; evidence: EvidenceSink; signal: AbortSignal; previous?: PipelineResult }
-export type StageOutput = Omit<StageResult, 'id' | 'title' | 'required' | 'durationMs'>;
+/** `required: false` lets a stage lower its own requiredness for a package it does not apply to (e.g. formula-validity on a docx); it can never raise it. */
+export type StageOutput = Omit<StageResult, 'id' | 'title' | 'required' | 'durationMs'> & { required?: false };
 export interface StageDef {
   id: string; title: string; required: boolean; timeoutMs: number;
   /** Ids of EARLIER stages this one depends on: if any failed or was skipped, this stage is skipped with a reason. */
