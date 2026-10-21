@@ -1,0 +1,33 @@
+# The growth stack for LOCAL work (never the server): Postgres, MinIO, the API, the ffmpeg media worker, a migrate job and a dev seed.
+# Used by scripts/dev/growth-stack.sh as
+#   docker compose -p ao-growth -f docker-compose.yml -f docker-compose.growth.yml --profile growth ...
+# The one-shot jobs below only run with --profile growth, so a normal `docker compose up` on the server never starts them.
+services:
+  migrate:
+    profiles: ["growth"]
+    image: node:24.15.0-alpine
+    depends_on:
+      postgres: { condition: service_healthy }
+    working_dir: /w
+    command: ["node", "db/migrate.ts"]
+    environment:
+      DATABASE_URL: postgres://ao_owner:${PG_OWNER_PASSWORD}@postgres:5432/agentic_office
+      AO_APP_PASSWORD: ${AO_APP_PASSWORD}
+      AO_READONLY_PASSWORD: ${AO_READONLY_PASSWORD}
+      AO_ADMIN_PASSWORD: ${AO_ADMIN_PASSWORD}
+      AO_AUTH_PASSWORD: ${AO_AUTH_PASSWORD:-auth-dev}
+      AO_BILLING_PASSWORD: ${AO_BILLING_PASSWORD:-billing-dev}
+    volumes:
+      - ${AO_SERVER_DIR:-..}:/w:ro
+
+  # Fixed dev people, dev tokens and one campaign per placement (db/seed/growth.sql). It refuses a database that holds anyone else.
+  growth-seed:
+    profiles: ["growth"]
+    image: pgvector/pgvector:pg17
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    environment:
+      PGPASSWORD: ${PG_OWNER_PASSWORD}
+    command: ["psql", "-v", "ON_ERROR_STOP=1", "-h", "postgres", "-U", "ao_owner", "-d", "agentic_office", "-f", "/seed/growth.sql"]
+    volumes:
+      - ${AO_SERVER_DIR:-..}/db/seed:/seed:ro

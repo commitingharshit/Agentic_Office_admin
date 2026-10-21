@@ -6,11 +6,15 @@
 set -euo pipefail
 cd "${SERVICES_DIR:-$(git rev-parse --show-toplevel)/services}"
 GLOB="${1:-test/*.test.ts}"
+# Each checkout tests in its own directory on the host (~/ao-tests/<checkout name>), never in ~/ao-control-plane: that one is what a live deploy
+# migrates from, and a test run from another branch must not leave its migrations or code there. node_modules are copied in once.
+WT="${AO_TEST_NAME:-$(basename "$(git rev-parse --show-toplevel)")}"
+DIR="\$HOME/ao-tests/$WT"
 tar --exclude=node_modules --exclude=.DS_Store --no-xattrs -czf - accounts-sync/db accounts-sync/test accounts-sync/src accounts-sync/package.json \
-  | ssh -o BatchMode=yes ateam-tanmay-hp 'mkdir -p ~/ao-control-plane && cd ~/ao-control-plane && tar xzf - 2>/dev/null'
+  | ssh -o BatchMode=yes ateam-tanmay-hp "mkdir -p $DIR && cd $DIR && tar xzf - 2>/dev/null; for m in accounts-sync control-plane; do [ -d ~/ao-control-plane/\$m/node_modules ] && [ ! -d $DIR/\$m/node_modules ] && [ -d $DIR/\$m ] && cp -a ~/ao-control-plane/\$m/node_modules $DIR/\$m/ || true; done; find $DIR -name '._*' -delete 2>/dev/null || true"
 ssh -o BatchMode=yes ateam-tanmay-hp "bash -s" <<REMOTE | grep -vE '^npm notice' | tail -${TAIL:-60}
 set -euo pipefail
-cd ~/ao-control-plane
+cd $DIR
 NET=ao-test; docker network inspect \$NET >/dev/null 2>&1 || docker network create \$NET >/dev/null
 PGC=ao-test-pg-\$\$
 docker run -d --rm --name \$PGC --network \$NET --network-alias postgres -e POSTGRES_USER=ao_owner -e POSTGRES_PASSWORD=owner-test -e POSTGRES_DB=agentic_office pgvector/pgvector:pg17 >/dev/null
