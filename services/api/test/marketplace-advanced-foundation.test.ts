@@ -108,14 +108,7 @@ describe('checkBounded / checkOnlyFiles / impliedPermissions / risk tier', () =>
 
 describe('placeholders and the support table', () => {
   test('every advanced type answers type-supported:false with a reason and path; surface/agent/bundle too', async () => {
-    // hook, memory, routine, bridge and workflow are no longer placeholders; only connector remains
-    for (const t of ['connector'] as const) {
-      const r = await validateArtifact(t, pkgOf(t));
-      const c = r.checks.find((k) => k.name === 'type-supported');
-      assert.ok(c && c.ok === false && /not available|not supported/i.test(c.detail ?? ''), t);
-      assert.equal(r.ok, false, t);
-      assert.equal(r.riskTier, TYPE_POLICY[t].riskTier, `${t} floor`);
-    }
+    // hook, memory, routine, bridge, workflow and connector are no longer placeholders; only surface/agent/bundle remain
     const s = await validateArtifact('surface', pkgOf('surface'));
     assert.equal(s.checks.find((k) => k.name === 'type-supported')?.ok, false);
   });
