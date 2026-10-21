@@ -3,7 +3,7 @@ import { DataTable, FilterBar, type Column } from '../../../../components/admin/
 import { CursorPager, StateBadge, VerdictBadge } from '../../../../components/admin/marketplace';
 import { ErrorState, Flash, PageHeader, StatusBadge, ago, num } from '../../../../components/admin/bits';
 import { load } from '../../../../lib/admin-api';
-import { CATALOG_FILTERS, LISTING_TYPES, VERSION_STATES, VISIBILITIES, listQuery, ratingText, verificationTone, verificationWord } from '../../../../lib/marketplace';
+import { CATALOG_FILTERS, LISTING_TYPES, RISK_TIERS, VERSION_STATES, VISIBILITIES, listQuery, ratingText, tierTone, verificationTone, verificationWord } from '../../../../lib/marketplace';
 import { adminContext } from '../../../../lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -23,13 +23,16 @@ export default async function Catalog({ searchParams }: { searchParams: Promise<
         { name: 'type', label: 'Type', type: 'select', options: opts(LISTING_TYPES, 'Any type') },
         { name: 'publisher', label: 'Publisher', placeholder: 'publisher id', width: 160 },
         { name: 'visibility', label: 'Visibility', type: 'select', options: opts(VISIBILITIES, 'Any visibility') },
-        { name: 'state', label: 'State', type: 'select', options: opts(VERSION_STATES, 'Any state') }]} />
+        { name: 'state', label: 'State', type: 'select', options: opts(VERSION_STATES, 'Any state') },
+        { name: 'riskTier', label: 'Risk tier', type: 'select', options: opts(RISK_TIERS, 'Any tier') },
+        { name: 'manualReview', label: 'Manual review', type: 'select', options: [['', 'Either'], ['true', 'needs manual review'], ['false', 'no manual review']] }]} />
       {res.ok ? (
         <>
           <DataTable<any> base="/admin/marketplace/catalog" query={q} rowKey={(r) => r.id} rows={res.data.items} emptyTitle="No listings match" emptyHint="Nothing is published yet, or the filters exclude everything."
             columns={[
               { key: 'name', label: 'Name', render: (r) => <><b>{r.name}</b><div className="faint mono">{r.id}</div></> },
-              { key: 'type', label: 'Type' },
+              { key: 'type', label: 'Type', render: (r) => <span className="mono">{r.type}</span> },
+              { key: 'risk', label: 'Risk', render: (r) => <>{r.riskTier ? <StatusBadge status={tierTone(r.riskTier)}>{r.riskTier}</StatusBadge> : <span className="faint">—</span>}{r.manualReview ? <div className="faint">manual review</div> : null}</> },
               { key: 'publisher', label: 'Publisher' },
               { key: 'visibility', label: 'Visibility', render: (r) => <>{r.visibility} <StatusBadge status={r.trust === 'official' ? 'admin' : r.trust === 'verified' ? 'active' : ''}>{r.trust}</StatusBadge></> },
               { key: 'state', label: 'State', render: (r) => <StateBadge state={r.state} /> },

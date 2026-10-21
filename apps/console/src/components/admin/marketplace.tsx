@@ -52,12 +52,14 @@ const COPY: Record<MarketAction, { label: string; title: string; body: string; t
 };
 
 /** Only the buttons the state machine allows AND the viewer's permissions cover. The API checks both again. */
-export function VersionActions({ versionId, state, permissions, back, verification = null }: { versionId: string; state: string; permissions: readonly string[]; back: string; /** the latest verdict for this artifact: an incomplete one is approved only with a typed acknowledgement (see VerificationPanel) */ verification?: string | null }) {
-  const acts = allowedActions(state, permissions).filter((a) => !(verification === 'incomplete' && a === 'approve'));
+export function VersionActions({ versionId, state, permissions, back, verification = null, ackRequired = false }: { versionId: string; state: string; permissions: readonly string[]; back: string; /** a version that needs manual review is approved from its review page, with the summary acknowledgement */ ackRequired?: boolean; /** the latest verdict for this artifact: an incomplete one is approved only with a typed acknowledgement (see VerificationPanel) */ verification?: string | null }) {
+  const acts = allowedActions(state, permissions).filter((a) => !(verification === 'incomplete' && a === 'approve') && !(ackRequired && a === 'approve'));
   const rescan = canRescan(state, permissions);
-  if (!acts.length && !rescan) return <span className="faint">No actions available{permissions.some((p) => p.startsWith('marketplace.')) ? ' in this state for your role' : ''}.</span>;
+  const reviewLink = ackRequired && allowedActions(state, permissions).includes('approve') ? <Link className="btn sm primary" href={`/admin/marketplace/review/${encodeURIComponent(versionId)}`}>Review summary</Link> : null;
+  if (!acts.length && !rescan && !reviewLink) return <span className="faint">No actions available{permissions.some((p) => p.startsWith('marketplace.')) ? ' in this state for your role' : ''}.</span>;
   return (
     <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+      {reviewLink}
       {acts.map((a) => {
         const c = COPY[a], fields = { id: versionId, action: a, back };
         return c.reason

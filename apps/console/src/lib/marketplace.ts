@@ -2,6 +2,10 @@
 // The API (accounts-sync /admin/marketplace/*) is the authority on every rule below; these mirror it only to decide what to SHOW.
 
 export const LISTING_TYPES = ['template', 'skill', 'agent', 'bundle', 'workflow', 'memory', 'connector', 'bridge', 'surface', 'hook', 'routine'] as const;
+export const RISK_TIERS = ['data', 'declarative', 'executable'] as const;
+export const TRUST_LEVELS = ['private', 'community', 'verified', 'official'] as const;
+/** Types whose installs run something or reach outside the app: they get the advanced review, security and analytics views. */
+export const ADVANCED_TYPES = LISTING_TYPES.filter((t) => t !== 'template' && t !== 'skill');
 /** Types the publish wizard accepts here: the ones this console has a package layout and review page for. The API enforces its own per-type support again. */
 export const PUBLISHABLE_TYPES: readonly string[] = ['template', 'skill', 'agent', 'bundle'];
 export const VISIBILITIES = ['public', 'org', 'team', 'private'] as const;
@@ -66,7 +70,7 @@ export function listQuery(raw: Record<string, string | undefined>, allow: Record
   const s = p.toString();
   return s ? `?${s}` : '';
 }
-export const CATALOG_FILTERS = { q: true, type: LISTING_TYPES, publisher: true, visibility: VISIBILITIES, state: VERSION_STATES, page: true } as const;
+export const CATALOG_FILTERS = { q: true, type: LISTING_TYPES, publisher: true, visibility: VISIBILITIES, state: VERSION_STATES, riskTier: RISK_TIERS, manualReview: ['true', 'false'], page: true } as const;
 
 /** Link to the same list with a different cursor, preserving the other filters. */
 export function withParams(base: string, q: Record<string, string | undefined>, patch: Record<string, string | undefined>): string {
@@ -150,4 +154,91 @@ export function verificationRows(v: { stages?: unknown } | null | undefined, ver
       return { kind: String(e?.kind ?? 'text'), label: String(e?.label ?? ''), ...(typeof e?.detail === 'string' ? { detail: e.detail } : {}), ...(imagePath ? { imagePath } : {}) };
     }),
   }));
+}
+
+// ── advanced types (Plan 3 Task 12)
+
+export interface ReviewDetail { versionId?: string; state?: string; manualReview?: boolean; summarySha256?: string; summary?: { truncated?: boolean } }
+const SHA256 = /^[0-9a-f]{64}$/;
+export const isSha256 = (v: unknown): v is string => typeof v === 'string' && SHA256.test(v);
+
+/**
+ * Whether the acknowledgement step may be offered for this version, and if not why. Mirrors the API (which decides): a version that
+ * needs manual review is approved only with the exact summary hash, and a summary too large to read in full cannot be approved at all.
+ */
+export function ackState(d: ReviewDetail | null | undefined, permissions: readonly string[]): { offer: boolean; required: boolean; reason?: string } {
+  if (!d) return { offer: false, required: false, reason: 'No review detail is available.' };
+  const required = d.manualReview === true;
+  if (!permissions.includes('marketplace.review')) return { offer: false, required, reason: 'Your role cannot decide on submissions (needs marketplace.review).' };
+  if (!['submitted', 'in_review'].includes(String(d.state))) return { offer: false, required, reason: `This version is ${String(d.state).replace(/_/g, ' ')}; only submitted or in-review versions can be approved.` };
+  if (!required) return { offer: false, required, reason: 'This type does not need an acknowledgement: approve it from the version page.' };
+  if (d.summary?.truncated === true) return { offer: false, required, reason: 'The review summary is larger than can be shown. It cannot be approved from here.' };
+  if (!isSha256(d.summarySha256)) return { offer: false, required, reason: 'The server did not return a valid summary hash.' };
+  return { offer: true, required };
+}
+
+/** The body the approve action posts, or why it must not post. The checkbox is not optional and the hash must be the one that was on screen. */
+export function approvalRequest(f: { reviewed?: string; ack?: string }): { ok: true; body: { ack_summary_sha256: string } } | { ok: false; error: string } {
+  if (f.reviewed !== 'on' && f.reviewed !== 'true') return { ok: false, error: 'Tick "I reviewed this summary" first.' };
+  const ack = (f.ack ?? '').trim().toLowerCase();
+  if (!isSha256(ack)) return { ok: false, error: 'The summary hash is missing or malformed; reload the page.' };
+  return { ok: true, body: { ack_summary_sha256: ack } };
+}
+
+/** At most `n` risk labels, then "+k more", so a long list never pushes a table out of shape. */
+export function riskPreview(list: readonly string[] | null | undefined, n = 3): { shown: string[]; more: number } {
+  const xs = Array.isArray(list) ? list.filter((x) => typeof x === 'string') : [];
+  return { shown: xs.slice(0, n), more: Math.max(0, xs.length - n) };
+}
+export const tierTone = (t: string | null | undefined) => (t === 'executable' ? 'failed' : t === 'declarative' ? 'pending' : t === 'data' ? 'active' : '');
+
+/** A halt needs moderate, a typed confirmation of the type name and a reason; the API requires the reason and the permission again. */
+export function haltRequest(f: { type?: string; confirm?: string; reason?: string }): { ok: true; type: string; reason: string } | { ok: false; error: string } {
+  const type = (f.type ?? '').trim();
+  if (!(LISTING_TYPES as readonly string[]).includes(type)) return { ok: false, error: 'Unknown type.' };
+  if ((f.confirm ?? '').trim() !== type) return { ok: false, error: `Type "${type}" in the confirmation box to halt it.` };
+  const reason = (f.reason ?? '').trim();
+  if (reason.length < 3) return { ok: false, error: 'A reason of at least 3 characters is required.' };
+  if (reason.length > 1000) return { ok: false, error: 'The reason is too long (1000 characters at most).' };
+  return { ok: true, type, reason };
+}
+
+const TIER_RANK: Record<string, number> = { data: 0, declarative: 1, executable: 2 };
+const TRUST_RANK: Record<string, number> = { private: 0, community: 1, verified: 2, official: 3 };
+/** What a policy form may submit: values at or above the floor the server reported. The API enforces the floor; this only avoids offering the impossible. */
+export function policyChange(floor: { riskTier: string; manualReview: boolean; minPublisherTrust: string }, f: { riskTier?: string; manualReview?: string; minPublisherTrust?: string; reason?: string }):
+  { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
+  const reason = (f.reason ?? '').trim();
+  if (reason.length < 3) return { ok: false, error: 'A reason of at least 3 characters is required.' };
+  const riskTier = f.riskTier ?? '', trust = f.minPublisherTrust ?? '';
+  if (!(riskTier in TIER_RANK) || !(trust in TRUST_RANK)) return { ok: false, error: 'Choose a risk tier and a minimum publisher trust.' };
+  const manualReview = f.manualReview === 'on' || f.manualReview === 'true';
+  if (TIER_RANK[riskTier] < TIER_RANK[floor.riskTier]) return { ok: false, error: `The risk tier cannot be below ${floor.riskTier}.` };
+  if (floor.manualReview && !manualReview) return { ok: false, error: 'Manual review cannot be switched off for this type.' };
+  if (TRUST_RANK[trust] < TRUST_RANK[floor.minPublisherTrust]) return { ok: false, error: `The minimum publisher trust cannot be below ${floor.minPublisherTrust}.` };
+  return { ok: true, body: { riskTier, manualReview, minPublisherTrust: trust, reason } };
+}
+
+export interface TypeStats { type: string; installs: number; failedInstalls: number; failureRate: number | null; activeInstalls: number; uninstalls: number; revokes: number; quarantines: number; awaitingConfiguration: number; awaitingConfigurationRate: number | null; publishedListings: number; failedReasons: Array<{ reason: string; count: number }> }
+/** Rows for the by-type table. Types with no activity are kept (a zero is a fact); the order is the API's. Malformed rows are dropped, never guessed. */
+export function typeRows(d: { byType?: unknown } | null | undefined): TypeStats[] {
+  if (!d || !Array.isArray(d.byType)) return [];
+  return (d.byType as any[]).filter((r) => r && typeof r.type === 'string').map((r) => ({
+    type: r.type, installs: Number(r.installs) || 0, failedInstalls: Number(r.failedInstalls) || 0, failureRate: r.failureRate == null ? null : Number(r.failureRate), activeInstalls: Number(r.activeInstalls) || 0,
+    uninstalls: Number(r.uninstalls) || 0, revokes: Number(r.revokes) || 0, quarantines: Number(r.quarantines) || 0, awaitingConfiguration: Number(r.awaitingConfiguration) || 0,
+    awaitingConfigurationRate: r.awaitingConfigurationRate == null ? null : Number(r.awaitingConfigurationRate), publishedListings: Number(r.publishedListings) || 0,
+    failedReasons: Array.isArray(r.failedReasons) ? r.failedReasons.filter((x: any) => x && typeof x.reason === 'string').map((x: any) => ({ reason: x.reason, count: Number(x.count) || 0 })) : [],
+  }));
+}
+
+/** Whether the viewer holds a permission; used by server actions as a second check before any mutating call (the API checks it a third time). */
+export const hasPermission = (permissions: readonly string[] | null | undefined, p: string) => Array.isArray(permissions) && permissions.includes(p);
+
+export interface InstallBurst { listingId: string; installs: number; accounts: number; firstAt: string | null; lastAt: string | null }
+/** Rows of the "Suspicious install bursts" report. Malformed rows are dropped, numbers coerced, text left as text (React escapes it). */
+export function burstRows(d: { bursts?: unknown } | null | undefined): InstallBurst[] {
+  if (!d || !Array.isArray(d.bursts)) return [];
+  return (d.bursts as any[]).filter((b) => b && typeof b.listingId === 'string').map((b) => ({
+    listingId: b.listingId, installs: Number(b.installs) || 0, accounts: Number(b.accounts) || 0,
+    firstAt: typeof b.firstAt === 'string' ? b.firstAt : null, lastAt: typeof b.lastAt === 'string' ? b.lastAt : null }));
 }

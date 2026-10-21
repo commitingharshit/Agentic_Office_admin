@@ -33,6 +33,8 @@ export const NAV: NavGroup[] = [
     { href: '/admin/marketplace/policies', label: 'Install Policy', icon: 'security', perm: 'marketplace.policy' },
     { href: '/admin/marketplace/releases', label: 'Versions & Releases', icon: 'clock', perm: 'marketplace.read' },
     { href: '/admin/marketplace/security', label: 'Security Reports', icon: 'reliability', perm: 'marketplace.read' },
+    { href: '/admin/marketplace/advanced', label: 'Advanced Types', icon: 'alert', perm: 'marketplace.read' },
+    { href: '/admin/marketplace/type-policy', label: 'Type Policy', icon: 'settings', perm: 'marketplace.policy' },
     { href: '/admin/marketplace/settings', label: 'Settings', icon: 'settings', perm: 'marketplace.read' },
   ] },
   { label: 'Growth', items: [

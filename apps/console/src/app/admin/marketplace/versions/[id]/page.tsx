@@ -4,7 +4,7 @@ import { AgentReview, BundleReview } from '../../../../../components/admin/marke
 import { StateBadge, ValidationReport, VerdictBadge, VerificationPanel, VersionActions } from '../../../../../components/admin/marketplace';
 import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, bytes, when } from '../../../../../components/admin/bits';
 import { load } from '../../../../../lib/admin-api';
-import { isSensitiveCapability, label } from '../../../../../lib/marketplace';
+import { ADVANCED_TYPES, isSensitiveCapability, label } from '../../../../../lib/marketplace';
 import { adminContext } from '../../../../../lib/session';
 import { approveReviewed } from '../../actions';
 
@@ -24,12 +24,12 @@ export default async function VersionPage({ params, searchParams }: { params: Pr
   const perms: any[] = Array.isArray(m.permissions) ? m.permissions : [];
   const back = `/admin/marketplace/versions/${id}`;
   // Agents and bundles with elevated members need an acknowledged review summary; the server builds it and its hash, the page only relays both.
-  const wantsSummary = (m.type === 'agent' || m.type === 'bundle') && ['submitted', 'in_review'].includes(v.state) && permissions.includes('marketplace.review');
+  const wantsSummary = (ADVANCED_TYPES as readonly string[]).includes(m.type) && ['submitted', 'in_review'].includes(v.state) && permissions.includes('marketplace.review');
   const sub = wantsSummary ? await load<any>(`/admin/marketplace/submissions/${encodeURIComponent(id)}`, person.id) : null;
   return (
     <>
       <PageHeader title={m.title ?? v.listingId} subtitle={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><StateBadge state={v.state} /><VerdictBadge verdict={v.scanVerdict} /><span className="mono">{v.listingId} {v.version}</span></span>}
-        actions={<VersionActions versionId={v.id} state={v.state} permissions={permissions} back={back} verification={ver.ok ? ver.data?.verification?.verdict ?? null : null} />} />
+        actions={<VersionActions versionId={v.id} state={v.state} permissions={permissions} back={back} verification={ver.ok ? ver.data?.verification?.verdict ?? null : null} ackRequired={sub?.ok === true && sub.data.manualReview === true} />} />
       <Flash q={q} />
       <Section title="Manifest">
         <div className="card"><div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 180px) 1fr', gap: '8px 16px' }}>

@@ -184,6 +184,20 @@ committed in `services/control-plane` (what each page shows, env and what was ve
 [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)). The pages call only the
 routes above; the console shows nav items by the `marketplace.*` permissions that `GET /admin/marketplace/me` returns (the same table the API enforces) and the API enforces them again.
 
+Advanced types (Plan 3) add six console views over the 0028 admin routes, no new routes of their own:
+**Advanced Types** (`/admin/marketplace/advanced`, `GET security/advanced`: quarantined, revoked and live executable-tier
+versions per risky type, plus a per-type Halt, `POST types/:type/halt`, `marketplace.moderate`, typed confirmation and a
+reason), **Type Policy** (`/admin/marketplace/type-policy`, `GET`/`PUT type-policy`, `marketplace.policy`: raise a type's
+risk tier, manual review or minimum publisher trust, never below the code floor; not the Install Policy page at
+`/policies`), the **review summary** page (`/admin/marketplace/review/:id`, `GET submissions/:id`: the server-built
+summary sections and the acknowledgement that posts `ack_summary_sha256`; the queue links a manual-review version here
+instead of offering a plain Approve), a **By type** table on Usage Analytics (`GET analytics/advanced`), risk-tier and
+manual-review filters on the Catalog, and **Suspicious install bursts** on Security Reports. Pure helpers (`ackState`,
+`approvalRequest`, `haltRequest`, `policyChange`, `typeRows`, `burstRows`) live in `src/lib/marketplace.ts` and are
+tested in `test/marketplace-advanced.test.ts`; every mutating server action re-checks the viewer's permission before it
+calls the API, which checks it again. `test/marketplace-advanced-pages.test.ts` renders the pages with `next start`
+against a stub admin API.
+
 ### Verification views, evals and gates (Plan 3 and 4 follow-up)
 
 The desktop detail pane's Security tab shows the verification result of a version (`marketplaceVerification.ts`: a

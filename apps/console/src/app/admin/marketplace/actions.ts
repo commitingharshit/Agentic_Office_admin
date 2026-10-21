@@ -3,10 +3,10 @@
 // with the outcome in the address. The API enforces permissions and the state machine again; these only carry the request.
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { adminApi, AdminApiError } from '../../../lib/admin-api';
-import { ACTIONS, PUBLISHABLE_TYPES, VISIBILITIES, incompleteAck, packValidation } from '../../../lib/marketplace';
+import { adminApi, AdminApiError, load } from '../../../lib/admin-api';
+import { ACTIONS, PUBLISHABLE_TYPES, VISIBILITIES, approvalRequest, haltRequest, hasPermission, incompleteAck, packValidation, policyChange } from '../../../lib/marketplace';
 import { parsePolicyForm } from '../../../lib/marketplace-agents';
-import { requireAdmin } from '../../../lib/session';
+import { adminContext, requireAdmin } from '../../../lib/session';
 
 const field = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const safeBack = (b: string, fallback: string) => (b.startsWith('/admin/marketplace') && !b.includes('//') && !b.includes('\\') ? b : fallback);
@@ -105,4 +105,46 @@ export async function approveIncomplete(f: FormData) {
     body.ack_summary_sha256 = field(f, 'ack').toLowerCase();
   }
   await act(back, 'Version approved with an acknowledged incomplete verification.', (acting) => adminApi(`/admin/marketplace/versions/${encodeURIComponent(id)}/approve`, { acting, method: 'POST', body }));
+}
+
+/** A second, server-side role check before a mutating call: the console's permission list comes from the admin API, and the API checks it again. */
+async function requirePermission(back: string, permission: string, what: string): Promise<void> {
+  const { permissions } = await adminContext();
+  if (!hasPermission(permissions, permission)) return done(back, 'err', `Your role cannot ${what} (needs ${permission}).`);
+}
+
+/** Approve a version that needs manual review, from its review page: only with the box ticked and the summary hash that was on screen. The API compares it with the hash of the stored version again. */
+export async function approveWithAck(f: FormData) {
+  const id = field(f, 'id'), back = `/admin/marketplace/review/${encodeURIComponent(id)}`;
+  await requirePermission(back, 'marketplace.review', 'approve submissions');
+  const r = approvalRequest({ reviewed: field(f, 'reviewed'), ack: field(f, 'ack') });
+  if (!r.ok) return done(back, 'err', r.error);
+  await act(back, 'Version approved.', (acting) => adminApi(`/admin/marketplace/versions/${encodeURIComponent(id)}/approve`, { acting, method: 'POST', body: r.body }));
+}
+
+/** Quarantine every published version of one type. A typed confirmation and a reason are required here; the API requires the reason and marketplace.moderate. */
+export async function haltTypeAction(f: FormData) {
+  const back = '/admin/marketplace/advanced';
+  await requirePermission(back, 'marketplace.moderate', 'halt a type');
+  const r = haltRequest({ type: field(f, 'type'), confirm: field(f, 'confirm'), reason: field(f, 'reason') });
+  if (!r.ok) return done(back, 'err', r.error);
+  let n = 0;
+  const admin = await requireAdmin(back);
+  try { n = (await adminApi<{ quarantinedVersions: number }>(`/admin/marketplace/types/${encodeURIComponent(r.type)}/halt`, { acting: admin.id, method: 'POST', body: { reason: r.reason } })).quarantinedVersions; }
+  catch (e) { return done(back, 'err', e instanceof AdminApiError ? e.message : 'That did not work.'); }
+  revalidatePath('/admin/marketplace', 'layout');
+  return done(back, 'msg', `Halted ${r.type}: ${n} version${n === 1 ? '' : 's'} quarantined.`);
+}
+
+/** Raise a type's policy (marketplace.policy, superadmin). The floor comes from the API, never from the form. */
+export async function saveTypePolicy(f: FormData) {
+  const back = '/admin/marketplace/type-policy', type = field(f, 'type');
+  await requirePermission(back, 'marketplace.policy', 'change a type policy');
+  const admin = await requireAdmin(back);
+  const cur = await load<{ items: Array<{ type: string; floor: { riskTier: string; manualReview: boolean; minPublisherTrust: string } }> }>('/admin/marketplace/type-policy', admin.id);
+  const row = cur.ok ? cur.data.items.find((x) => x.type === type) : undefined;
+  if (!row) return done(back, 'err', 'Unknown type.');
+  const r = policyChange(row.floor, { riskTier: field(f, 'riskTier'), manualReview: field(f, 'manualReview'), minPublisherTrust: field(f, 'minPublisherTrust'), reason: field(f, 'reason') });
+  if (!r.ok) return done(back, 'err', r.error);
+  await act(back, `Policy of ${type} saved.`, (acting) => adminApi(`/admin/marketplace/type-policy/${encodeURIComponent(type)}`, { acting, method: 'PUT', body: r.body }));
 }

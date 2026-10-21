@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { FilterBar } from '../../../../components/admin/DataTable';
 import { CursorPager, StateBadge } from '../../../../components/admin/marketplace';
 import { ConfirmForm } from '../../../../components/admin/client';
-import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, ago } from '../../../../components/admin/bits';
+import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, ago, num } from '../../../../components/admin/bits';
 import { load } from '../../../../lib/admin-api';
-import { listQuery, verificationTone, verificationWord } from '../../../../lib/marketplace';
+import { burstRows, listQuery, verificationTone, verificationWord } from '../../../../lib/marketplace';
 import { adminContext } from '../../../../lib/session';
 import { resolveReport } from '../actions';
 
@@ -15,12 +15,14 @@ const RSTATES = ['open', 'triaged', 'actioned', 'dismissed'];
 export default async function Security({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const q = await searchParams;
   const { person, permissions } = await adminContext();
-  const [reports, quarantined, revoked, vissues] = await Promise.all([
+  const [reports, quarantined, revoked, vissues, bursts] = await Promise.all([
     load<any>(`/admin/marketplace/reports${listQuery(q, { state: RSTATES, page: true })}`, person.id),
     load<any>('/admin/marketplace/catalog?state=quarantined&limit=100', person.id),
     load<any>('/admin/marketplace/catalog?state=revoked&limit=100', person.id),
     load<any>('/admin/marketplace/security/verification', person.id),
+    load<any>('/admin/marketplace/security/suspicious-install-bursts', person.id),
   ]);
+  const burstList = bursts.ok ? burstRows(bursts.data) : [];
   const canModerate = permissions.includes('marketplace.moderate');
   const pulled = [...(quarantined.ok ? quarantined.data.items : []), ...(revoked.ok ? revoked.data.items : [])] as any[];
   return (
@@ -43,6 +45,15 @@ export default async function Security({ searchParams }: { searchParams: Promise
               <td>{(r.problemStages as any[]).map((s) => `${s.id} (${s.status}${s.reason ? `: ${s.reason}` : ''})`).join('; ') || '—'}</td><td>{ago(r.at)}</td></tr>)}
               {!vissues.data.items.length && <tr><td colSpan={6} className="dt-empty">No submitted, approved or published version has a failed or incomplete verification.</td></tr>}</tbody></table></div>
         ) : <ErrorState message={vissues.error} />}
+      </Section>
+      <Section title="Suspicious install bursts" count={bursts.ok ? burstList.length : undefined}>
+        {bursts.ok ? (
+          <>
+            <div className="table-wrap"><table className="dt"><thead><tr><th>Listing</th><th className="right">Installs</th><th className="right">New accounts</th><th>First</th><th>Last</th></tr></thead>
+              <tbody>{burstList.map((b) => <tr key={b.listingId}><td className="mono">{b.listingId}</td><td className="right">{num(b.installs)}</td><td className="right">{num(b.accounts)}</td><td>{ago(b.firstAt)}</td><td>{ago(b.lastAt)}</td></tr>)}
+                {!burstList.length && <tr><td colSpan={5} className="dt-empty">No listing had a burst of installs from brand-new accounts in the last {num(bursts.data.window?.hours)} hours.</td></tr>}</tbody></table></div>
+            {typeof bursts.data.note === 'string' && <p className="hint">{bursts.data.note}</p>}
+          </>) : <ErrorState message={bursts.error} />}
       </Section>
       <Section title="Reports" count={reports.ok ? reports.data.items.length : undefined}>
         <FilterBar base="/admin/marketplace/security" query={q} fields={[{ name: 'state', label: 'State', type: 'select', options: [['', 'Any state'], ...RSTATES.map((s) => [s, s] as [string, string])] }]} />
