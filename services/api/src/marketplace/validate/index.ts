@@ -18,7 +18,7 @@ const validators = new Map<ListingType, Validator>();
 export function registerValidator(type: ListingType, fn: Validator): void { validators.set(type, fn); }
 export function getValidator(type: ListingType): Validator | undefined { return validators.get(type); }
 
-function commonChecks(type: ListingType, pkg: UnpackedPackage): ValidationCheck[] {
+export function commonChecks(type: ListingType, pkg: UnpackedPackage): ValidationCheck[] {
   const checks: ValidationCheck[] = [];
   const typeOk = pkg.manifest.type === type;
   checks.push({ name: 'manifest-type-matches', ok: typeOk, ...(typeOk ? {} : { detail: `manifest type ${pkg.manifest.type} != ${type}` }) });

@@ -16,17 +16,21 @@ import { newId, SHOWN, StoreError, withUser } from './store.ts';
 import type { ListingType, ManifestV1, UnpackedPackage, ValidationReport } from './types.ts';
 import { TYPE_POLICY, maxTier } from './support.ts';
 import { validateArtifact } from './validate/index.ts';
+import { storeEvidenceSink } from './verify/evidence.ts';
+import { runPipeline } from './verify/runner.ts';
+import type { PipelineTools } from './verify/types.ts';
+import { normaliseResult, recordVerification, requiredTypes, type Normalised } from './verifyStore.ts';
 
 export const CREATOR_TYPES: readonly ListingType[] = ['skill', 'template'];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_TEAMS_OWNED = 20, MAX_TEAM_MEMBERS = 100;
 const INT4 = 2_147_483_647;
 
-export interface CreatorDeps { app: pg.Pool; admin: pg.Pool; store: ArtifactStore; limits: Limits; gate: Gate }
+export interface CreatorDeps { app: pg.Pool; admin: pg.Pool; store: ArtifactStore; limits: Limits; gate: Gate; verifyTools?: PipelineTools }
 /** The handler builds one of these per process, so the ingest gate is process-wide. */
-export function creatorDeps(app: pg.Pool, admin: pg.Pool, store: ArtifactStore, limits: Partial<Limits> = {}): CreatorDeps {
+export function creatorDeps(app: pg.Pool, admin: pg.Pool, store: ArtifactStore, limits: Partial<Limits> = {}, verifyTools?: PipelineTools): CreatorDeps {
   const l = defaultLimits(limits);
-  return { app, admin, store, limits: l, gate: createGate(l.ingestConcurrency, l.ingestQueue) };
+  return { app, admin, store, limits: l, gate: createGate(l.ingestConcurrency, l.ingestQueue), verifyTools };
 }
 const COMPARE_MAX_UNPACKED = 32 * 1024 * 1024;
 
@@ -182,8 +186,26 @@ async function commit(d: CreatorDeps, uid: string, ing: Ingested, listing: NewLi
     }
     throw e;
   }
+  // Verification gate (marketplace_settings.verification_required_types): for a gated type the creator's auto-publish needs a
+  // passing verification of exactly these bytes, so the pipeline runs here, server-side, and its result is stored BEFORE the
+  // state change (the database trigger would refuse the publish otherwise). fail => rejected; incomplete => stays submitted.
+  let verification: Normalised | undefined;
+  if (out.state === 'published') {
+    try {
+      if ((await requiredTypes(d.admin)).includes(m.type)) {
+        const res = await runPipeline(m.type, ing.pkg, d.verifyTools ?? {}, { subjectSha256: sha256, evidence: storeEvidenceSink(d.store), env: {} });
+        verification = normaliseResult(JSON.parse(JSON.stringify(res)));
+        if (res.verdict === 'fail') out = { state: 'rejected', scan: 'blocked' };
+        else if (res.verdict === 'incomplete') out = { state: 'submitted', scan: 'pending' };
+      }
+    } catch (e) {
+      console.error('marketplace: creator verification failed to run, the version stays submitted:', (e as Error).message);
+      verification = undefined; out = { state: 'submitted', scan: 'pending' };
+    }
+  }
   try {
     await withAdmin(d.admin, async (c) => {
+      if (verification) await recordVerification(c, versionId, verification, `creator:${uid}`.slice(0, 120));
       await c.query(`UPDATE marketplace_versions SET state = $2, scan_verdict = $3, risk_tier = $4 WHERE id = $1`, [versionId, out.state, out.scan, riskTier]);
       // the SAME record the admin path writes and requireScan reads: scanner 'validation', findings {ok, verified, checks}
       await c.query(`INSERT INTO marketplace_security_scans(id, version_id, scanner, verdict, findings) VALUES ($1,$2,'validation',$3,$4)`,

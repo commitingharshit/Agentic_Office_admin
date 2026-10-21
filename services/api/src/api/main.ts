@@ -14,6 +14,8 @@ import { adminHandler, authenticate as adminAuthenticate, parseTokens } from './
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { S3 } from './s3.ts';
 import { marketplaceHandler } from './marketplace.ts';
+import { registerSkillPipeline } from '../marketplace/verify/stages/skill/index.ts';
+import type { PipelineTools } from '../marketplace/verify/types.ts';
 import { parseRoleMap } from '../marketplace/permissions.ts';
 import { marketplaceAdminHandler } from './marketplace-admin.ts';
 import { syncHandler } from './sync.ts';
@@ -61,7 +63,10 @@ const sync = app && clerk ? syncHandler({ app, verify: (t) => clerk.verify(t), s
 // Eager scanner self-check: until it passes, skill uploads (creator and admin) answer 503 scanner_unavailable instead of storing rejected versions.
 const scanner = { ok: false };
 const scannerOk = () => scanner.ok;
-const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk }) : undefined;
+// Verification pipelines (Plan 4). The skill pipeline's scan stage and the creator's gated auto-publish use the same Skills Guard scanner.
+registerSkillPipeline();
+const verifyTools: PipelineTools = { scanner: createSkillsGuardScanner() };
+const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.admin, authenticate: sync.authenticate, store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools }) : undefined;
 const admin = adminHandler(deps);
 // Marketplace publishing runs the REAL scanner (skills guard) and, when OFFICECLI_BIN is set, the officecli render check.
 // Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.
@@ -80,7 +85,7 @@ if (s3) void skillScannerSelfCheck(validateArtifact).then((r) => {
 // Roles fail closed: an admin not listed in AO_MARKETPLACE_ROLES (adminName:role[,..]; Clerk admins by email or user id) is an analyst, so without it the API is read-only.
 let marketplaceRoles: ReturnType<typeof parseRoleMap>;
 try { marketplaceRoles = parseRoleMap(env.AO_MARKETPLACE_ROLES); } catch (e) { console.error((e as Error).message); process.exit(2); }
-const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk }) : undefined;
+const marketplaceAdmin = s3 ? marketplaceAdminHandler({ admin: deps.admin, authenticate: (req) => adminAuthenticate(req, deps), roleOf: (id) => marketplaceRoles.get(id) ?? 'analyst', store: s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace'), scannerOk, verifyTools }) : undefined;
 
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);

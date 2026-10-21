@@ -33,6 +33,8 @@ export interface MarketplaceDeps {
   /** The ao_admin pool: used ONLY to register artifacts, create publishers/teams/members and finalize a creator's version
    *  (publish privately / reject). Without it the create, fork and team routes answer 503. */
   admin?: pg.Pool;
+  /** Tools for the server-side verification a creator's auto-publish runs when the gate is on for the type (the scanner for skills). */
+  verifyTools?: import('../marketplace/verify/types.ts').PipelineTools;
   /** Largest accepted package upload; defaults to 64 MiB. */
   maxUploadBytes?: number;
   /** Quotas and the ingest gate (marketplace/limits.ts); env-overridable defaults. */
@@ -142,7 +144,7 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
   const heavy = deps.heavyGate ?? createGate(Number(process.env.AO_MKT_HEAVY_CONCURRENCY) || 4, Number(process.env.AO_MKT_HEAVY_QUEUE) || 16);
   const budget = createUploadBudget(deps.uploadBudgetBytes ?? (Number(process.env.AO_MKT_UPLOAD_BUDGET) || 256 * 1024 * 1024), deps.uploadWaitMs ?? 1500);
   const scannerOk = deps.scannerOk ?? (() => true);
-  const creatorShared = deps.admin ? creator.creatorDeps(deps.app, deps.admin, deps.store, deps.limits) : undefined;
+  const creatorShared = deps.admin ? creator.creatorDeps(deps.app, deps.admin, deps.store, deps.limits, deps.verifyTools) : undefined;
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://x');
