@@ -32,14 +32,13 @@ describe('agents and bundles API (real Postgres, fake compiler bridge)', { skip 
   after(async () => { await t?.stop(); });
 
   // ── capabilities honesty
-  test('capabilities: agent and bundle are supported only on a server whose compiler passed its self-check', async () => {
+  test('capabilities: agent and bundle stay off while the desktop install path is not delivered, whatever the compiler self-check says', async () => {
     const ok = (await t.call('/v1/marketplace/capabilities')).json.types as any[];
-    assert.equal(ok.find((x) => x.type === 'agent').supported, true);
-    assert.equal(ok.find((x) => x.type === 'bundle').supported, true);
-    assert.equal(ok.find((x) => x.type === 'hook').supported, false);
+    for (const ty of ['agent', 'bundle']) { const e = ok.find((x) => x.type === ty); assert.equal(e.supported, false, ty); assert.ok(e.reason && e.path, ty); }
+    assert.equal(ok.find((x) => x.type === 'hook').supported, true);
     const down = await t.extraApis(() => false);
     const bad = (await t.call('/v1/marketplace/capabilities', { origin: down.api })).json.types as any[];
-    for (const ty of ['agent', 'bundle']) { const e = bad.find((x) => x.type === ty); assert.equal(e.supported, false); assert.match(e.reason, /compiler/i); }
+    for (const ty of ['agent', 'bundle']) assert.equal(bad.find((x) => x.type === ty).supported, false);
     assert.equal(bad.find((x) => x.type === 'skill').supported, true, 'browse and the other types are unaffected');
   });
   test('a runtime whose bridge cannot compile never reports ok (the self-check is the real validation)', async () => {

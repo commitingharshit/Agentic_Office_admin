@@ -16,7 +16,6 @@ import { marketplaceAdminHandler } from '../src/api/marketplace-admin.ts';
 import { marketplaceHandler } from '../src/api/marketplace.ts';
 import { HttpError } from '../src/api/sync.ts';
 import { MANIFEST_NAME, memoryArtifactStore, sha256Hex } from '../src/marketplace/artifacts.ts';
-import { typeSupport } from '../src/marketplace/support.ts';
 import type { ManifestV1 } from '../src/marketplace/types.ts';
 import { registerValidator } from '../src/marketplace/validate/index.ts';
 import { createDagPlanChecker, createWorkflowValidator } from '../src/marketplace/validate/workflow.ts';
@@ -50,11 +49,6 @@ async function main() {
     authenticate: async (req) => { if (req.headers.authorization !== `Bearer ${USER_TOKEN}`) throw new HttpError(401, 'Sign in again.'); return { uid: USER }; } });
   const server = createServer(async (req, res) => {
     const path = new URL(req.url ?? '/', 'http://x').pathname;
-    if (path === '/v1/marketplace/capabilities' && req.method === 'GET') {
-      const types = typeSupport().map((t) => (t.type === 'workflow' ? { type: 'workflow', supported: true } : t));
-      res.writeHead(200, { 'content-type': 'application/json', 'x-e2e-harness-override': 'workflow' }).end(JSON.stringify({ schema: 'agentic.marketplace.capabilities/1', types }));
-      return;
-    }
     if (await adminHandler(req, res)) return;
     if (await pubHandler(req, res)) return;
     res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"Not found."}');

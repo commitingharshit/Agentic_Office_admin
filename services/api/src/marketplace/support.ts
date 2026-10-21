@@ -4,26 +4,39 @@
 import { LISTING_TYPES, type ListingType, type RiskTier, type Trust } from './types.ts';
 
 export type { RiskTier };
-export interface TypeSupport { type: ListingType; supported: boolean; modes?: Record<string, boolean>; reason?: string; path?: string }
-type Entry = { supported: boolean; modes?: Record<string, boolean>; reason?: string; path?: string };
+export interface TypeSupport { type: ListingType; supported: boolean; modes?: Record<string, boolean>; modeReasons?: Record<string, string>; reason?: string; path?: string }
+/**
+ * `evidence`: repo-relative path of the passing end-to-end evidence record that justifies `supported: true` (enforced by
+ * test/marketplace-enablement.test.ts). `unitOnlyModes`: modes marked true whose end-to-end flow was NOT run (covered by unit tests only);
+ * listed so the table never claims more than the evidence says. `modeReasons`: why a mode that stays false is false.
+ * `heldBack`: why a type stays unsupported although a valid evidence record exists.
+ */
+type Entry = { supported: boolean; modes?: Record<string, boolean>; modeReasons?: Record<string, string>; reason?: string; path?: string; evidence?: string; unitOnlyModes?: readonly string[]; heldBack?: string };
 
-/** The ONLY list of what is operational. Plan 3 Task 15 edits it; every other task treats it as read-only. */
+/** The ONLY list of what is operational. Flipped from evidence in the ship step; every other task treats it as read-only. */
 export const OPERATIONAL: Readonly<Record<ListingType, Entry>> = Object.freeze({
   template: { supported: true },
   skill: { supported: true },
-  routine: { supported: false, reason: 'Routines are not available yet: the end-to-end flow has not passed.', path: 'Agent-prompt routines run on the existing cron scheduler once their flow passes.' },
-  memory: { supported: false, reason: 'Memory backends are not available yet: the end-to-end flow has not passed.', path: 'Memory backends bind to a bundled Hermes memory provider; no code ships.' },
-  hook: { supported: false, modes: { declarative: false, script: false }, reason: 'Lifecycle hooks are not available yet. Script hooks stay unavailable until an OS sandbox passes its hostile corpus.', path: 'Declarative hooks first; script hooks only on hosts with a verified sandbox.' },
-  bridge: { supported: false, reason: 'MCP bridges are not available yet: the end-to-end flow has not passed.', path: 'Remote https MCP servers only, exposed only to agents that are granted them. Local (stdio) bridges need a sandbox first.' },
-  connector: { supported: false, modes: { none: false, api_key: false, bearer: false, oauth2: false }, reason: 'Connectors are not available yet. OAuth connectors need a token broker that does not exist.', path: 'none, api_key and bearer connectors first; oauth2 needs a separate token-broker plan.' },
-  workflow: { supported: false, reason: 'Workflows are not available yet: they need the DAG runtime and its end-to-end flow has not passed.', path: 'Workflows run when the DAG runtime is reachable; otherwise the item says it is not running.' },
+  routine: { supported: true, evidence: 'docs/audits/marketplace-type-evidence/routine.json' },
+  memory: { supported: true, evidence: 'docs/audits/marketplace-evidence/memory.json' },
+  hook: { supported: true, modes: { declarative: true, script: false }, modeReasons: { script: 'Script hooks stay unavailable until an OS sandbox passes its hostile corpus.' }, evidence: 'docs/audits/marketplace-type-evidence.hook.json' },
+  bridge: { supported: true, evidence: 'docs/audits/marketplace-type-evidence.bridge.json' },
+  connector: { supported: true, modes: { none: true, api_key: true, bearer: true, oauth2: false }, unitOnlyModes: ['none', 'bearer'],
+    modeReasons: { oauth2: 'OAuth connectors need a token broker that does not exist.' }, evidence: 'docs/audits/marketplace-type-evidence.connector.json' },
+  workflow: { supported: true, evidence: 'docs/audits/marketplace-type-evidence/workflow.json' },
   surface: { supported: false, reason: 'Surfaces are not supported: a surface is arbitrary in-gateway code holding account credentials, with no sandbox.', path: 'A declarative webhook-style surface behind the grants model, after a sandbox and a token broker exist.' },
-  agent: { supported: false, reason: 'Agents are not available yet.', path: 'Agents and bundles arrive with the agents-and-bundles release.' },
-  bundle: { supported: false, reason: 'Bundles are not available yet.', path: 'Agents and bundles arrive with the agents-and-bundles release.' },
+  agent: { supported: false, reason: 'Agents are not available yet: the install path on the desktop is not wired end to end.', path: 'Agents and bundles arrive with the agents-and-bundles release.' },
+  bundle: { supported: false, reason: 'Bundles are not available yet: the install transaction on the desktop is not delivered.', path: 'Agents and bundles arrive with the agents-and-bundles release.' },
 });
 
 /** Types whose support depends on a startup self-check rather than on the static table: agent and bundle need the Python compiler bridge. */
 export const BRIDGE_TYPES: readonly ListingType[] = ['agent', 'bundle'];
+/**
+ * Agent and bundle install on the desktop needs an adapter in the installer (agent) and an install transaction (bundle). Neither is wired
+ * (agentAdapter.ts is not registered in advancedAdapters; the bundle transaction is not built), so while this is false the compiler self-check
+ * can no longer make them look supported in GET /v1/marketplace/capabilities. Publishing and review of agents/bundles are not affected.
+ */
+export const AGENT_BUNDLE_INSTALLABLE = false;
 export interface RuntimeSupport { bridge?: boolean }
 export const BRIDGE_UNAVAILABLE_REASON = 'Agents and bundles are unavailable on this server right now: the blueprint compiler did not pass its startup self-check.';
 
@@ -35,11 +48,13 @@ export function typeSupport(runtime: RuntimeSupport = {}): TypeSupport[] {
   return LISTING_TYPES.map((type): TypeSupport => {
     const base = OPERATIONAL[type] ?? { supported: false, reason: 'Unknown type.' };   // a missing row is unsupported, never supported
     const viaBridge = BRIDGE_TYPES.includes(type);
-    const e: Entry = viaBridge && runtime.bridge === true ? { supported: true }
+    const e: Entry = viaBridge && !AGENT_BUNDLE_INSTALLABLE ? base
+      : viaBridge && runtime.bridge === true ? { supported: true }
       : viaBridge && runtime.bridge === false && base.supported !== true ? { ...base, supported: false, reason: BRIDGE_UNAVAILABLE_REASON } : base;
     return {
       type, supported: e.supported === true,
       ...(e.modes ? { modes: { ...e.modes } } : {}),
+      ...(e.modeReasons ? { modeReasons: { ...e.modeReasons } } : {}),
       ...(e.supported === true ? {} : { reason: e.reason ?? 'Not available yet.', ...(e.path ? { path: e.path } : {}) }),
     };
   });

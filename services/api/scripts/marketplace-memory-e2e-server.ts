@@ -16,7 +16,6 @@ import { marketplaceAdminHandler } from '../src/api/marketplace-admin.ts';
 import { marketplaceHandler } from '../src/api/marketplace.ts';
 import { HttpError } from '../src/api/sync.ts';
 import { MANIFEST_NAME, memoryArtifactStore, sha256Hex } from '../src/marketplace/artifacts.ts';
-import { typeSupport } from '../src/marketplace/support.ts';
 import type { ManifestV1, PermissionRequest } from '../src/marketplace/types.ts';
 import { startMarketplacePg } from '../test/helpers/marketplace-pg.ts';
 
@@ -59,11 +58,6 @@ async function main() {
 
   const server = createServer(async (req, res) => {
     const path = new URL(req.url ?? '/', 'http://x').pathname;
-    if (path === '/v1/marketplace/capabilities' && req.method === 'GET') {
-      const types = typeSupport().map((t) => t.type === 'memory' ? { type: t.type, supported: true } : t);      // harness-only flip, see the header
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ schema: 'agentic.marketplace.capabilities/1', types }));
-      return;
-    }
     if (path.startsWith('/admin/marketplace')) { if (!(await adminHandler(req, res))) res.writeHead(404).end(); return; }
     if (!(await pubHandler(req, res))) res.writeHead(404).end();
   });
