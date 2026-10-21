@@ -183,6 +183,17 @@ services:
     ports:
       - "${BIND_IP}:${API_PORT:-8787}:8787"
 
+  # The only door to the internet for the app's API: a path allow-list in front of `api` (see api-gate.conf). Point Tailscale Funnel at
+  # this port, never at the API's own port, so /admin/* is never public.
+  api-gate:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [api]
+    volumes:
+      - ./api-gate.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:${API_GATE_PORT:-8183}:8081"
+
   # Turns uploaded promotion images and clips into what the app may play (ffmpeg: trim to 12 s, mute, MP4/WebM, poster, WebP).
   # Polls media_jobs as ao_admin; reads sources from and writes variants to the ao-growth-media bucket. Never reachable from outside.
   media-worker:
