@@ -586,6 +586,25 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     });
   }
 
+  /** Security report: listings whose installs come in bursts from accounts created less than 24 h before installing. Report only, no automatic action. */
+  async function suspiciousInstallBursts(adminId: string, sp: URLSearchParams) {
+    const hours = Math.min(24 * 30, Math.max(1, Number(sp.get('hours') ?? 24) || 24));
+    const min = Math.min(1000, Math.max(2, Number(sp.get('min') ?? 5) || 5));
+    return read(adminId, 'suspicious_install_bursts', null, { hours, min }, async (c) => {
+      const rows = (await c.query(`
+        SELECT i.listing_id, count(*)::int AS installs, count(DISTINCT i.user_id)::int AS accounts, min(i.installed_at) AS first_at, max(i.installed_at) AS last_at
+          FROM marketplace_installs i JOIN users u ON u.id = i.user_id
+         WHERE i.installed_at > now() - make_interval(hours => $1::int) AND u.created_at > i.installed_at - interval '24 hours'
+         GROUP BY i.listing_id HAVING count(DISTINCT i.user_id) >= $2::int
+         ORDER BY installs DESC, i.listing_id LIMIT 100`, [hours, min])).rows;
+      return {
+        window: { hours, accountMaxAgeHours: 24, minAccounts: min },
+        bursts: rows.map((r) => ({ listingId: r.listing_id, installs: r.installs, accounts: r.accounts, firstAt: r.first_at, lastAt: r.last_at })),
+        note: 'Installs are counted as usual; this list is a signal for review, nothing is removed automatically. Many fresh accounts defeat per-account de-duplication, so install counts are never used for ranking.',
+      };
+    });
+  }
+
   async function analytics(adminId: string, sp: URLSearchParams) {
     const type = oneOf(sp.get('type'), LISTING_TYPES, 'type');
     const publisher = idParam(sp.get('publisher'), PUBLISHER_ID, 'publisher');
@@ -687,6 +706,7 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
         const r = await upsertPublisher(adminId, await jsonBody(req));
         return send(r.status, r.body), true;
       }
+      if (a === 'security' && id === 'suspicious-install-bursts' && !sub && m === 'GET') { need('marketplace.read'); return send(200, await suspiciousInstallBursts(adminId, sp)), true; }
       if (a === 'analytics' && !id && m === 'GET') { need('marketplace.read'); return send(200, await analytics(adminId, sp)), true; }
       throw fail(404, 'not_found', 'Not found.');
     } catch (e: any) {

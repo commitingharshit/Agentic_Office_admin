@@ -8,7 +8,7 @@ import { ArtifactCorruptError, extractOne, openArtifact, UnpackError, type Artif
 import * as creator from '../marketplace/creator.ts';
 import { ByteLru } from '../marketplace/lru.ts';
 import { createGate, type Gate } from '../marketplace/limits.ts';
-import { createLimiter, type Limiter } from '../marketplace/ratelimit.ts';
+import { clientAddress, createLimiter, type Limiter } from '../marketplace/ratelimit.ts';
 import { BadQuery, parseListParams } from '../marketplace/search.ts';
 import * as store from '../marketplace/store.ts';
 import { HttpError, json } from './sync.ts';
@@ -22,6 +22,8 @@ export interface MarketplaceDeps {
   limiter?: Limiter;
   /** GET routes: per user, or per client address when anonymous; defaults to 300 requests per minute. */
   readLimiter?: Limiter;
+  /** Reverse proxies in front of this server that append to X-Forwarded-For (default: env TRUSTED_PROXY_HOPS, else 0 = use the socket address). */
+  trustedProxyHops?: number;
   /** Preview/doc entries (shared; visibility is still checked per request). */
   cache?: ByteLru;
   /** The ao_admin pool: used ONLY to register artifacts, create publishers/teams/members and finalize a creator's version
@@ -126,6 +128,8 @@ export function imageType(b: Uint8Array): string | undefined {
 export function marketplaceHandler(deps: MarketplaceDeps) {
   const limiter = deps.limiter ?? createLimiter();
   const readLimiter = deps.readLimiter ?? createLimiter({ limit: 300 });
+  const hops = Math.max(0, Math.floor(deps.trustedProxyHops ?? (Number(process.env.TRUSTED_PROXY_HOPS) || 0)));
+  if (hops > 0 && Number(process.env.INSTANCES) > 1) console.warn('marketplace: rate limiters are per process; with INSTANCES>1 each instance keeps its own counters, so the effective limit is multiplied by the instance count.');
   const cache = deps.cache ?? new ByteLru();
   const maxUpload = deps.maxUploadBytes ?? MAX_UPLOAD;
   const memberAddLimiter = deps.memberAddLimiter ?? createLimiter({ limit: 10 });
@@ -160,10 +164,17 @@ export function marketplaceHandler(deps: MarketplaceDeps) {
       // No Authorization header: an anonymous reader. A header that does not verify is a 401, never a downgrade.
       const signedIn = !!req.headers.authorization;
       if (mutating && !signedIn) throw new HttpError(401, 'Sign in first.');
-      const uid = signedIn ? (await deps.authenticate(req)).uid : '';
       const lim = mutating ? limiter : readLimiter;
-      const key = uid || `ip:${req.socket?.remoteAddress ?? '?'}`;
-      if (!lim.allow(key)) throw new HttpError(429, 'Too many requests. Try again in a minute.', { retryAfter: lim.retryAfter(key) });
+      const ipKey = `ip:${clientAddress(req, hops)}`;
+      const limit = (key: string) => { if (!lim.allow(key)) throw new HttpError(429, 'Too many requests. Try again in a minute.', { retryAfter: lim.retryAfter(key) }); };
+      // Anonymous requests are limited by address BEFORE anything else runs; a signed-in one by user id (address is the fallback
+      // while the token does not verify, so a flood of bad tokens cannot hammer authenticate for free).
+      if (!signedIn) limit(ipKey);
+      let uid = '';
+      if (signedIn) {
+        try { uid = (await deps.authenticate(req)).uid; } catch (e) { limit(ipKey); throw e; }
+        limit(uid);
+      }
       const q = <T>(fn: (c: pg.PoolClient) => Promise<T>) => store.withUser(deps.app, uid, fn);
       const needAuth = () => { if (!signedIn) throw new HttpError(401, 'Sign in first.'); };
       const uploadsOpen = () => { if (!scannerOk()) throw new store.StoreError(503, 'Uploads are paused: the package security scanner is unavailable on this server.', 'scanner_unavailable'); };

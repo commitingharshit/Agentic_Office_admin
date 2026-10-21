@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const migration = readFileSync(join(here, '..', '..', 'db', 'migrations', '0016_marketplace.sql'), 'utf8');
+const migration = ['0016_marketplace.sql', '0019_marketplace_hardening.sql'].map((f) => readFileSync(join(here, '..', '..', 'db', 'migrations', f), 'utf8')).join('\n');
 
 let EmbeddedPostgres: any;
 export let skip: string | false = false;
@@ -48,7 +48,7 @@ export async function startMarketplacePg(): Promise<MarketplacePg> {
   await su.query(`CREATE DATABASE mkt OWNER ao_owner`);
   const owner = await connect('ao_owner');
   await owner.query(`
-    CREATE TABLE users (id text PRIMARY KEY, email text);
+    CREATE TABLE users (id text PRIMARY KEY, email text, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);
     ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
     CREATE POLICY own_rows ON devices USING (user_id = current_setting('app.user_id', true));
