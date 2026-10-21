@@ -96,8 +96,8 @@ describe('hook validator: event honesty', () => {
 });
 
 describe('the desktop copy of the event table', () => {
-  test('hookAdapter.ts HOOK_EVENT_STATUS names the same events, Hermes hooks and statuses as the validator', () => {
-    const src = readFileSync(join(repoRoot, 'apps', 'desktop', 'src', 'vs', 'platform', 'marketplace', 'node', 'adapters', 'hookAdapter.ts'), 'utf8');
+  test('marketplaceHooks.ts HOOK_EVENT_STATUS names the same events, Hermes hooks and statuses as the validator', () => {
+    const src = readFileSync(join(repoRoot, 'apps', 'desktop', 'src', 'vs', 'platform', 'marketplace', 'common', 'marketplaceHooks.ts'), 'utf8');
     const block = src.slice(src.indexOf('HOOK_EVENT_STATUS'), src.indexOf('/** Per-event honesty lines'));
     const rows = [...block.matchAll(/^\t(\w+): \{ hermes: '([a-z_]*)', status: '(\w+)'/gm)].map((m) => [m[1], m[2], m[3]]);
     assert.deepEqual(rows.sort(), Object.entries(HOOK_EVENTS).map(([k, v]) => [k, v.hermes, v.status]).sort());
