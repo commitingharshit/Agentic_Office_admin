@@ -88,3 +88,7 @@ The yellow banner "Two-factor sign-in is not enforced for administrators" shows 
 Pages built on shared usage (Agent Runs, Product Analytics, Reliability, and App versions on Infrastructure) are empty until people turn on "share usage" in the app. This is expected, not a fault.
 
 A campaign will not go live until a creative is published ("A campaign goes live only with at least one ready creative."). A creative cannot be published while its media is still processing ("The media is not processed yet"). A plan cannot be switched on without a price ("Set a price (0 for a free plan) before switching the plan on.").
+
+## People say the app is down or sign-in does not work
+
+Open Infrastructure (System group) and look at the Services table first. If Sign-in or App sign-in API is down or degraded, the problem is on the server side, not the person's account: the bell will also list it. Check the public status page at /status on the app's sign-in address from a network outside your own. If everything is up there, look at the one person: Users, then the user's Authentication tab shows their recent sign-ins and whether the account is disabled.

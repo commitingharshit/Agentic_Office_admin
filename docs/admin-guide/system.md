@@ -30,6 +30,8 @@ Page: /admin/infrastructure
 
 The Infrastructure page (System group) shows what the platform runs on, read from the database and the backup store. Nothing here exposes a host secret and nothing can be changed. Permission needed: `infra.read` (superadmin, engineer, analyst).
 
+Services table (at the top): which servers are up or down. One row per service (Database, Sign-in, Package verifier, App sign-in API, Status page and any others the platform runs) with its state (up, degraded or down), answer time, availability over 90 days, when it was last checked and since when it has been in this state. A single failed check shows as degraded; two in a row show as down; a slow answer is degraded. A service nobody has confirmed for 3 minutes is shown as down, because the checker itself may be what stopped. When something is down, the bell and Notifications list it ("N services are down: ...") for roles that can open this page. The same list without the details is public on the app's sign-in address under /status, for people who only need to know whether the service is up.
+
 Tiles: Database (size, connections), Latest backup (hours ago; restore drill passed or FAILED), Sync in the last 24 hours (p95 lag), Devices reporting.
 
 Checks table: Postgres (reachable, version, up since), Backups, WAL archiving. Backups count as healthy only when a backup store is configured, no error, and the latest backup is under 36 hours old; otherwise the row says "check". Also shown: the 12 largest tables (approximate rows, size) and App versions in use (known only from people who share usage; otherwise "None have, so this list is empty").

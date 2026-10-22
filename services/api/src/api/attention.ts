@@ -17,6 +17,13 @@ export async function attention(deps: AdminDeps, role: AdminRole): Promise<{ ite
     const bad = await one(`SELECT count(*)::int AS n FROM payment_events WHERE signature_ok = false AND received_at > now() - interval '24 hours'`);
     if (bad.n) items.push({ id: 'webhook-bad-signature', level: 'warn', count: bad.n, href: '/admin/payments', title: `${bad.n} payment notice${bad.n === 1 ? '' : 's'} with a bad signature in the last day`, detail: 'They were refused and changed nothing. A burst can mean someone is probing the endpoint, or the signing secret differs from the provider\'s.' });
   }
+  if (can(role, 'infra.read')) {
+    // A service the prober has not confirmed for 3 minutes counts as down (the prober itself may be what is down).
+    const d = (await deps.ro.query(`SELECT label, state, checked_at < now() - interval '3 minutes' AS stale FROM service_status ORDER BY sort, service`).catch(() => ({ rows: [] }))).rows as Array<{ label: string; state: string; stale: boolean }>;
+    const down = d.filter((x) => x.state === 'down' || x.stale), degraded = d.filter((x) => x.state === 'degraded' && !x.stale);
+    if (down.length) items.push({ id: 'services-down', level: 'action', count: down.length, href: '/admin/infrastructure', title: `${down.length} service${down.length === 1 ? ' is' : 's are'} down: ${down.map((x) => x.label).join(', ')}`, detail: 'Open Infrastructure for when each stopped answering.' });
+    if (degraded.length) items.push({ id: 'services-degraded', level: 'warn', count: degraded.length, href: '/admin/infrastructure', title: `${degraded.length} service${degraded.length === 1 ? ' is' : 's are'} degraded: ${degraded.map((x) => x.label).join(', ')}`, detail: 'Slow or failing an occasional check.' });
+  }
   if (can(role, 'support.read')) {
     const t = await one(`SELECT count(*)::int AS n FROM support_tickets WHERE status = 'open'`);
     if (t.n) items.push({ id: 'tickets-open', level: 'info', count: t.n, href: '/admin/support', title: `${t.n} open support ticket${t.n === 1 ? '' : 's'}`, detail: 'People waiting for a reply.' });

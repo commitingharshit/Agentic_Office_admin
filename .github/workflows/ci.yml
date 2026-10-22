@@ -1,0 +1,29 @@
+name: ci
+on: { push: { branches: [main, master] }, pull_request: {} }
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: tests/tools/test-api.sh
+  console:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/console } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: no secrets in the tree
+        run: |
+          if git grep -nE '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' -- . ':!tests/fixtures' ':!*.test.ts' ':!docs' ':!services/api/evals'; then echo "possible secret committed"; exit 1; fi
+          if git ls-files | grep -E '(^|/)\.env$'; then echo ".env committed"; exit 1; fi

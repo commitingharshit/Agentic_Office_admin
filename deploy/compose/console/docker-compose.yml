@@ -8,7 +8,7 @@ name: ${WEB_PROJECT:-agentic-office-web}
 
 services:
   control-plane:
-    build: { context: .., dockerfile: Dockerfile }
+    build: { context: ../../../apps/console, dockerfile: Dockerfile }
     restart: unless-stopped
     environment:
       AUTH_BASE_URL: ${AUTH_BASE_URL:?public base URL, e.g. https://auth.example.com}

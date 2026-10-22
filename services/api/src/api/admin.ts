@@ -18,6 +18,7 @@ import { DEFAULT_CURRENCY, PLAN_PRICE_JOIN, PLAN_SELECT as billingSelect } from 
 import * as ops from './ops.ts';
 import * as growthAdmin from '../growth/admin.ts';
 import { keycloakView, mirrorKeycloak } from './keycloak-link.ts';
+import { publicStatus } from '../status/probe.ts';
 import * as consoleApi from './admin-console.ts';
 import { can, permissionsOf, isAdminRole, type AdminRole, type Permission } from './rbac.ts';
 
@@ -512,6 +513,12 @@ export function adminHandler(deps: AdminDeps) {
       if (m === 'GET' && a === 'overview' && id === 'series') { await need('overview.read'); return send(200, await consoleApi.overviewSeries(deps, q)); }
       if (m === 'GET' && a === 'attention') return send(200, await attention(deps, adminRole));
       if (m === 'GET' && a === 'activity') { await need('overview.read'); return send(200, await consoleApi.recentActivity(deps, q)); }
+      if (m === 'GET' && a === 'status') {
+        await need('infra.read');
+        const st = await publicStatus(deps.ro);
+        const lat = new Map((await deps.ro.query('SELECT service, latency_ms FROM service_status')).rows.map((r: { service: string; latency_ms: number | null }) => [r.service, r.latency_ms]));
+        return send(200, { ...st, services: st.services.map((x) => ({ ...x, latencyMs: lat.get(x.id) ?? null })) });
+      }
       if (m === 'GET' && a === 'health') { await need('overview.read'); await audit(deps, adminId, 'view_health', null); return send(200, await health(deps)); }
       if (m === 'GET' && a === 'audit') { await need('audit.read'); return send(200, await auditLog(deps, q)); }
       if (m === 'GET' && a === 'users' && !id) {
