@@ -3,19 +3,21 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { authClient } from '../../lib/auth-client';
+import { HelpPanel } from './HelpPanel';
 import { Icon } from './Icon';
 import type { NavGroup } from './nav';
 
 export interface ShellAdmin { email: string; name?: string | null; role: string }
 const isId = (s: string) => /^[A-Za-z0-9_-]{16,}$/.test(s) || /^usr_/.test(s);
 
-export function Shell({ nav, admin, mfaOff, healthy, alerts, children }: { alerts: Array<{ id: string; level: string; title: string; href: string; count: number }>; nav: NavGroup[]; admin: ShellAdmin; mfaOff: boolean; healthy: boolean | null; children: ReactNode }) {
+export function Shell({ nav, admin, mfaOff, healthy, alerts, helpOn, children }: { helpOn: boolean; alerts: Array<{ id: string; level: string; title: string; href: string; count: number }>; nav: NavGroup[]; admin: ShellAdmin; mfaOff: boolean; healthy: boolean | null; children: ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [menu, setMenu] = useState(false);
   const [bell, setBell] = useState(false);
   const [palette, setPalette] = useState(false);
+  const [help, setHelp] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const dlg = useRef<HTMLDialogElement>(null);
@@ -28,8 +30,9 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, children }: { alert
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     const pages = items.filter((i) => !q || i.label.toLowerCase().includes(q)).map((i) => ({ href: i.href, label: i.label, group: 'Go to', icon: i.icon }));
+    const ask = q ? [{ href: '#help', label: `Ask the help assistant: “${query.trim()}”`, group: 'Help', icon: 'search' as const }] : [{ href: '#help', label: 'Ask the help assistant', group: 'Help', icon: 'search' as const }];
     const find = q ? [{ href: `/admin/users?q=${encodeURIComponent(query.trim())}`, label: `Find a user: “${query.trim()}”`, group: 'Search', icon: 'search' as const }] : [];
-    return [...find, ...pages];
+    return [...ask, ...find, ...pages];
   }, [items, query]);
 
   useEffect(() => {
@@ -85,6 +88,7 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, children }: { alert
             <input ref={searchRef} name="q" type="search" placeholder="Search users" aria-label="Search users" autoComplete="off" />
             <kbd>/</kbd>
           </form>
+          <button type="button" className="btn ghost sm" onClick={() => setHelp(true)} aria-label="Open the help assistant">Help</button>
           <button type="button" className="btn ghost sm" onClick={() => setPalette(true)} aria-label="Open command palette">⌘K</button>
           <span className="health" title={healthy === null ? 'Health unknown' : healthy ? 'Admin API reachable' : 'Admin API not answering'}><i className={`dot ${healthy === null ? '' : healthy ? 'ok' : 'bad'}`} />{healthy === null ? 'unknown' : healthy ? 'Healthy' : 'Down'}</span>
           <div className="menu">
@@ -110,18 +114,19 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, children }: { alert
         <main className="content" id="content">{children}</main>
       </div>
 
+      <HelpPanel open={help} onClose={() => setHelp(false)} enabled={helpOn} />
       <dialog ref={dlg} className="cmdk" onClose={() => setPalette(false)} aria-label="Command palette">
         <input autoFocus value={query} placeholder="Go to a page, or type to find a user…" aria-label="Command"
           onChange={(e) => { setQuery(e.target.value); setActive(0); }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-            else if (e.key === 'Enter' && results[active]) { e.preventDefault(); router.push(results[active].href); setPalette(false); }
+            else if (e.key === 'Enter' && results[active]) { e.preventDefault(); if (results[active].href === '#help') { setPalette(false); setHelp(true); } else { router.push(results[active].href); setPalette(false); } }
           }} />
         <ul role="listbox">
           {results.map((r, i) => (
             <li key={r.href + r.label} role="option" aria-selected={i === active}>
-              <Link href={r.href} data-active={i === active} onClick={() => setPalette(false)}><Icon name={r.icon} /><span>{r.label}</span><span className="faint" style={{ marginLeft: 'auto' }}>{r.group}</span></Link>
+              <Link href={r.href} data-active={i === active} onClick={(e) => { if (r.href === '#help') { e.preventDefault(); setPalette(false); setHelp(true); } else setPalette(false); }}><Icon name={r.icon} /><span>{r.label}</span><span className="faint" style={{ marginLeft: 'auto' }}>{r.group}</span></Link>
             </li>))}
           {!results.length && <li className="group">No matches</li>}
         </ul>

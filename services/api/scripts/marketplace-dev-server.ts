@@ -119,7 +119,7 @@ function templatePackage(id: string, title: string, summary: string, rel: string
   let png = renderPreview(src);
   if (!png) {
     // the template validator requires at least one preview: fall back to the thumbnail the repo already ships for this template
-    const shipped = join(repo, 'templates', 'thumbnails', `${format}-${rel.split('/').pop()!.replace(/\.[^.]+$/, '')}.png`);
+    const shipped = join(repo, 'tests', 'fixtures', 'templates', 'thumbnails', `${format}-${rel.split('/').pop()!.replace(/\.[^.]+$/, '')}.png`);
     try { png = new Uint8Array(readFileSync(shipped)); log(`${id}: officecli unavailable, using the shipped thumbnail ${relative(repo, shipped)}`); } catch { throw new Error(`${id}: officecli unavailable and no shipped thumbnail`); }
   }
   const name = `${id.split('/')[1]}.${format}`;
@@ -179,8 +179,8 @@ async function main() {
       VALUES ($1,$2,$3,1,0,0,'published',$4,$5,$6,$7,$8)`, [`ver_${b.manifest.id.replace('/', '_')}_1`, b.manifest.id, b.manifest.version, JSON.stringify(b.manifest), sha256, size, JSON.stringify(b.manifest.compat), b.scan]);
   };
 
-  const memo = templatePackage('agentic-office/board-memo', 'Board Memo', 'A decision memo for the board: decision required, summary, plan, risks and next steps.', 'templates/docx/board-memo.docx', 'docx');
-  const deck = templatePackage('agentic-office/board-update', 'Board Update Deck', 'A six-slide board update: results, plan, risks and the ask.', 'templates/pptx/board-update.pptx', 'pptx');
+  const memo = templatePackage('agentic-office/board-memo', 'Board Memo', 'A decision memo for the board: decision required, summary, plan, risks and next steps.', 'tests/fixtures/templates/docx/board-memo.docx', 'docx');
+  const deck = templatePackage('agentic-office/board-update', 'Board Update Deck', 'A six-slide board update: results, plan, risks and the ask.', 'tests/fixtures/templates/pptx/board-update.pptx', 'pptx');
   const mk = (id: string, t: ReturnType<typeof templatePackage>) => build({ schema: 'agentic.marketplace/1', id, type: 'template', version: '1.0.0', title: t.title, summary: t.summary, license: 'MIT',
     compat: { app: '*' }, dependencies: [], permissions: [], payload: t.payload }, t.files);
   await insert(await mk('agentic-office/board-memo', memo), { trust: 'official', tags: ['board', 'memo', 'docx'] });
@@ -294,7 +294,7 @@ async function main() {
   const url = `${HTTP ? 'http' : 'https'}://127.0.0.1:${PORT}`;
   console.log(`marketplace dev server: ${url}  (bearer: ${DEV_TOKEN} = ${DEV_USER}, device dev-device)`);
   if (STATE) { mkdirSync(dirname(resolve(STATE)), { recursive: true }); writeFileSync(STATE, JSON.stringify({ url, pid: process.pid, token: DEV_TOKEN, user: DEV_USER, device: 'dev-device', advancedSeeded: seededAdvanced, ...(certDir ? { ca: join(certDir, 'c.pem') } : {}) })); }
-  log(`seeded: ${relative(repo, join(repo, 'templates'))}/… 2 templates, 2 skills${BULK ? `, ${BULK} bulk templates` : ''}`);
+  log(`seeded: ${relative(repo, join(repo, 'tests', 'fixtures', 'templates'))}/… 2 templates, 2 skills${BULK ? `, ${BULK} bulk templates` : ''}`);
 
   let stopping = false;
   const stop = async () => {

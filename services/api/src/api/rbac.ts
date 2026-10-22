@@ -8,7 +8,7 @@ export const PERMISSIONS = [
   'credits.read', 'credits.write', 'coupons.read', 'coupons.write', 'plans.read', 'plans.write',
   'sessions.read', 'runs.read', 'usage.read', 'analytics.read', 'audit.read', 'sql.read', 'settings.read',
   'payments.read', 'payments.write', 'infra.read', 'flags.read', 'flags.write', 'comms.read', 'comms.write', 'support.read', 'support.write',
-  'growth.read', 'growth.write', 'growth.publish', 'releases.write',
+  'growth.read', 'growth.write', 'growth.publish', 'releases.write', 'help.use',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -16,16 +16,16 @@ const set = (...p: Permission[]) => new Set<Permission>(p);
 const ROLE_PERMISSIONS: Record<AdminRole, ReadonlySet<Permission>> = {
   superadmin: new Set(PERMISSIONS),
   // Keeps the product running: sees everything technical, changes flags, reads SQL; touches no money and no accounts.
-  engineer: set('overview.read', 'users.read', 'roles.read', 'sessions.read', 'runs.read', 'usage.read', 'analytics.read', 'audit.read', 'sql.read',
+  engineer: set('help.use', 'overview.read', 'users.read', 'roles.read', 'sessions.read', 'runs.read', 'usage.read', 'analytics.read', 'audit.read', 'sql.read',
     'settings.read', 'infra.read', 'flags.read', 'flags.write', 'support.read', 'payments.read', 'growth.read', 'releases.write'),
   // Helps customers: account actions and messages, no money changes, no deleting, no roles.
-  support: set('overview.read', 'users.read', 'users.export', 'users.write', 'sessions.read', 'runs.read', 'credits.read', 'coupons.read', 'plans.read',
+  support: set('help.use', 'overview.read', 'users.read', 'users.export', 'users.write', 'sessions.read', 'runs.read', 'credits.read', 'coupons.read', 'plans.read',
     'comms.read', 'comms.write', 'support.read', 'support.write', 'audit.read', 'flags.read', 'payments.read', 'growth.read'),
   // Money: credits, coupons, plans, usage; reads accounts, changes none.
-  finance: set('overview.read', 'users.read', 'credits.read', 'credits.write', 'coupons.read', 'coupons.write', 'plans.read', 'plans.write', 'payments.read', 'payments.write',
+  finance: set('help.use', 'overview.read', 'users.read', 'credits.read', 'credits.write', 'coupons.read', 'coupons.write', 'plans.read', 'plans.write', 'payments.read', 'payments.write',
     'usage.read', 'analytics.read', 'audit.read', 'growth.read'),
   // Read-only product intelligence.
-  analyst: set('overview.read', 'users.read', 'sessions.read', 'runs.read', 'usage.read', 'analytics.read', 'infra.read', 'flags.read', 'plans.read', 'coupons.read', 'growth.read'),
+  analyst: set('help.use', 'overview.read', 'users.read', 'sessions.read', 'runs.read', 'usage.read', 'analytics.read', 'infra.read', 'flags.read', 'plans.read', 'coupons.read', 'growth.read'),
 };
 
 export const isAdminRole = (v: unknown): v is AdminRole => typeof v === 'string' && (ADMIN_ROLES as readonly string[]).includes(v);

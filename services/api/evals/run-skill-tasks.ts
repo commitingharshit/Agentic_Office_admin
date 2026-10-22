@@ -37,7 +37,7 @@ export function loadFixtures(only?: string): Fixture[] {
 export function packageFor(f: Fixture): UnpackedPackage {
   const files: Record<string, Uint8Array> = {};
   const walk = (dir: string, rel: string) => { for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) { const r = rel ? `${rel}/${e.name}` : e.name; if (e.isDirectory()) walk(dir, r); else files[r] = new Uint8Array(readFileSync(join(dir, r))); } };
-  const skillRoot = join(repoRoot, 'services', 'accounts-sync', f.skillDir);
+  const skillRoot = join(repoRoot, 'services', 'api', f.skillDir);
   walk(skillRoot, '');
   const read = (n: string) => ({ path: n, bytes: new Uint8Array(readFileSync(join(fixturesDir, f.name, n))) });
   files[TASKS_FILE] = buildTasksFile([{ ...f.task, inputs: f.task.inputs.map(read), expected: f.task.expected.map(read) }]);

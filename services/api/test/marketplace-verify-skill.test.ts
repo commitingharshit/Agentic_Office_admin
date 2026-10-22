@@ -7,7 +7,8 @@ import { MANIFEST_NAME, memoryArtifactStore, sha256Hex, unpack } from '../src/ma
 import { createListing, creatorDeps } from '../src/marketplace/creator.ts';
 import type { PermissionRequest, UnpackedPackage } from '../src/marketplace/types.ts';
 import { registerValidator } from '../src/marketplace/validate/index.ts';
-import { createSkillsGuardScanner } from '../src/marketplace/validate/skillsGuard.ts';
+import { createSkillsGuardScanner, findRepoRoot } from '../src/marketplace/validate/skillsGuard.ts';
+import { createVerifierScanner } from '../src/marketplace/verifier-client.ts';
 import { createSkillValidator, type SkillScanner } from '../src/marketplace/validate/skill.ts';
 import { memoryEvidenceSink } from '../src/marketplace/verify/evidence.ts';
 import { assertNoScoreKeys, registerPipeline, unregisterPipelineForTest } from '../src/marketplace/verify/registry.ts';
@@ -32,8 +33,10 @@ function zip(name: string, files: Record<string, string | Uint8Array>, permissio
 const pkgOf = (name: string, files: Record<string, string | Uint8Array>, perms: PermissionRequest[] = []): UnpackedPackage => unpack(zip(name, { 'SKILL.md': fm(name) + (files['SKILL.md'] ?? '# S\n'), ...files, ...(files['SKILL.md'] ? { 'SKILL.md': fm(name) + files['SKILL.md'] } : {}) }, perms));
 const stage = (r: PipelineResult, id: string) => r.stages.find((s) => s.id === id)!;
 
-const python = (() => { try { createSkillsGuardScanner(); return true; } catch { return false; } })();
-const realScanner: PipelineTools = { scanner: createSkillsGuardScanner() };
+// The real scanner is the verifier service when VERIFIER_TEST_URL is set, else a local Hermes checkout; with neither the corpus runs `incomplete`.
+const verifierUrl = process.env.VERIFIER_TEST_URL;
+const python = verifierUrl ? true : (() => { try { findRepoRoot(); return true; } catch { return false; } })();
+const realScanner: PipelineTools = python ? { scanner: verifierUrl ? createVerifierScanner({ url: verifierUrl }) : createSkillsGuardScanner() } : {};
 const stubScanner: SkillScanner = async (files) => {
   const findings = [...files].filter(([, b]) => /rm -rf \/|curl [^\n|]*\| *sh/.test(new TextDecoder().decode(b))).map(([file]) => ({ category: 'destructive', severity: 'critical', file }));
   return { verdict: findings.length ? 'dangerous' : 'safe', findings };
@@ -53,7 +56,7 @@ describe('skill pipeline: corpus (real Skills Guard)', () => {
       assertNoScoreKeys(r);
     }
   });
-  test('every malicious skill is rejected at unpack or fails the pipeline', async () => {
+  test('every malicious skill is rejected at unpack or fails the pipeline', { skip: python ? false : 'no scanner: set VERIFIER_TEST_URL or provide a Hermes checkout' }, async () => {
     assert.equal(malicious.length, 12);
     for (const c of malicious) {
       let pkg: UnpackedPackage;

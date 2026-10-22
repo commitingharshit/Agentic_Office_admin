@@ -112,8 +112,9 @@ export function createPythonBridge(opts: { python?: string; repoRoot?: string; t
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const run = opts.runner ?? spawnRunner;
   return async (req): Promise<CheckResult | { unavailable: string }> => {
-    let root: string;
-    try { root = resolve(opts.repoRoot ?? findRepoRoot()); } catch (e) { return { unavailable: e instanceof Error ? e.message : String(e) }; }
+    // An injected runner (tests, or the verifier service) does its own lookup: no checkout is needed on this side.
+    let root = '';
+    try { root = resolve(opts.repoRoot ?? findRepoRoot()); } catch (e) { if (!opts.runner) return { unavailable: e instanceof Error ? e.message : String(e) }; }
     if (!opts.runner && !existsSync(join(root, MODULE_REL))) return { unavailable: `compiler not found at ${join(root, MODULE_REL)}` };
     const b64 = (u: Uint8Array) => Buffer.from(u).toString('base64');
     const stdin = JSON.stringify({ op: req.op, listing_id: req.listingId, version: req.version, files: { 'blueprint.json': b64(req.blueprint), 'SOUL.md': b64(req.soul) }, resolved: toBridgeResolved(req.resolved), ...(req.op === 'dryrun' ? { child_blueprints: childBlueprints(req.resolved) } : {}) });

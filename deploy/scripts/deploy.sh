@@ -1,45 +1,51 @@
 #!/usr/bin/env bash
-# Deploy the pricing/payments, admin-invite, CORS and Growth (promotions, releases, campaign email) work: migrations 0018-0030 (growth is 0029/0030), the API, the media worker and the console.
-# Growth: campaign email stays off (no Resend key) and the public Resend webhook is not opened by this script.
-# Payments stay OFF: no provider credentials are set, AO_PAYMENTS is left empty. Run by a person, from the repo root:  scripts/dev/deploy-pricing-payments.sh
-# Order: dump -> backup env -> add the billing role password -> ship code -> migrate -> restart API -> rebuild console -> check.
-# Rollback: restore the dump printed in step 1 (pg_restore), put .env.pre-0018.bak back, restart the API and the console.
+# Deploy the platform from this repo to the server host. Run by a person, from the repo root:  deploy/scripts/deploy.sh
+#   AO_HOST   ssh alias of the host            (default ateam-tanmay-hp)
+#   AO_HOME   folder on the host, under $HOME  (default ao-platform)
+#   AO_MONOREPO  checkout of the desktop monorepo, only to pin Hermes for the verifier image (skip it to keep the verifier image the host already has)
+# Order: refuse a dirty tree -> database dump -> ship the committed code -> env files (copied once from the old layout, never overwritten) ->
+#        verifier image -> migrate -> build images -> gate first, then API, then the rest -> console -> checks.
+# Nothing here sets payment credentials or a help-assistant key; payments stay OFF and the help assistant stays off until keys are set
+# (deploy/scripts/set-help-keys.sh, enable-payments-youpi.sh).
+# Rollback: the old tree (~/ao-control-plane) is left untouched. To go back:  cd ~/ao-control-plane/accounts-sync/deploy && docker compose -p ao-live up -d
+#           (and the same in control-plane/deploy and keycloak/deploy); restore the dump printed in step 1 only if a migration must be undone.
 set -euo pipefail
-HOST=${AO_HOST:-ateam-tanmay-hp}
-cd "$(git rev-parse --show-toplevel)/services"
+HOST=${AO_HOST:-ateam-tanmay-hp}; AO_HOME=${AO_HOME:-ao-platform}
+[[ "$AO_HOME" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "AO_HOME may only contain letters, digits and . _ -" >&2; exit 1; }
+cd "$(git rev-parse --show-toplevel)"
+if [[ -n "$(git status --porcelain --untracked-files=no)" && -z "${ALLOW_DIRTY:-}" ]]; then echo "uncommitted changes: commit first (the host gets exactly what is committed), or ALLOW_DIRTY=1" >&2; exit 1; fi
+COMMIT=$(git rev-parse --short HEAD); echo "deploying $COMMIT to $HOST:~/$AO_HOME"
+ssh_() { ssh -o BatchMode=yes "$HOST" "$@"; }
 
-echo "1/6 dump the live database"
-DUMP=$(ssh -o BatchMode=yes "$HOST" 'mkdir -p ~/ao-backups-manual; f=~/ao-backups-manual/pre-0018-$(date -u +%Y%m%dT%H%M%SZ).dump; docker exec ao-live-postgres-1 sh -c "pg_dump -U ao_owner -Fc agentic_office" > $f; echo $f')
+echo "1/8 dump the live database"
+DUMP=$(ssh_ 'mkdir -p ~/ao-backups-manual; f=~/ao-backups-manual/pre-platform-$(date -u +%Y%m%dT%H%M%SZ).dump; docker exec ao-live-postgres-1 sh -c "pg_dump -U ao_owner -Fc agentic_office" > $f; echo $f')
 echo "   $DUMP"
 
-echo "2/6 env backup and billing role password (generated on the host, never printed)"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && cp -n .env .env.pre-0018.bak && chmod 600 .env.pre-0018.bak && (grep -q "^AO_BILLING_PASSWORD=." .env || printf "\n# Payments (off until AO_PAYMENTS is set)\nAO_BILLING_PASSWORD=%s\n" "$(openssl rand -hex 24)" >> .env); (grep -q "^AO_MEDIA_SIGNING_KEY=." .env || printf "\n# Growth: signs the app links to promotion media\nAO_MEDIA_SIGNING_KEY=%s\n" "$(openssl rand -hex 32)" >> .env); grep -c "^AO_BILLING_PASSWORD=.\{20,\}" .env; grep -c "^AO_MEDIA_SIGNING_KEY=.\{32,\}" .env'
+echo "2/8 ship the committed code (env files and node_modules are never touched)"
+ssh_ "mkdir -p ~/$AO_HOME"
+git archive --format=tar HEAD | ssh_ "cd ~/$AO_HOME && tar xf - 2>/dev/null; find . -name '._*' -not -path '*/node_modules/*' -delete"
+if [[ -n "${AO_MONOREPO:-}" ]]; then
+  deploy/scripts/build-verifier.sh "$AO_MONOREPO" --prepare-only
+  COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C services/verifier hermes HERMES_REF | ssh_ "cd ~/$AO_HOME/services/verifier && tar xf - 2>/dev/null"
+fi
 
-echo "2b/6 retire Better Auth on the API: it stops accepting its sign-in tokens (the env backup above is the way back)"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && sed -i "s/^AUTH_ISSUER=.*/AUTH_ISSUER=/; s/^AUTH_JWKS_URL=.*/AUTH_JWKS_URL=/" .env && grep -c "^AUTH_ISSUER=$" .env'
+echo "3/8 env files: copied once from the old layout (mode 600), then left alone"
+ssh_ "cd ~/$AO_HOME/deploy/compose && for pair in api:ao-control-plane/accounts-sync/deploy console:ao-control-plane/control-plane/deploy keycloak:ao-control-plane/keycloak/deploy; do n=\${pair%%:*}; o=\$HOME/\${pair#*:}/.env; if [ ! -f \$n/.env ] && [ -f \$o ]; then cp \$o \$n/.env && chmod 600 \$n/.env && echo \"   \$n/.env copied\"; elif [ -f \$n/.env ]; then echo \"   \$n/.env already there\"; else echo \"   \$n/.env MISSING (copy .env.example and fill it in)\"; fi; done; cd api && (grep -q '^AO_BILLING_PASSWORD=.' .env || printf '\nAO_BILLING_PASSWORD=%s\n' \"\$(openssl rand -hex 24)\" >> .env); (grep -q '^AO_MEDIA_SIGNING_KEY=.' .env || printf '\nAO_MEDIA_SIGNING_KEY=%s\n' \"\$(openssl rand -hex 32)\" >> .env); chmod 600 .env"
 
-echo "3/6 ship the code (first remove growth files that earlier test runs left on the host: the old 0020/0021 and 0021/0022 migration names and src/growth)"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && rm -f db/migrations/0020_growth.sql db/migrations/0021_releases_email.sql db/migrations/0021_growth.sql db/migrations/0022_releases_email.sql test/growth-*.test.ts && rm -rf src/growth'
-COPYFILE_DISABLE=1 tar --exclude=node_modules --exclude=.next --exclude=.DS_Store --no-xattrs -czf - \
-  accounts-sync/db accounts-sync/src accounts-sync/deploy/docker-compose.yml accounts-sync/deploy/media-worker.Dockerfile accounts-sync/deploy/Dockerfile.marketplace accounts-sync/deploy/api-gate.conf accounts-sync/deploy/.env.example accounts-sync/package.json accounts-sync/package-lock.json \
-  control-plane/src control-plane/public control-plane/package.json control-plane/Dockerfile \
-  | ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane && tar xzf - 2>/dev/null; find . -name "._*" -not -path "*/node_modules/*" -delete'
+echo "4/8 verifier image (the Hermes scanner and compiler, pinned)"
+ssh_ "cd ~/$AO_HOME/services/verifier && if [ -d hermes ]; then docker build -q -t ao-verifier:latest . >/dev/null && echo '   built ao-verifier:latest'; elif docker image inspect ao-verifier:latest >/dev/null 2>&1; then echo '   keeping the existing ao-verifier:latest'; else echo '   NO verifier image: marketplace uploads stay 503 until you deploy with AO_MONOREPO=<monorepo checkout>'; fi"
 
-echo "3b/6 the sign-in page look (Keycloak theme, with the app logo)"
-COPYFILE_DISABLE=1 tar --no-xattrs -czf - keycloak/theme | ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane && tar xzf - 2>/dev/null; find keycloak -name "._*" -delete; docker restart ao-keycloak-keycloak-1 >/dev/null && echo keycloak-restarted'
+echo "5/8 migrate (the migrator records the renamed growth migrations instead of running them twice)"
+ssh_ "cd ~/$AO_HOME/database && (set -a; . ../deploy/compose/api/.env; set +a; docker run --rm --network ao-live_default -v \"\$PWD\":/w -w /w -e DATABASE_URL=\"postgres://ao_owner:\${PG_OWNER_PASSWORD}@postgres:5432/agentic_office\" -e AO_APP_PASSWORD -e AO_READONLY_PASSWORD -e AO_ADMIN_PASSWORD -e AO_AUTH_PASSWORD -e AO_BILLING_PASSWORD node:24.15.0-alpine sh -c 'npm ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null && node migrate.ts')"
 
-echo "3c/6 runtime packages on the host (the API mounts accounts-sync/node_modules; new code can import a package the host does not have yet, and then the API cannot start)"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && docker run --rm -v "$PWD":/w -w /w node:24.15.0-alpine npm install --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null && ls node_modules | tr "\n" " " && echo'
+echo "6/8 build images, then start: gate first (sign-in stays reachable), then API, verifier, prober, media worker"
+ssh_ "cd ~/$AO_HOME && deploy/stack.sh api build api media-worker prober >/dev/null && deploy/stack.sh api up -d --no-deps api-gate && deploy/stack.sh api up -d --no-deps api && (docker image inspect ao-verifier:latest >/dev/null 2>&1 && deploy/stack.sh api up -d --no-deps verifier || true) && deploy/stack.sh api up -d --no-deps prober && deploy/stack.sh api up -d --no-deps minio-init media-worker && sleep 8 && docker logs --tail 12 ao-live-api-1 2>&1 | sed -E 's/(key|secret|token)=[^ ]+/\\1=<hidden>/Ig'"
 
-echo "4/6 migrate"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync && (set -a; . deploy/.env; set +a; docker run --rm --network ao-live_default -v "$PWD":/w -w /w -e DATABASE_URL="postgres://ao_owner:${PG_OWNER_PASSWORD}@postgres:5432/agentic_office" -e AO_APP_PASSWORD -e AO_READONLY_PASSWORD -e AO_ADMIN_PASSWORD -e AO_AUTH_PASSWORD -e AO_BILLING_PASSWORD node:24.15.0-alpine node db/migrate.ts)'
+echo "7/8 console and Keycloak (their compose files moved to this repo; same project names, same volumes)"
+ssh_ "cd ~/$AO_HOME && deploy/stack.sh console up -d --build && deploy/stack.sh keycloak up -d"
 
-echo "5/6 restart the API (compose restart silently does nothing for a changed env; recreate it)"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/accounts-sync/deploy && docker compose -p ao-live up -d --no-deps api-gate && docker compose -p ao-live up -d --no-deps api && docker compose -p ao-live up -d --build minio-init media-worker && sleep 5 && docker logs --tail 8 ao-live-api-1; docker logs --tail 4 ao-live-media-worker-1 2>&1'
-
-echo "6/6 rebuild and restart the console"
-ssh -o BatchMode=yes "$HOST" 'cd ~/ao-control-plane/control-plane/deploy && docker compose -p ao-control-plane-web up -d --build'
-echo "done. Payments are off. Check: https://tanmay-hp-linux-server.tail41864f.ts.net/admin (Billing & Plans, Payments, Notifications)"
-echo "App sign-in from outside the tailnet needs the API gate published (a root command on the host, run once):"
-echo "  sudo tailscale funnel --bg --https=8443 http://127.0.0.1:8183     (undo: sudo tailscale serve --bg --https=8443 http://127.0.0.1:8790)"
-echo "then from any network: scripts/dev/api-gate-check.sh https://tanmay-hp-linux-server.tail41864f.ts.net:8443"
+echo "8/8 checks against the gate on the host"
+ssh_ "cd ~/$AO_HOME && tests/tools/api-gate-check.sh http://127.0.0.1:8183 && tests/tools/keycloak-gate-check.sh http://127.0.0.1:8181"
+echo "done ($COMMIT). Payments are off; the help assistant is off until keys are set (deploy/scripts/set-help-keys.sh on the host)."
+echo "Public side, once (root, on the host):  sudo tailscale funnel --bg --https=8443 http://127.0.0.1:8183   (already set if sign-in worked before)"
+echo "Then from any network:  tests/tools/api-gate-check.sh https://tanmay-hp-linux-server.tail41864f.ts.net:8443   and open  .../status"

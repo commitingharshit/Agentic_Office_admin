@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
-const migDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations');
+const migDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'database', 'migrations');
 const migrations = readdirSync(migDir).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort();
 
 // Names defined by more than one migration, with the exact migrations that define them. Adding a new redefinition (or a

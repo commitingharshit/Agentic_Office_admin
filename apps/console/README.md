@@ -7,7 +7,7 @@ It shares accounts-sync's Postgres and calls accounts-sync's admin API; it owns 
 - **Toolchain:** Node 24, npm, Next.js 16 (App Router), Better Auth 1.7.
 - **Install / build:** `npm ci && npm run build` (`npm run typecheck`).
 - **Test:** `npm test` (`node --import tsx --test test/*.test.ts`) against a database migrated by
-  `services/accounts-sync/db/migrate.ts`: set `AUTH_TEST_PG` (owner URL), `AO_AUTH_PASSWORD`, `AO_APP_PASSWORD`,
+  `database/migrate.ts`: set `AUTH_TEST_PG` (owner URL), `AO_AUTH_PASSWORD`, `AO_APP_PASSWORD`,
   `AO_READONLY_PASSWORD`, `AO_ADMIN_PASSWORD`. `test/web.test.ts` needs `npm run build` first. Tests skip when `AUTH_TEST_PG` is unset.
 - **Run:** `npm start` (port 8791), or `deploy/docker-compose.yml` (see its header; needs the data stack's network).
 

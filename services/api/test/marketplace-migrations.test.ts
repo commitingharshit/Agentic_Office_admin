@@ -10,7 +10,7 @@ import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { skip, startMarketplacePg, type MarketplacePg } from './helpers/marketplace-pg.ts';
 
-const db = join(dirname(fileURLToPath(import.meta.url)), '..', 'db');
+const db = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'database');
 const files = readdirSync(join(db, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
 const mkt = files.filter((f) => /^\d{4}_marketplace/.test(f));
 

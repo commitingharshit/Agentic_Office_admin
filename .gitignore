@@ -1,0 +1,9 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+._*
+services/verifier/hermes/

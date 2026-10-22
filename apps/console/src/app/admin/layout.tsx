@@ -12,8 +12,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const { person, role, permissions } = await adminContext();
   const healthy = await adminApi('/healthz', { acting: person.id }).then(() => true, () => false);
   const att = await adminApi<{ items: Array<{ id: string; level: string; title: string; href: string; count: number }> }>('/admin/attention', { acting: person.id }).catch(() => ({ items: [] }));
+  const helpOn = permissions.includes('help.use') && (await adminApi<{ configured?: boolean }>('/admin/help/status', { acting: person.id }).then((r) => r.configured !== false, () => false));
   return (
-    <Shell alerts={att.items} nav={visibleNav(permissions)} admin={{ email: person.email, name: person.name, role }} mfaOff={keycloakMode() ? process.env.KEYCLOAK_ADMIN_OTP !== 'enforced' : !adminMfaRequired()} healthy={healthy}>
+    <Shell helpOn={helpOn} alerts={att.items} nav={visibleNav(permissions)} admin={{ email: person.email, name: person.name, role }} mfaOff={keycloakMode() ? process.env.KEYCLOAK_ADMIN_OTP !== 'enforced' : !adminMfaRequired()} healthy={healthy}>
       {children}
     </Shell>
   );

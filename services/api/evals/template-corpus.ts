@@ -7,7 +7,7 @@ import { strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import { MANIFEST_NAME, sha256Hex } from '../src/marketplace/artifacts.ts';
 import { repoRoot, type Case } from './lib.ts';
 
-export const tpl = (rel: string) => new Uint8Array(readFileSync(join(repoRoot, 'templates', rel)));
+export const tpl = (rel: string) => new Uint8Array(readFileSync(join(repoRoot, 'tests', 'fixtures', 'templates', rel)));
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 export type Format = 'pptx' | 'docx' | 'xlsx' | 'pdf';
 

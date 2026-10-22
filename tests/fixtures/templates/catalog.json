@@ -1,0 +1,372 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "id": "docx-board-memo",
+      "format": "docx",
+      "title": "Board Memo",
+      "description": "Decision memo with resolution, plan table and risks",
+      "tags": [
+        "board",
+        "memo",
+        "decision",
+        "finance"
+      ],
+      "file": "docx/board-memo.docx",
+      "thumbnail": "thumbnails/docx-board-memo.png",
+      "featured": true,
+      "assistant": "Turn this board memo into one for my decision: replace the company, the resolution, the key figures and the plan table with my numbers, keeping the decision-first structure."
+    },
+    {
+      "id": "docx-research-brief",
+      "format": "docx",
+      "title": "Research Brief",
+      "description": "Findings-first brief with market sizing table",
+      "tags": [
+        "research",
+        "strategy",
+        "brief"
+      ],
+      "file": "docx/research-brief.docx",
+      "thumbnail": "thumbnails/docx-research-brief.png",
+      "featured": true,
+      "assistant": "Rewrite this research brief for my topic: put the one-line answer on the cover, three key findings, a sizing table and the sources I give you."
+    },
+    {
+      "id": "docx-project-plan",
+      "format": "docx",
+      "title": "Project Plan",
+      "description": "Objectives, scope, milestones, RACI and risks",
+      "tags": [
+        "project",
+        "plan",
+        "pmo",
+        "milestones"
+      ],
+      "file": "docx/project-plan.docx",
+      "thumbnail": "thumbnails/docx-project-plan.png",
+      "featured": true,
+      "assistant": "Fill this project plan for my project: objectives with measurable targets, in/out of scope, milestones with owners and dates, RACI and top risks."
+    },
+    {
+      "id": "docx-meeting-notes",
+      "format": "docx",
+      "title": "Meeting Notes",
+      "description": "Attendees, decisions and owned action items",
+      "tags": [
+        "meeting",
+        "notes",
+        "actions"
+      ],
+      "file": "docx/meeting-notes.docx",
+      "thumbnail": "thumbnails/docx-meeting-notes.png",
+      "featured": true,
+      "assistant": "Turn my meeting notes or transcript into this format: attendees, decisions up top, discussion by agenda item, and an action table with owners and due dates."
+    },
+    {
+      "id": "docx-mutual-nda",
+      "format": "docx",
+      "title": "Mutual NDA",
+      "description": "Two-party mutual non-disclosure agreement",
+      "tags": [
+        "legal",
+        "nda",
+        "contract"
+      ],
+      "file": "docx/mutual-nda.docx",
+      "thumbnail": "thumbnails/docx-mutual-nda.png",
+      "featured": true,
+      "assistant": "Adapt this mutual NDA for the two parties I name: update party details, purpose, term and governing law, and flag any clause I should have a lawyer review."
+    },
+    {
+      "id": "pptx-board-update",
+      "format": "pptx",
+      "title": "Board Update",
+      "description": "Quarterly board deck: asks, KPIs, status, risks",
+      "tags": [
+        "board",
+        "governance",
+        "quarterly",
+        "kpi"
+      ],
+      "file": "pptx/board-update.pptx",
+      "thumbnail": "thumbnails/pptx-board-update.png",
+      "featured": true,
+      "assistant": "Build my board update from this deck: list the asks (approve/note/discuss), headline KPIs against plan, workstream RAG status and exception-only risks using my data."
+    },
+    {
+      "id": "pptx-investor-pitch",
+      "format": "pptx",
+      "title": "Investor Pitch",
+      "description": "Problem, solution, market, traction and ask",
+      "tags": [
+        "pitch",
+        "fundraising",
+        "startup"
+      ],
+      "file": "pptx/investor-pitch.pptx",
+      "thumbnail": "thumbnails/pptx-investor-pitch.png",
+      "featured": true,
+      "assistant": "Turn this pitch deck into mine: problem, solution, market size, traction chart, team and the raise with use of funds, using my company's facts."
+    },
+    {
+      "id": "pptx-quarterly-review",
+      "format": "pptx",
+      "title": "Quarterly Review",
+      "description": "Quarter vs plan with segment variance and P&L",
+      "tags": [
+        "qbr",
+        "quarterly",
+        "finance",
+        "review"
+      ],
+      "file": "pptx/quarterly-review.pptx",
+      "thumbnail": "thumbnails/pptx-quarterly-review.png",
+      "featured": true,
+      "assistant": "Update this quarterly review with my quarter: KPIs vs plan, revenue by segment, P&L variance table, what worked and didn't, and next-quarter priorities."
+    },
+    {
+      "id": "pptx-product-roadmap",
+      "format": "pptx",
+      "title": "Product Roadmap",
+      "description": "Themes, Now/Next/Later lanes and milestones",
+      "tags": [
+        "product",
+        "roadmap",
+        "strategy"
+      ],
+      "file": "pptx/product-roadmap.pptx",
+      "thumbnail": "thumbnails/pptx-product-roadmap.png",
+      "featured": true,
+      "assistant": "Rebuild this roadmap for my product: three themes with goals, a Now/Next/Later swimlane, a milestone timeline and dependencies/risks."
+    },
+    {
+      "id": "xlsx-financial-model",
+      "format": "xlsx",
+      "title": "Financial Model",
+      "description": "5-year P&L, cash flow and DCF, formula-driven",
+      "tags": [
+        "finance",
+        "model",
+        "dcf",
+        "forecast"
+      ],
+      "file": "xlsx/financial-model.xlsx",
+      "thumbnail": "thumbnails/xlsx-financial-model.png",
+      "featured": true,
+      "assistant": "Adapt this financial model to my business: change only the blue input cells on Assumptions to my revenue, margins and costs, and explain the resulting valuation."
+    },
+    {
+      "id": "xlsx-budget-tracker",
+      "format": "xlsx",
+      "title": "Budget Tracker",
+      "description": "Budget vs actual by line item and month",
+      "tags": [
+        "budget",
+        "finance",
+        "tracking"
+      ],
+      "file": "xlsx/budget-tracker.xlsx",
+      "thumbnail": "thumbnails/xlsx-budget-tracker.png",
+      "featured": true,
+      "assistant": "Set this budget tracker up for my team: replace the line items and annual budgets, enter my monthly actuals, and flag any line more than 10% over."
+    },
+    {
+      "id": "xlsx-kpi-dashboard",
+      "format": "xlsx",
+      "title": "KPI Dashboard",
+      "description": "Monthly KPI tiles, trend charts and targets",
+      "tags": [
+        "dashboard",
+        "kpi",
+        "saas",
+        "metrics"
+      ],
+      "file": "xlsx/kpi-dashboard.xlsx",
+      "thumbnail": "thumbnails/xlsx-kpi-dashboard.png",
+      "featured": true,
+      "assistant": "Load my monthly metrics into the Data sheet of this KPI dashboard, set my targets, and summarise what changed in the latest month."
+    },
+    {
+      "id": "xlsx-sales-pipeline",
+      "format": "xlsx",
+      "title": "Sales Pipeline",
+      "description": "Deals by stage with weighted forecast",
+      "tags": [
+        "sales",
+        "pipeline",
+        "crm",
+        "forecast"
+      ],
+      "file": "xlsx/sales-pipeline.xlsx",
+      "thumbnail": "thumbnails/xlsx-sales-pipeline.png",
+      "featured": true,
+      "assistant": "Replace the deals in this pipeline with mine, keep the stage probabilities (or set mine), and tell me the weighted forecast and the deals most at risk."
+    },
+    {
+      "id": "pdf-invoice",
+      "format": "pdf",
+      "title": "Invoice",
+      "description": "Branded invoice with line items and VAT",
+      "tags": [
+        "invoice",
+        "billing",
+        "finance"
+      ],
+      "file": "pdf/invoice.pdf",
+      "thumbnail": "thumbnails/pdf-invoice.png",
+      "featured": true,
+      "assistant": "Create an invoice in this style for my client: my company details, their billing address, line items, tax rate and payment terms."
+    },
+    {
+      "id": "pdf-one-pager",
+      "format": "pdf",
+      "title": "Product One-Pager",
+      "description": "Single-page product overview with proof points",
+      "tags": [
+        "marketing",
+        "sales",
+        "one-pager"
+      ],
+      "file": "pdf/one-pager.pdf",
+      "thumbnail": "thumbnails/pdf-one-pager.png",
+      "featured": true,
+      "assistant": "Write a one-pager in this layout for my product: headline, three value props, three proof stats, how it works and a call to action."
+    },
+    {
+      "id": "pdf-certificate",
+      "format": "pdf",
+      "title": "Certificate",
+      "description": "Landscape certificate of completion",
+      "tags": [
+        "certificate",
+        "training",
+        "award"
+      ],
+      "file": "pdf/certificate.pdf",
+      "thumbnail": "thumbnails/pdf-certificate.png",
+      "featured": true,
+      "assistant": "Make a certificate in this design for the recipient, programme, date and signatory I give you."
+    },
+    {
+      "id": "md-meeting-notes",
+      "format": "md",
+      "title": "Meeting Notes (Markdown)",
+      "description": "Lightweight notes with decisions and actions",
+      "tags": [
+        "meeting",
+        "notes",
+        "markdown"
+      ],
+      "file": "md/meeting-notes.md",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Turn my rough notes or transcript into this Markdown meeting-notes format with decisions and an action table."
+    },
+    {
+      "id": "md-readme",
+      "format": "md",
+      "title": "Project README",
+      "description": "README with quick start, config and contributing",
+      "tags": [
+        "readme",
+        "docs",
+        "engineering"
+      ],
+      "file": "md/readme.md",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Write a README in this structure for my repository: what it does, why, features, quick start, configuration table and how to contribute."
+    },
+    {
+      "id": "md-research-notes",
+      "format": "md",
+      "title": "Research Notes",
+      "description": "Hypotheses, evidence log, quotes and next steps",
+      "tags": [
+        "research",
+        "notes",
+        "markdown"
+      ],
+      "file": "md/research-notes.md",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Organise my research into this template: the question, hypotheses, an evidence log table, key quotes, open questions and next steps."
+    },
+    {
+      "id": "md-task-log",
+      "format": "md",
+      "title": "Task Log",
+      "description": "Sprint task log with blockers and decisions",
+      "tags": [
+        "tasks",
+        "sprint",
+        "log"
+      ],
+      "file": "md/task-log.md",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Set up this task log for my sprint: today's checklist, in-progress table, done items, blockers and a decision record."
+    },
+    {
+      "id": "tex-research-paper",
+      "format": "tex",
+      "title": "Research Paper",
+      "description": "Article with abstract, equations, booktabs table",
+      "tags": [
+        "latex",
+        "paper",
+        "academic"
+      ],
+      "file": "tex/research-paper.tex",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Draft my paper in this LaTeX template: title, authors, abstract, method with equations, a results table and references from my notes."
+    },
+    {
+      "id": "tex-resume",
+      "format": "tex",
+      "title": "Résumé",
+      "description": "One-page LaTeX résumé with clean section rules",
+      "tags": [
+        "latex",
+        "resume",
+        "cv"
+      ],
+      "file": "tex/resume.tex",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Fill this LaTeX résumé with my experience, education and skills; keep it to one page and lead each bullet with an outcome."
+    },
+    {
+      "id": "tex-lecture-notes",
+      "format": "tex",
+      "title": "Lecture Notes",
+      "description": "Theorem/definition environments and exercises",
+      "tags": [
+        "latex",
+        "teaching",
+        "math"
+      ],
+      "file": "tex/lecture-notes.tex",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Write lecture notes in this LaTeX template for my topic: objectives, definitions, theorems with proofs, a worked example and exercises."
+    },
+    {
+      "id": "tex-technical-report",
+      "format": "tex",
+      "title": "Technical Report",
+      "description": "Report class with title page, TOC and chapters",
+      "tags": [
+        "latex",
+        "report",
+        "engineering"
+      ],
+      "file": "tex/technical-report.tex",
+      "thumbnail": null,
+      "featured": true,
+      "assistant": "Turn my investigation notes into this technical report: abstract, background, timeline, analysis, results table and recommendations."
+    }
+  ]
+}

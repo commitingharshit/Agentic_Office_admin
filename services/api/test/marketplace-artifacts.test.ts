@@ -311,7 +311,7 @@ describe('rewriteManifest', () => {
 
 describe('foldName conformance (shared with desktop and Hermes)', () => {
   const pairs: { a: string; b: string; same: boolean }[] = JSON.parse(
-    readFileSync(new URL('../../../scripts/dev/marketplace-zip-differential/fold-conformance.json', import.meta.url), 'utf8')).pairs;
+    readFileSync(new URL('../../../tests/marketplace/zip-differential/fold-conformance.json', import.meta.url), 'utf8')).pairs;
   test('matches the shared list', () => {
     assert.ok(pairs.length >= 10);
     for (const c of pairs) { assert.equal(foldName(c.a) === foldName(c.b), c.same, JSON.stringify(c)); }

@@ -23,7 +23,7 @@ import { createOfficecliTool, officecliAvailable } from '../src/marketplace/veri
 import type { PipelineResult, PipelineTools, StageResult } from '../src/marketplace/verify/types.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
-const tpl = (rel: string) => new Uint8Array(readFileSync(join(ROOT, 'templates', rel)));
+const tpl = (rel: string) => new Uint8Array(readFileSync(join(ROOT, 'tests', 'fixtures', 'templates', rel)));
 type Format = 'pptx' | 'docx' | 'xlsx' | 'pdf';
 
 // ---------------------------------------------------------------- fixtures

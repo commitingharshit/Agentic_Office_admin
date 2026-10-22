@@ -148,7 +148,7 @@ describe('Plan 2 acceptance A1-A8 (real Postgres, real compiler bridge, real per
 
   test('A8: a fresh database has no agent or bundle listing, and no production path references the fixtures', async () => {
     assert.deepEqual([freshAgents, freshBundles], [0, 0]);
-    const srcDirs = [join(here, '..', 'src'), join(here, '..', 'scripts'), join(here, '..', 'db')];
+    const srcDirs = [join(here, '..', 'src'), join(here, '..', 'scripts'), join(here, '..', '..', '..', 'database')];
     const hits: string[] = [];
     const walk = (d: string) => { for (const e of readdirSync(d)) { const p = join(d, e); if (statSync(p).isDirectory()) walk(p); else if (/\.(ts|js|mjs|sql|sh)$/.test(e) && /fixtures\/agents|fixture-pub|loadFixtureAgent/.test(readFileSync(p, 'utf8'))) hits.push(p); } };
     srcDirs.filter(existsSync).forEach(walk);

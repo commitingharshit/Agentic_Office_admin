@@ -8,6 +8,8 @@ want() { local exp="$1" got; shift; got=$(code "$@"); if [[ "$got" =~ ^($exp)$ ]
 # open: what the app needs to sign a person in and keep them signed in
 want 200 "$BASE/healthz"
 want 200 "$BASE/v1/auth/config"
+want 200 "$BASE/v1/status"
+want 200 "$BASE/status"
 want '400|401' -X POST -H 'content-type: application/json' --data '{}' "$BASE/v1/auth/exchange"
 want 401 "$BASE/v1/me"
 # closed: the admin API, and the webhooks nobody has switched on

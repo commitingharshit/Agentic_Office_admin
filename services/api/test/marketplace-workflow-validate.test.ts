@@ -118,7 +118,7 @@ describe('workflow validator: verified only with the runtime check', () => {
 
 describe('tool classification', () => {
   test('the snapshot matches the repo taxonomy for every allowed server (drift check)', () => {
-    const tax = JSON.parse(readFileSync(join(repoRoot, 'mcp', 'shared', 'tool-taxonomy.json'), 'utf8')) as { servers: Record<string, { tools: Record<string, string> }> };
+    const tax = JSON.parse(readFileSync(join(repoRoot, 'packages', 'contracts', 'mirrors', 'mcp', 'tool-taxonomy.json'), 'utf8')) as { servers: Record<string, { tools: Record<string, string> }> };
     const snap = loadToolAreas();
     for (const [s, v] of Object.entries(tax.servers)) {
       if (snap.denied_servers.includes(s)) { assert.equal(snap.servers[s], undefined, s); continue; }

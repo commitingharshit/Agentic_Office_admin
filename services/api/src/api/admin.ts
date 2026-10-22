@@ -34,6 +34,8 @@ export interface AdminDeps {
   keycloak?: import('./keycloak-admin.ts').KeycloakAdmin;
   /** The payment provider side (to ask it what it knows). Absent unless payments are switched on. */
   payments?: import('./payments/service.ts').PaymentsService;
+  /** The help assistant (answers from the documentation only); absent until a provider key is configured. */
+  help?: import('../help/service.ts').Help;
   /** Campaign email: the public base URL and keys the unsubscribe link and Resend's webhook need (src/growth/email.ts). */
   email?: import('../growth/email.ts').EmailConfig;
   /** Sends announcement emails; absent when no provider is configured. */
@@ -489,6 +491,22 @@ export function adminHandler(deps: AdminDeps) {
       };
       const q = url.searchParams;
 
+      if (a === 'help') {
+        await need('help.use');
+        if (m === 'GET' && id === 'status') return send(200, deps.help ? await deps.help.status() : { configured: false });
+        if (!deps.help) throw new HttpError(503, 'The help assistant is not configured on this server.');
+        if (m === 'POST' && id === 'ask') {
+          const b = (await body(req)) as { question?: unknown };
+          const r = await deps.help.ask(adminId, adminRole, typeof b.question === 'string' ? b.question : '');
+          if ('error' in r) throw new HttpError(r.status, r.error);
+          return send(200, r);
+        }
+        if (m === 'POST' && id === 'feedback') {
+          const b = (await body(req)) as { questionId?: unknown; helpful?: unknown };
+          if (!Number.isInteger(b.questionId) || typeof b.helpful !== 'boolean') throw new HttpError(400, 'questionId and helpful are required.');
+          return send(200, { ok: await deps.help.feedback(adminId, b.questionId as number, b.helpful) });
+        }
+      }
       if (m === 'GET' && a === 'me') return send(200, { admin: adminId, role: adminRole, permissions: permissionsOf(adminRole), clerk: !!deps.clerkSecret, clerkSignIn: !!deps.verifyClerk, blobs: !!deps.s3 });
       if (m === 'GET' && a === 'overview' && !id) { await need('overview.read'); await audit(deps, adminId, 'view_overview', null); return send(200, await overview(deps)); }
       if (m === 'GET' && a === 'overview' && id === 'series') { await need('overview.read'); return send(200, await consoleApi.overviewSeries(deps, q)); }

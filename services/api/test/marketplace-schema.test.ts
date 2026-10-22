@@ -13,7 +13,7 @@ import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const migration = readFileSync(join(here, '..', 'db', 'migrations', '0021_marketplace.sql'), 'utf8');
+const migration = readFileSync(join(here, '..', '..', '..', 'database', 'migrations', '0021_marketplace.sql'), 'utf8');
 const STUB = `
   CREATE TABLE users (id text PRIMARY KEY, email text);
   CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);
@@ -267,7 +267,7 @@ const skip = !ownerUrl && 'AO_TEST_PG not set';
 
 describe('marketplace schema (full migration chain, real Postgres)', { skip }, () => {
   test('0016 applies on top of the whole chain and ao_app is row-scoped', async () => {
-    execFileSync('node', [join(here, '..', 'db', 'migrate.ts')], { env: { ...process.env, DATABASE_URL: ownerUrl }, stdio: 'pipe' });
+    execFileSync('node', [join(here, '..', '..', '..', 'database', 'migrate.ts')], { env: { ...process.env, DATABASE_URL: ownerUrl }, stdio: 'pipe' });
     const as = (role: string, pw: string | undefined) => { const u = new URL(ownerUrl!); u.username = role; u.password = pw ?? ''; return u.toString(); };
     const tag = Date.now().toString(36);
     const A = `usr_mkt_a_${tag}`, B = `usr_mkt_b_${tag}`;

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic Office status</title>
+<link rel="icon" href="/status/icon.svg" type="image/svg+xml">
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#1e1e1e; --surface:#262628; --raised:#2c2c2e; --text:#f5f5f7; --muted:#98989d; --line:rgba(255,255,255,.12);
+          --up:#32d74b; --degraded:#ffb340; --down:#f48771; --none:#3a3a3c; --accent:#4aa8ec; color-scheme: dark; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#f6f6f7; --surface:#fff; --raised:#f0f0f2; --text:#1d1d1f; --muted:#6e6e73; --line:rgba(0,0,0,.12);
+          --up:#1f9d3a; --degraded:#b86e00; --down:#c4402a; --none:#d8d8dc; --accent:#0e7490; color-scheme: light; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+         padding-block:32px; padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px)); }
+  main { max-width:760px; margin:0 auto; display:grid; gap:16px; }
+  header { display:flex; align-items:center; gap:12px; }
+  header img { width:32px; height:32px; border-radius:8px; }
+  h1 { font-size:18px; margin:0; font-weight:600; }
+  .banner { border-radius:12px; padding:16px 18px; background:var(--surface); border:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+  .dot { width:12px; height:12px; border-radius:50%; background:var(--none); flex:none; }
+  .dot.up { background:var(--up); } .dot.degraded { background:var(--degraded); } .dot.down { background:var(--down); }
+  .banner strong { font-size:16px; } .banner small { display:block; color:var(--muted); }
+  ul { list-style:none; margin:0; padding:0; display:grid; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  li { background:var(--surface); padding:14px 18px; display:grid; gap:10px; min-width:0; }
+  .row { display:flex; align-items:center; gap:10px; min-width:0; }
+  .name { font-weight:600; flex:1; min-width:0; overflow-wrap:anywhere; }
+  .state { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .state.up { color:var(--up); } .state.degraded { color:var(--degraded); } .state.down { color:var(--down); }
+  .bars { display:grid; grid-template-columns:repeat(90,1fr); gap:2px; height:24px; }
+  .bars i { border-radius:2px; background:var(--none); }
+  .meta { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; gap:8px; flex-wrap:wrap; }
+  footer { color:var(--muted); font-size:12px; }
+  .err { color:var(--degraded); }
+  @media (max-width:480px) { .bars { gap:1px; } }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="/status/icon.svg" alt=""><h1>Agentic Office status</h1></header>
+  <section class="banner" aria-live="polite"><span class="dot" id="overall-dot"></span><div><strong id="overall">Checking…</strong><small id="updated"></small></div></section>
+  <ul id="list" aria-label="Services"></ul>
+  <footer>Checks run every 30 seconds. A service that has not been confirmed for 3 minutes is shown as down. Bars show the last 90 days (green: all checks passed that day).</footer>
+</main>
+<script>
+(function () {
+  var LABEL = { up: 'Operational', degraded: 'Degraded', down: 'Down' };
+  var HEAD = { up: 'All systems operational', degraded: 'Some systems are degraded', down: 'Some systems are down' };
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function ago(iso) { var s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)); return s < 90 ? s + ' s ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : Math.round(s / 3600) + ' h ago'; }
+  function barColor(p) { return p == null ? 'var(--none)' : p >= 99.9 ? 'var(--up)' : p >= 95 ? 'var(--degraded)' : 'var(--down)'; }
+  function render(s) {
+    document.getElementById('overall').textContent = HEAD[s.overall] || 'Status unknown';
+    document.getElementById('overall-dot').className = 'dot ' + s.overall;
+    document.getElementById('updated').textContent = 'Updated ' + new Date(s.generatedAt).toLocaleTimeString();
+    var ul = document.getElementById('list'); ul.textContent = '';
+    s.services.forEach(function (v) {
+      var li = el('li'), row = el('div', 'row');
+      row.appendChild(el('span', 'dot ' + v.state)); row.appendChild(el('span', 'name', v.label)); row.appendChild(el('span', 'state ' + v.state, LABEL[v.state]));
+      var bars = el('div', 'bars'); bars.setAttribute('role', 'img'); bars.setAttribute('aria-label', v.label + ' availability over 90 days');
+      v.days.forEach(function (p, i) { var b = document.createElement('i'); b.style.background = barColor(p); b.title = p == null ? 'no data' : p + '% (' + (89 - i) + ' days ago)'; bars.appendChild(b); });
+      var meta = el('div', 'meta'); meta.appendChild(el('span', '', v.uptime90d == null ? 'No history yet' : v.uptime90d + '% over 90 days'));
+      meta.appendChild(el('span', '', 'Checked ' + ago(v.checkedAt) + ' · ' + (v.state === 'up' ? 'up' : 'since') + ' ' + new Date(v.since).toLocaleString()));
+      li.appendChild(row); li.appendChild(bars); li.appendChild(meta); ul.appendChild(li);
+    });
+  }
+  function fail() { var u = document.getElementById('updated'); u.textContent = 'Could not load the status. Retrying…'; u.className = 'err'; document.getElementById('overall').textContent = 'Status unavailable'; document.getElementById('overall-dot').className = 'dot down'; }
+  function load() { fetch('/v1/status', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (s) { document.getElementById('updated').className = ''; render(s); }).catch(fail); }
+  load(); setInterval(load, 30000);
+})();
+</script>
+</body>
+</html>

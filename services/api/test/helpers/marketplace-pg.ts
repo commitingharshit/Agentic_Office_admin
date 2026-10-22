@@ -9,7 +9,7 @@ import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // every marketplace migration, in order (0021_marketplace.sql, then the later *_marketplace*.sql ones)
-const migDir = join(here, '..', '..', 'db', 'migrations');
+const migDir = join(here, '..', '..', '..', '..', 'database', 'migrations');
 const migration = readdirSync(migDir).filter((f) => /^\d{4}_marketplace.*\.sql$/.test(f)).sort().map((f) => readFileSync(join(migDir, f), 'utf8')).join('\n;\n');
 
 let EmbeddedPostgres: any;

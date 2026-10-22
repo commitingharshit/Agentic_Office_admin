@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+.git
+**/.env
+**/.env.*
+!**/.env.example
+tests/fixtures
+services/verifier/hermes
+**/._*
+**/.DS_Store

@@ -1,6 +1,6 @@
-# Agentic Office data plane: Postgres (+pgvector) and MinIO, a nightly pg_dump
-# into MinIO, and the admin API. Runs on the server host (harshit-windows-coding, Docker
-# Desktop). Every port binds to BIND_IP only — the Tailscale address in
+# Agentic Office platform, data plane + API: Postgres (+pgvector) and MinIO, a nightly pg_dump
+# into MinIO, the API, its public gate, the package verifier, the status prober and the media worker. Images are built from this repo
+# (build context: the repository root); nothing is mounted from the host except config files. Every port binds to BIND_IP only — the Tailscale address in
 # production, 127.0.0.1 for a local test — never 0.0.0.0. Clients never talk to
 # Postgres directly; the accounts/sync API does.
 name: agentic-office-data
@@ -107,21 +107,16 @@ services:
     volumes:
       - backups:/backups:ro
 
-  # The admin API (Admin Console backend). Reads as ao_readonly, acts as ao_admin, audits
-  # everything. AO_SERVER_DIR holds src/, node_modules/ and package.json (default: services/accounts-sync/).
+  # The API. Reads as ao_readonly, acts as ao_admin, audits everything. The Hermes skill scanner and agent compiler live in the
+  # `verifier` service (VERIFIER_URL); marketplace uploads answer 503 while it is unreachable, never "accepted unverified".
   api:
-    # node:24-alpine has no python3, which the marketplace skill scanner (vendor/hermes-agent skills_guard, run as a child
-    # process) needs: Dockerfile.marketplace is that image plus python3. The api refuses skill uploads (503
-    # scanner_unavailable) when its startup self-check cannot run the scanner.
     build:
-      context: .
-      dockerfile: Dockerfile.marketplace
-    image: agentic-office-api:marketplace
+      context: ../../..
+      dockerfile: services/api/Dockerfile
+    image: ao-api:platform
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
-    working_dir: /srv
-    command: ["node", "src/api/main.ts"]
     environment:
       AO_API_BIND: 0.0.0.0
       PG_HOST: postgres
@@ -174,12 +169,16 @@ services:
       AO_MARKETPLACE_BUCKET: ${AO_MARKETPLACE_BUCKET:-ao-marketplace}
       AO_MARKETPLACE_ROLES: ${AO_MARKETPLACE_ROLES:-}
       OFFICECLI_BIN: ${OFFICECLI_BIN:-}
-    volumes:
-      # The skill scanner lives in the Hermes tree. It must sit at /srv/vendor/hermes-agent (the scanner looks upward from src/).
-      - ${AO_HERMES_AGENT_DIR:-../../../vendor/hermes-agent}:/srv/vendor/hermes-agent:ro
-      - ${AO_SERVER_DIR:-..}/src:/srv/src:ro
-      - ${AO_SERVER_DIR:-..}/node_modules:/srv/node_modules:ro
-      - ${AO_SERVER_DIR:-..}/package.json:/srv/package.json:ro
+      # The package verifier (Hermes scanner + compiler), on this network only.
+      VERIFIER_URL: ${VERIFIER_URL:-http://verifier:8089}
+      # Service status: the API's own checks run unless AO_STATUS=off; AO_STATUS_PROBES adds more (JSON list of {id,label,url}).
+      AO_STATUS: ${AO_STATUS:-}
+      AO_STATUS_PROBES: ${AO_STATUS_PROBES:-}
+      # The help assistant (off until a provider is set): an OpenAI-compatible base URL and one or more keys, comma separated.
+      AO_HELP_BASE_URL: ${AO_HELP_BASE_URL:-}
+      AO_HELP_API_KEYS: ${AO_HELP_API_KEYS:-}
+      AO_HELP_CHAT_MODEL: ${AO_HELP_CHAT_MODEL:-}
+      AO_HELP_EMBED_MODEL: ${AO_HELP_EMBED_MODEL:-}
     ports:
       - "${BIND_IP}:${API_PORT:-8787}:8787"
 
@@ -190,30 +189,52 @@ services:
     restart: unless-stopped
     depends_on: [api]
     volumes:
-      - ./api-gate.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../../services/gateway/api-gate.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../../apps/status:/usr/share/nginx/status:ro
     ports:
       - "127.0.0.1:${API_GATE_PORT:-8183}:8081"
+
+  # The Hermes skill scanner and agent blueprint compiler behind HTTP, on the internal network only (no ports, never routed by a gate).
+  # The image is built by deploy/scripts/build-verifier.sh (it pins a copy of Hermes); until it exists `up` skips this service.
+  verifier:
+    image: ao-verifier:latest
+    pull_policy: never
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  # Probes the public addresses and internal services from outside the API and records up/degraded/down (services/prober).
+  prober:
+    build:
+      context: ../../..
+      dockerfile: services/prober/Dockerfile
+    image: ao-prober:platform
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PROBER_DATABASE_URL: postgres://ao_admin:${AO_ADMIN_PASSWORD}@postgres:5432/agentic_office
+      AO_STATUS_PROBES: ${PROBER_PROBES:-}
 
   # Turns uploaded promotion images and clips into what the app may play (ffmpeg: trim to 12 s, mute, MP4/WebM, poster, WebP).
   # Polls media_jobs as ao_admin; reads sources from and writes variants to the ao-growth-media bucket. Never reachable from outside.
   media-worker:
-    build: { context: ., dockerfile: media-worker.Dockerfile }
+    build:
+      context: ../../..
+      dockerfile: services/api/Dockerfile.media-worker
+    image: ao-media-worker:platform
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
       minio-init: { condition: service_completed_successfully }
-    working_dir: /srv
-    command: ["node", "src/growth/media-worker.ts"]
     environment:
       PG_HOST: postgres
       AO_ADMIN_PASSWORD: ${AO_ADMIN_PASSWORD}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    volumes:
-      - ${AO_SERVER_DIR:-..}/src:/srv/src:ro
-      - ${AO_SERVER_DIR:-..}/node_modules:/srv/node_modules:ro
-      - ${AO_SERVER_DIR:-..}/package.json:/srv/package.json:ro
 
   # pgAdmin: a database workbench in the browser. On the host itself open http://localhost:5050;
   # from the tailnet, http://<BIND_IP>:5050. It signs in with PGADMIN_EMAIL / PGADMIN_PASSWORD and

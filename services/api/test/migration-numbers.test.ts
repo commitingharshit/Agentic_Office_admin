@@ -6,7 +6,7 @@ import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations');
+const dir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'database', 'migrations');
 const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
 
 test('every migration is NNNN_name.sql', () => {

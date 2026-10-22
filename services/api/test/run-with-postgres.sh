@@ -48,5 +48,5 @@ export AO_READONLY_PASSWORD="${AO_READONLY_PASSWORD:-ao-readonly-local-test}"
 export AO_ADMIN_PASSWORD="${AO_ADMIN_PASSWORD:-ao-admin-local-test}"
 
 cd "$(dirname "$0")/.."
-node db/migrate.ts
+node ../../database/migrate.ts
 npm test

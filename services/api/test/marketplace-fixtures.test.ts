@@ -59,7 +59,7 @@ describe('agent fixtures (test fixtures only, never listings)', () => {
       const p = join(dir, n);
       return statSync(p).isDirectory() ? (n === 'node_modules' ? [] : walk(p)) : [p];
     });
-    for (const sub of ['src', 'db']) for (const f of walk(join(root, sub))) {
+    for (const dir of [join(root, 'src'), join(root, '..', '..', 'database')]) for (const f of walk(dir)) {
       if (!/\.(ts|js|mjs|sql|json|sh)$/.test(f)) continue;
       assert.ok(!/fixtures\/agents|fixture-pub\//.test(readFileSync(f, 'utf8')), `${f} mentions the agent fixtures`);
     }

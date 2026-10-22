@@ -1,0 +1,8 @@
+{
+  "name": "agentic-office-database",
+  "private": true,
+  "type": "module",
+  "description": "Schema, migrations and the migrator. The only owner of the database schema.",
+  "scripts": { "migrate": "node migrate.ts", "status": "node migrate.ts --status" },
+  "dependencies": { "pg": "8.23.1" }
+}

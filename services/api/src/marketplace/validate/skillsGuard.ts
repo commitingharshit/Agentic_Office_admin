@@ -27,6 +27,17 @@ export function findRepoRoot(from: string = dirname(fileURLToPath(import.meta.ur
   }
 }
 
+/** Turns the scanner CLI's stdout into a result; shared by the local child process and the verifier service. */
+export function parseScanJson(out: string): SkillScanResult {
+  let j: any;
+  try { j = JSON.parse(out); } catch { throw new Error('skills scanner printed invalid JSON'); }
+  if (!j || !['safe', 'caution', 'dangerous'].includes(j.verdict) || !Array.isArray(j.findings)) throw new Error(`skills scanner returned an unexpected result${j?.error ? ': ' + String(j.error) : ''}`);
+  return {
+    verdict: j.verdict,
+    findings: j.findings.map((f: any) => ({ category: String(f.category), severity: String(f.severity), file: String(f.file), ...(typeof f.line === 'number' ? { line: f.line } : {}), ...(typeof f.match === 'string' ? { match: f.match } : {}) })),
+  };
+}
+
 export interface SkillsGuardOptions { repoRoot?: string; python?: string; timeoutMs?: number }
 
 export function createSkillsGuardScanner(opts: SkillsGuardOptions = {}): SkillScanner {
@@ -66,13 +77,7 @@ export function createSkillsGuardScanner(opts: SkillsGuardOptions = {}): SkillSc
         child.on('error', (e) => done(new Error(`could not run ${opts.python ?? 'python3'}: ${e.message}`)));
         child.on('close', (code) => { if (code === 0) done(null, stdout); else done(new Error(`skills scanner exited ${code}: ${stderr.trim().slice(0, 300)}`)); });
       });
-      let j: any;
-      try { j = JSON.parse(out); } catch { throw new Error('skills scanner printed invalid JSON'); }
-      if (!j || !['safe', 'caution', 'dangerous'].includes(j.verdict) || !Array.isArray(j.findings)) throw new Error(`skills scanner returned an unexpected result${j?.error ? ': ' + String(j.error) : ''}`);
-      return {
-        verdict: j.verdict,
-        findings: j.findings.map((f: any) => ({ category: String(f.category), severity: String(f.severity), file: String(f.file), ...(typeof f.line === 'number' ? { line: f.line } : {}), ...(typeof f.match === 'string' ? { match: f.match } : {}) })),
-      };
+      return parseScanJson(out);
     } finally {
       await rm(base, { recursive: true, force: true });
     }

@@ -1,0 +1,20 @@
+{
+  "$comment": "Evidence scripts and proof files that live in the desktop monorepo. This repo accepts exactly these paths as 'owned elsewhere'; with AO_MONOREPO_DIR set they are checked there. Any other missing path is a failure.",
+  "paths": [
+    "apps/desktop/src/vs/platform/marketplace/test/node/agentHermes.integration.test.ts",
+    "apps/desktop/src/vs/platform/marketplace/test/node/bridgeHermes.integration.test.ts",
+    "apps/desktop/src/vs/platform/marketplace/test/node/connectorHermes.integration.test.ts",
+    "apps/desktop/src/vs/platform/marketplace/test/node/hookAdapter.test.ts",
+    "apps/desktop/src/vs/platform/marketplace/test/node/installAdvanced.test.ts",
+    "apps/desktop/src/vs/platform/marketplace/test/node/memoryAdapter.test.ts",
+    "apps/desktop/src/vs/platform/marketplace/test/node/routineHermes.integration.test.ts",
+    "apps/desktop/src/vs/platform/marketplace/test/node/workflowHermes.integration.test.ts",
+    "scripts/e2e/plan/marketplace-agent-flow.mjs",
+    "scripts/e2e/plan/marketplace-bridge-flow.mjs",
+    "scripts/e2e/plan/marketplace-connector-flow.mjs",
+    "scripts/e2e/plan/marketplace-hook-flow.mjs",
+    "scripts/e2e/plan/marketplace-memory-flow.mjs",
+    "scripts/e2e/plan/marketplace-routine-flow.mjs",
+    "scripts/e2e/plan/marketplace-workflow-flow.mjs"
+  ]
+}

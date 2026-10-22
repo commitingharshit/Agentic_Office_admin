@@ -9,7 +9,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     working_dir: /w
-    command: ["node", "db/migrate.ts"]
+    command: ["node", "migrate.ts"]
     environment:
       DATABASE_URL: postgres://ao_owner:${PG_OWNER_PASSWORD}@postgres:5432/agentic_office
       AO_APP_PASSWORD: ${AO_APP_PASSWORD}
@@ -18,7 +18,7 @@ services:
       AO_AUTH_PASSWORD: ${AO_AUTH_PASSWORD:-auth-dev}
       AO_BILLING_PASSWORD: ${AO_BILLING_PASSWORD:-billing-dev}
     volumes:
-      - ${AO_SERVER_DIR:-..}:/w:ro
+      - ../../../database:/w:ro
 
   # Fixed dev people, dev tokens and one campaign per placement (db/seed/growth.sql). It refuses a database that holds anyone else.
   growth-seed:
@@ -30,4 +30,4 @@ services:
       PGPASSWORD: ${PG_OWNER_PASSWORD}
     command: ["psql", "-v", "ON_ERROR_STOP=1", "-h", "postgres", "-U", "ao_owner", "-d", "agentic_office", "-f", "/seed/growth.sql"]
     volumes:
-      - ${AO_SERVER_DIR:-..}/db/seed:/seed:ro
+      - ../../../database/seed:/seed:ro

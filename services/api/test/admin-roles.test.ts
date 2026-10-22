@@ -27,7 +27,7 @@ before(async () => {
   }
   // Roles are cluster-wide, so migrating two databases at once can collide on them; that is a race between test files, not a bug.
   for (let i = 0; ; i++) {
-    const m = spawnSync(process.execPath, ['db/migrate.ts'], { env: { ...process.env, DATABASE_URL: urlFor(DB) }, encoding: 'utf8' });
+    const m = spawnSync(process.execPath, ['../../database/migrate.ts'], { env: { ...process.env, DATABASE_URL: urlFor(DB) }, encoding: 'utf8' });
     if (m.status === 0) break;
     if (i >= 8 || !/tuple concurrently|deadlock|already exists|being accessed/.test(m.stderr)) assert.fail(m.stderr);
     await new Promise((r) => setTimeout(r, 200 + Math.random() * 400));

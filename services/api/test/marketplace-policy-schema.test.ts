@@ -10,7 +10,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { evaluate, parseEffectivePolicy, type EffectivePolicy, type PolicyLayer, type PolicySubject } from '../src/marketplace/policy.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const mig = (n: string) => readFileSync(join(here, '..', 'db', 'migrations', n), 'utf8');
+const mig = (n: string) => readFileSync(join(here, '..', '..', '..', 'database', 'migrations', n), 'utf8');
 const STUB = `
   CREATE TABLE users (id text PRIMARY KEY, email text);
   CREATE TABLE devices (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE);`;

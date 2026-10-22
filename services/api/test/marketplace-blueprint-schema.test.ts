@@ -133,7 +133,7 @@ test('multibyte text counts bytes, not characters, against the cap', () => {
 
 test('desktop mirror does not drift from the schema (key list, constants, AgentBlueprint interface)', () => {
   const server = readFileSync(fileURLToPath(new URL('../src/marketplace/blueprint/schema.ts', import.meta.url)), 'utf8');
-  const mirror = readFileSync(fileURLToPath(new URL('../../../apps/desktop/src/vs/platform/marketplace/common/agentBlueprint.ts', import.meta.url)), 'utf8');
+  const mirror = readFileSync(fileURLToPath(new URL('../../../packages/contracts/mirrors/desktop/agentBlueprint.ts', import.meta.url)), 'utf8');
   const keys = (s: string) => /export const COMPONENT_KEYS = \[([^\]]*)\]/.exec(s)![1].split(',').map(x => x.trim().replace(/'/g, '')).filter(Boolean);
   assert.deepEqual(keys(mirror), [...COMPONENT_KEYS]);
   assert.deepEqual(keys(server), [...COMPONENT_KEYS]);

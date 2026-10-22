@@ -1,3 +1,0 @@
-# The admin/sync API image: node plus python3 for the marketplace skill scanner (vendor/hermes-agent, mounted by docker-compose.yml).
-FROM node:24.15.0-alpine
-RUN apk add --no-cache python3

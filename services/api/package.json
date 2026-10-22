@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "migrate": "node db/migrate.ts",
+    "migrate": "node ../../database/migrate.ts",
     "test": "node --test test/*.test.ts",
     "test:postgres": "bash test/run-with-postgres.sh",
     "eval": "node evals/run-scan-gate.ts && node evals/run-template-validator.ts && node evals/run-blueprint-validator.ts && node evals/run-bundle-validator.ts && node evals/run-advanced-gate.ts",

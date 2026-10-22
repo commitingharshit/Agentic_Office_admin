@@ -11,6 +11,11 @@ import { OPERATIONAL, typeSupport, isPublishable } from '../src/marketplace/supp
 import { LISTING_TYPES, type ListingType } from '../src/marketplace/types.ts';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+// Evidence scripts and proof files that live in the desktop monorepo are listed in packages/contracts/mirrors/monorepo-owned-paths.json.
+// With AO_MONOREPO_DIR set they are checked there; without it exactly those listed paths are accepted. Any other missing path fails.
+const MONO = process.env.AO_MONOREPO_DIR;
+const OWNED: ReadonlySet<string> = new Set((JSON.parse(readFileSync(join(repo, 'packages', 'contracts', 'mirrors', 'monorepo-owned-paths.json'), 'utf8')) as { paths: string[] }).paths);
+const proofExists = (rel: string): boolean => existsSync(join(repo, rel)) || (OWNED.has(rel) && (MONO ? existsSync(join(MONO, rel)) : true));
 const ALWAYS: readonly ListingType[] = ['template', 'skill'];   // Plan 1 types: shipped before this mechanism, covered by the real-window flow
 const ADVANCED = LISTING_TYPES.filter((t) => !ALWAYS.includes(t));
 
@@ -24,7 +29,7 @@ export function normaliseEvidence(raw: unknown): { ok: true; evidence: Evidence 
   if (typeof j.type !== 'string') problems.push('no type');
   if (j.result !== 'pass') problems.push(`result is ${JSON.stringify(j.result)}, not "pass"`);
   if (typeof j.script !== 'string' || !j.script) problems.push('no script (what produced it)');
-  else if (!existsSync(join(repo, j.script))) problems.push(`script ${j.script} does not exist`);
+  else if (!proofExists(j.script)) problems.push(`script ${j.script} does not exist`);
   if (typeof j.passedAt !== 'string' || Number.isNaN(Date.parse(j.passedAt))) problems.push('no valid passedAt');
   if (typeof j.commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(j.commit)) problems.push('no commit');
   // the layers exercised: any of the shapes the flows write
@@ -71,7 +76,7 @@ describe('operational types are backed by passing end-to-end evidence', () => {
       const e = OPERATIONAL[t];
       if (e.supported !== true) continue;
       assert.ok(e.evidence, `${t} is operational without an evidence path`);
-      assert.ok(existsSync(join(repo, e.evidence!)), `${t}: evidence file ${e.evidence} does not exist`);
+      assert.ok(proofExists(e.evidence!), `${t}: evidence file ${e.evidence} does not exist`);
       const r = normaliseEvidence(JSON.parse(readFileSync(join(repo, e.evidence!), 'utf8')));
       assert.ok(r.ok, `${t}: evidence ${e.evidence} is not acceptable: ${(r as any).problems?.join('; ')}`);
       assert.equal((r as any).evidence.type, t, `${t}: evidence file is for ${(r as any).evidence.type}`);
@@ -177,7 +182,7 @@ describe('revocation behaviour of every operational type', () => {
       const e = table[t]; if (!e) continue;
       if (e.behaviour === 'revokes') {
         assert.ok(typeof e.mechanism === 'string' && e.mechanism.length > 20, `${t}: mechanism`);
-        assert.ok(typeof e.proof === 'string' && existsSync(join(repo, e.proof)), `${t}: proof file ${e.proof} must exist`);
+        assert.ok(typeof e.proof === 'string' && proofExists(e.proof), `${t}: proof file ${e.proof} must exist`);
       } else {
         assert.equal(e.behaviour, 'cannot-be-revoked', `${t}: behaviour must be revokes or cannot-be-revoked`);
         assert.ok(typeof e.why === 'string' && e.why.length > 20, `${t}: cannot-be-revoked needs a why`);

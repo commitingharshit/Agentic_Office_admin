@@ -1,0 +1,14 @@
+# The promotion media worker (src/growth/media-worker.ts): the API's code plus ffmpeg. Build context is the repository root.
+FROM node:24.15.0-alpine AS deps
+WORKDIR /srv
+COPY services/api/package.json services/api/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+FROM node:24.15.0-alpine
+RUN apk add --no-cache ffmpeg
+WORKDIR /srv
+COPY --from=deps /srv/node_modules ./node_modules
+COPY services/api/package.json ./
+COPY services/api/src ./src
+USER node
+CMD ["node", "src/growth/media-worker.ts"]

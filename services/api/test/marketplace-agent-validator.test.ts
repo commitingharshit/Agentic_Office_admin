@@ -132,7 +132,7 @@ describe('agent validator: hostile package corpus', () => {
 describe('python bridge: failure modes (injected runner)', () => {
   const out = (o: Partial<RunOutput>): RunOutput => ({ code: 0, stdout: '', stderr: '', timedOut: false, overflow: false, ...o });
   const req = { op: 'check' as const, listingId: 'acme/analyst', version: '1.0.0', blueprint: enc('{}'), soul: enc('x'), resolved: { skills: [], children: [], agents: new Map(), graph: new Map(), truncated: false } };
-  const bridgeOf = (runner: Runner) => createPythonBridge({ runner, repoRoot: findRepoRoot() });
+  const bridgeOf = (runner: Runner) => createPythonBridge({ runner, repoRoot: '/opt/hermes-fixture' });
   const goodJson = JSON.stringify({ ok: true, findings: [], skills: [], report: okReport() });
   test('good output parses', async () => { const r: any = await bridgeOf(async () => out({ stdout: goodJson }))(req); assert.equal(r.ok, true); assert.ok(r.report); });
   test('timeout, spawn failure, non-zero exit and a thrown runner are unavailable', async () => {

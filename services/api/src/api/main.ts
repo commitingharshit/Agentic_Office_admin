@@ -41,6 +41,11 @@ import { s3ArtifactStore } from '../marketplace/artifacts.ts';
 import { registerValidator } from '../marketplace/validate/index.ts';
 import { createSkillValidator } from '../marketplace/validate/skill.ts';
 import { createSkillsGuardScanner } from '../marketplace/validate/skillsGuard.ts';
+import { createVerifierRunner, createVerifierScanner } from '../marketplace/verifier-client.ts';
+import { createHelp } from '../help/service.ts';
+import { indexDocs } from '../help/kb.ts';
+import { providerFromEnv } from '../help/provider.ts';
+import { dbTarget, httpTarget, statusHandler, sweep, targetsFromEnv, type Target } from '../status/probe.ts';
 import { createRoutineValidator } from '../marketplace/validate/routine.ts';
 import { createTemplateValidator } from '../marketplace/validate/template.ts';
 import { createDagPlanChecker, createWorkflowValidator } from '../marketplace/validate/workflow.ts';
@@ -80,6 +85,15 @@ const deps = {
   email: emailConfigFromEnv(env),
 };
 if (!deps.tokens.size && !clerk) { console.error('Set AO_ADMIN_TOKENS or CLERK_PUBLISHABLE_KEY: admins need a way to sign in'); process.exit(2); }
+// The help assistant: on when a provider is configured (AO_HELP_BASE_URL + AO_HELP_API_KEYS). It indexes AO_HELP_DOCS_DIR (default ./docs) at start
+// and every hour, embedding only what changed; it never needs the database to hold anything but documentation.
+const helpProvider = (() => { try { return providerFromEnv(env); } catch (e) { console.error('help assistant off:', (e as Error).message); return undefined; } })();
+if (helpProvider) (deps as { help?: ReturnType<typeof createHelp> }).help = createHelp({ provider: helpProvider, ro: deps.ro, admin: deps.admin });
+if (helpProvider) {
+  const docs = env.AO_HELP_DOCS_DIR || 'docs';
+  const reindex = () => indexDocs(deps.admin, docs, helpProvider).then((r) => { (deps as any).help?.index.invalidate(); console.log(`help: indexed ${r.pages} pages, ${r.chunks} chunks (${r.embedded} embedded, ${r.removed} removed)`); }).catch((e) => console.error('help index failed:', e.message));
+  void reindex(); setInterval(reindex, 3_600_000).unref();
+}
 const pricing = parsePricing(env.AO_PRICING);
 const upstream = env.AO_UPSTREAM_URL && env.AO_UPSTREAM_KEY ? httpUpstream(env.AO_UPSTREAM_URL, env.AO_UPSTREAM_KEY) : undefined;
 const streamUpstream = env.AO_UPSTREAM_URL && env.AO_UPSTREAM_KEY ? httpStreamUpstream(env.AO_UPSTREAM_URL, env.AO_UPSTREAM_KEY) : undefined;
@@ -104,17 +118,20 @@ const sync = app ? syncHandler({ app, verify: clerk ? (t) => clerk.verify(t) : u
       .map((x) => ({ provider: x.provider!, email: x.email_address ?? null, image: x.image_url || x.avatar_url || (u.has_image ? u.image_url : null) || null }));
   } : undefined }) : undefined;
 // Eager scanner self-check: until it passes, skill uploads (creator and admin) answer 503 scanner_unavailable instead of storing rejected versions.
+// The Hermes scanner and agent compiler run in the verifier service when VERIFIER_URL is set; otherwise as local child processes (needs a vendor/hermes-agent checkout).
+const verifierUrl = env.VERIFIER_URL || undefined;
+const makeScanner = (python?: string) => (verifierUrl ? createVerifierScanner({ url: verifierUrl }) : createSkillsGuardScanner({ python }));
 const scanner = { ok: false };
 const scannerOk = () => scanner.ok;
 // Verification pipelines (Plan 4). The skill pipeline's scan stage and the creator's gated auto-publish use the same Skills Guard scanner.
 registerSkillPipeline();
-const verifyTools: PipelineTools = { scanner: createSkillsGuardScanner() };
+const verifyTools: PipelineTools = { scanner: makeScanner() };
 // Agents and bundles: the REAL compiler bridge (python3 -m agent.office.blueprint.cli) and the persona scanner, proven at startup by
 // compiling and scanning a built-in agent. Until that passes (and while it fails), agent/bundle uploads answer 503 compiler_unavailable
 // and GET /v1/marketplace/capabilities says they are unsupported; browse and install of everything else is unaffected.
 const hermesPython = env.HERMES_PYTHON || 'python3';
 const marketplaceStore = s3 ? s3ArtifactStore(s3, env.AO_MARKETPLACE_BUCKET ?? 'ao-marketplace') : undefined;
-const agents = createAgentRuntime({ bridge: createAgentBridge({ python: hermesPython, store: marketplaceStore }), scanner: (() => { try { return createSkillsGuardScanner({ python: hermesPython }); } catch { return undefined; } })() });
+const agents = createAgentRuntime({ bridge: createAgentBridge({ python: hermesPython, store: marketplaceStore, ...(verifierUrl ? { runner: createVerifierRunner(verifierUrl) } : {}) }), scanner: (() => { try { return makeScanner(hermesPython); } catch { return undefined; } })() });
 agents.register();
 const agentsOk = () => agents.ok();
 // Team assignments, install policy, install-time re-resolution and bundle plans (before `marketplace`, whose catch-all answers 404).
@@ -123,11 +140,11 @@ const marketplace = sync && app && s3 ? marketplaceHandler({ app, admin: deps.ad
 const admin = adminHandler(deps);
 // Marketplace publishing runs the REAL scanner (skills guard) and, when OFFICECLI_BIN is set, the officecli render check.
 // Without them the reports are unverified and the admin API refuses to approve (scan_required): never silently trusted.
-try { registerValidator('skill', createSkillValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: skill scanner unavailable, skill submissions stay unverified:', (e as Error).message); }
+try { registerValidator('skill', createSkillValidator({ scanner: makeScanner() })); } catch (e) { console.error('marketplace: skill scanner unavailable, skill submissions stay unverified:', (e as Error).message); }
 // Routines: the prompt text goes through the same scanner; without it a routine report stays unverified and the admin API refuses to approve it.
-try { registerValidator('routine', createRoutineValidator({ scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: routine prompt scanner unavailable, routine submissions stay unverified:', (e as Error).message); }
+try { registerValidator('routine', createRoutineValidator({ scanner: makeScanner() })); } catch (e) { console.error('marketplace: routine prompt scanner unavailable, routine submissions stay unverified:', (e as Error).message); }
 // Workflows: the plan is parsed and compiled by the DAG runtime's own code (validate-plan CLI) and agent text goes through the scanner; without either the report stays unverified.
-try { registerValidator('workflow', createWorkflowValidator({ planChecker: createDagPlanChecker(), scanner: createSkillsGuardScanner() })); } catch (e) { console.error('marketplace: workflow checks unavailable, workflow submissions stay unverified:', (e as Error).message); }
+try { registerValidator('workflow', createWorkflowValidator({ planChecker: createDagPlanChecker(), scanner: makeScanner() })); } catch (e) { console.error('marketplace: workflow checks unavailable, workflow submissions stay unverified:', (e as Error).message); }
 if (env.OFFICECLI_BIN) {
   try { accessSync(env.OFFICECLI_BIN, fsConstants.X_OK); registerValidator('template', createTemplateValidator({ officecli: officecliRenderer() })); }
   catch { console.error(`marketplace: OFFICECLI_BIN=${env.OFFICECLI_BIN} is not an executable file; templates cannot reach 'verified' until it is fixed.`); }
@@ -156,9 +173,23 @@ if (s3) {
 const bind = env.AO_API_BIND ?? '127.0.0.1';
 const port = Number(env.AO_API_PORT ?? 8787);
 const allowCors = cors(parseOrigins(env.AO_CORS_ORIGINS));
+// Service status: GET /v1/status (public, coarse) and the checks that feed it. This process checks what it can reach from inside the stack;
+// services/prober checks the public addresses from outside (set AO_STATUS_PROBES there). AO_STATUS=off turns the loop off.
+const statusPublic = statusHandler(deps.ro);
+const statusTargets: Target[] = [
+  dbTarget(deps.admin, { id: 'database', label: 'Database', sort: 10 }),
+  ...(verifierUrl ? [httpTarget({ id: 'verifier', label: 'Package verifier', url: `${verifierUrl.replace(/\/+$/, '')}/healthz`, sort: 40 })] : []),
+  ...(env.KEYCLOAK_JWKS_URL ? [httpTarget({ id: 'signin', label: 'Sign-in', url: env.KEYCLOAK_JWKS_URL, sort: 20 })] : []),
+  ...targetsFromEnv(env.AO_STATUS_PROBES, (m) => console.warn(m)),
+];
+if (env.AO_STATUS !== 'off') {
+  const tick = () => { sweep(deps.admin, statusTargets).catch((e) => console.error('status sweep failed:', e.message)); };
+  tick(); setInterval(tick, 30_000).unref();
+}
 const growthPublic = growthPublicHandler({ admin: deps.admin, email: deps.email });
 const server = createServer(async (req, res) => {
   if (allowCors(req, res)) return;
+  if (await statusPublic(req, res)) return;
   if (await growthPublic(req, res)) return;
   if (marketplaceTeams && (await marketplaceTeams(req, res))) return;
   if (marketplace && (await marketplace(req, res))) return;   // before sync, whose /v1 catch-all answers 404
