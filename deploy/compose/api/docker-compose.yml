@@ -203,7 +203,8 @@ services:
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
+    # No "no-new-privileges" here: on the tanmay host Docker's AppArmor profile then refuses to start Python at all
+    # ("exec /usr/local/bin/python: operation not permitted"). The container is non-root, read-only, has no capabilities and no published port.
 
   # Probes the public addresses and internal services from outside the API and records up/degraded/down (services/prober).
   prober:

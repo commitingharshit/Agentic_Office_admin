@@ -122,3 +122,9 @@ describe('sweep and the public status (real Postgres)', { skip }, () => {
     } finally { srv2.close(); }
   });
 });
+
+test('the prober has working default probes when none are configured', async () => {
+  const { DEFAULT_PROBES } = await import('../src/status/probe.ts');
+  const t = targetsFromEnv(DEFAULT_PROBES);
+  assert.deepEqual(t.map((x) => x.id), ['gateway', 'keycloak']);
+});

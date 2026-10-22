@@ -28,6 +28,12 @@ export function dbTarget(pool: Pick<pg.Pool, 'query'>, o: { id?: string; label?:
 }
 
 /** Reads AO_STATUS_PROBES: a JSON array of {id, label, url, expect?, timeoutMs?}. Invalid entries are reported and skipped. */
+/** What the prober checks when AO_STATUS_PROBES is empty: the two things the API cannot see failing from inside itself (its own public door, and the sign-in service). */
+export const DEFAULT_PROBES = JSON.stringify([
+  { id: 'gateway', label: 'API gateway', url: 'http://api-gate:8081/v1/auth/config', expect: [200, 503] },
+  { id: 'keycloak', label: 'Sign-in service', url: 'http://keycloak:8080/realms/agentic-office/.well-known/openid-configuration', expect: [200] },
+]);
+
 export function targetsFromEnv(raw: string | undefined, warn: (m: string) => void = () => undefined): Target[] {
   if (!raw) return [];
   let list: unknown;
