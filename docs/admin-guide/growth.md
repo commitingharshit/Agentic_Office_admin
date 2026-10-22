@@ -36,6 +36,19 @@ Create a campaign:
 
 The table shows Name, Status (live, paused, scheduled or ended, with the pause reason), Kind, Creatives (placement and status), Window and Changed. At most 200 campaigns are listed. Audited as `create_campaign`.
 
+## Run a campaign (first campaign walkthrough)
+
+Page: /admin/growth/guide
+
+The "Run a campaign" page (Growth group) walks from nothing to a message in your own app window, and lists why one does not show. Permission to open: `growth.read`.
+
+1. **Campaigns → New campaign**: kind Promotion, priority 100, Holdout % 0, Max shows 100, Gap 0, Create.
+2. On the campaign page, **chat empty** section: Kind Card, paste a card such as `{"v":1,"layout":"stack","blocks":[{"type":"heading","text":"Hello"},{"type":"text","text":"It works."}]}`, **Save draft**, **Publish creative**.
+3. **Audience → Only these people**: paste your own user id (Users page), **Save audience**. Then **Go live**.
+4. In the desktop app, signed in as that person, run **Developer: Reload Window**, then open a new empty chat. The card appears within seconds; the app also re-asks every five minutes.
+
+If it does not show: **Would this person see it?** (your user id, placement chat_empty, Explain) names the first blocker. Usual causes: campaign not live or outside its dates, creative not published, wrong audience, holdout above 0, frequency cap or earlier dismissal, ad-free plan or promotions switched off in the app, the `killswitch.promotions` flag on, signed-out or older app. On Growth, Served versus Impressions shows whether the server sent it (Served) and whether the app drew it (Reached).
+
 ## Campaign detail
 
 Page: /admin/growth/campaigns/[id]

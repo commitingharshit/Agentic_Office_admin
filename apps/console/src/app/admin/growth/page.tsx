@@ -17,6 +17,7 @@ export default async function Growth({ searchParams }: { searchParams: Promise<R
     <>
       <PageHeader title="Growth" subtitle="What people saw in the app, what they did with it, and whether it is helping. The last 30 days, from the events the app reports." />
       <Flash q={q} />
+      <Notice icon="info">New here? <a href="/admin/growth/guide">Run a campaign</a> walks from nothing to a message in your own app window.</Notice>
       <Notice icon="info">The admin decides what is eligible; the app decides how it is drawn; a person&apos;s ad-free plan or their own &quot;no promotions&quot; switch decides whether anything promotional appears. Release notes and task notices still reach everyone.</Notice>
       {res.ok ? (<>
         <Section title="Choices people made" actions={canPublish ? <form action={sweepGuardrails}><button className="btn">Check guardrails now</button></form> : undefined}>
