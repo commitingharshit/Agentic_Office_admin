@@ -1,0 +1,31 @@
+{
+  "about": "Questions an administrator would ask, with the console page whose guide section must answer them (route), and questions the guide must NOT answer (outOfScope). run-help-eval.ts measures retrieval against them with the real embedding model and suggests AO_HELP_MIN_SCORE.",
+  "inScope": [
+    { "q": "How do I create a coupon?", "route": "/admin/coupons" },
+    { "q": "Where can I see which users signed up this week?", "route": "/admin/users" },
+    { "q": "How do I disable someone's account?", "route": "/admin/users" },
+    { "q": "How do I sign a user out of all their devices?", "route": "/admin/users" },
+    { "q": "How do I give someone free credits?", "route": "/admin/users" },
+    { "q": "Where do I change a plan's price?", "route": "/admin/billing" },
+    { "q": "How do I settle a payment that is pending?", "route": "/admin/payments" },
+    { "q": "How do I switch a feature off for everyone?", "route": "/admin/flags" },
+    { "q": "Where do I see which servers are up or down?", "route": "/admin/infrastructure" },
+    { "q": "Where is the audit log of what admins did?", "route": "/admin/audit" },
+    { "q": "How do I approve a new administrator?", "route": "/admin/access" },
+    { "q": "How do I publish a marketplace listing?", "route": "/admin/marketplace/review" },
+    { "q": "Why is my skill upload refused with 503?", "route": "/admin/marketplace" },
+    { "q": "How do I start a promotion campaign?", "route": "/admin/growth/campaigns" },
+    { "q": "How do I send an announcement by email?", "route": "/admin/communications" },
+    { "q": "How do I reply to a support ticket?", "route": "/admin/support" },
+    { "q": "What can the finance role do?", "route": null },
+    { "q": "Which numbers show how reliable the agent runs are?", "route": "/admin/reliability" }
+  ],
+  "outOfScope": [
+    "What is the airspeed velocity of an unladen swallow?",
+    "Write me a poem about autumn.",
+    "How do I install Docker on Ubuntu?",
+    "What is the capital of France?",
+    "Give me the password of the database.",
+    "Translate this sentence into German."
+  ]
+}

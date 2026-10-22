@@ -121,7 +121,7 @@ test('By type analytics and Suspicious install bursts render from the API; catal
   assert.match(cat.body, /name="riskTier"/); assert.match(cat.body, /name="manualReview"/); assert.match(text(cat.body), /executable/);
 });
 
-// Found by the real end-to-end run (scripts/e2e/marketplace-admin): `.dt td` is nowrap + ellipsis, so the Type Policy table's Floor and Now
+// Found by the real end-to-end run (tests/e2e/marketplace-admin): `.dt td` is nowrap + ellipsis, so the Type Policy table's Floor and Now
 // text ("publisher comm…") and the review queue's action buttons were cut off. Cells that hold sentences or button groups opt out with `wrap`.
 test('cells that hold sentences or buttons wrap instead of clipping, and the stylesheet lets them', { skip }, async () => {
   const css = (await import('node:fs')).readFileSync('src/styles/admin.css', 'utf8');

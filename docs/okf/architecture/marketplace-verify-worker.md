@@ -3,9 +3,9 @@ type: Reference
 title: "Marketplace verifier worker"
 description: "The out-of-process worker that claims marketplace verification jobs, runs heavy pipeline stages in a contained child and posts the result to the admin API."
 toolchain: "Node 24 (TypeScript by type stripping), npm (part of accounts-sync)"
-build: "cd services/accounts-sync && npm ci"
-test: "cd services/accounts-sync && node --test test/marketplace-verify-worker.test.ts (sandbox attacks run anywhere; the macOS jail, network and fork tests run on macOS only; the queue tests use embedded Postgres)"
-run: "scripts/dev/marketplace-verify-worker (AO_VERIFY_API, AO_VERIFY_TOKEN; the API runs with AO_VERIFY_MODE=queue)"
+build: "cd services/api && npm ci"
+test: "cd services/api && node --test test/marketplace-verify-worker.test.ts (sandbox attacks run anywhere; the macOS jail, network and fork tests run on macOS only; the queue tests use embedded Postgres)"
+run: "tests/marketplace/verify-worker (AO_VERIFY_API, AO_VERIFY_TOKEN; the API runs with AO_VERIFY_MODE=queue)"
 owns_data: "marketplace_verify_jobs (migration 0027_marketplace_verify_jobs.sql); results go to marketplace_verifications through the admin API"
 depends_on: []
 status: "active"
@@ -74,6 +74,6 @@ its child and returns the job to the queue.
 
 # Citations
 
-- [`services/accounts-sync/src/marketplace/verify/worker/sandbox.ts`](/../services/accounts-sync/src/marketplace/verify/worker/sandbox.ts)
-- [`services/accounts-sync/src/marketplace/verify/jobs.ts`](/../services/accounts-sync/src/marketplace/verify/jobs.ts)
-- [`services/accounts-sync/test/marketplace-verify-worker.test.ts`](/../services/accounts-sync/test/marketplace-verify-worker.test.ts)
+- [`services/api/src/marketplace/verify/worker/sandbox.ts`](/../services/api/src/marketplace/verify/worker/sandbox.ts)
+- [`services/api/src/marketplace/verify/jobs.ts`](/../services/api/src/marketplace/verify/jobs.ts)
+- [`services/api/test/marketplace-verify-worker.test.ts`](/../services/api/test/marketplace-verify-worker.test.ts)

@@ -1,8 +1,8 @@
 # Control plane: sign-in, admin console, credits and coupons
 
 Started 2026-10-20. Design and API contract: [`okf/architecture/control-plane.md`](../../okf/architecture/control-plane.md). Services:
-[`services/accounts-sync`](../../services/accounts-sync/README.md) (data plane, billing, managed inference) and
-[`services/control-plane`](../../services/control-plane/README.md) (Better Auth + admin console).
+[`services/api`](../../services/api/README.md) (data plane, billing, managed inference) and
+[`apps/console`](../../apps/console/README.md) (Better Auth + admin console).
 
 ## Why
 
@@ -54,14 +54,14 @@ no managed compute. Principle: **the desktop never needs an account to open and 
 ## Remaining (not started unless noted)
 
 2. Desktop: the title-bar avatar gets a push from the extension (`workbench.action.agenticOffice.accountChanged`; the poll is only the 20-30 s net), verified in a window with the signed-out card (see Status). Still open: (a) clicking a provider against the beta host fails at the issuer check until HTTPS is on (Blocked); (b) the stock Accounts menu is the *collab* account (`setAccount`), a separate system, merging it is the documented identity phase 2; (c) ~~the signed-out flow as a committed e2e script~~ done: `scripts/e2e/assistant/signed-out-flow.mjs --port <debug port> --out <dir>` (passes against the live test window).
-4. ~~Visual check of the admin console and MFA page in a browser~~ done 2026-10-21 with headless Chromium (`scripts/dev/control-plane-browser-check.mjs`, 13/13 on the live host: sign-in, held at `/mfa`, TOTP enrolment, wrong code refused, console, coupon create/disable, credit grant, audit, no console errors; screenshots reviewed). It found two things the suites could not: the host's clock was ~60 s slow (see Blocked) and a deployed `ADMIN_HOSTS` without `localhost` turned every successful form action into a 404 (fixed in the host `.env`, now documented and logged). (Migration 0010 and the MFA build were then applied and deployed on the host on 2026-10-21; checked live: a password-only admin is redirected to `/mfa` on `/admin`, `/admin/users` and `/admin/coupons`. Enrolling a TOTP in a real browser has not been done.)
+4. ~~Visual check of the admin console and MFA page in a browser~~ done 2026-10-21 with headless Chromium (`tests/tools/control-plane-browser-check.mjs`, 13/13 on the live host: sign-in, held at `/mfa`, TOTP enrolment, wrong code refused, console, coupon create/disable, credit grant, audit, no console errors; screenshots reviewed). It found two things the suites could not: the host's clock was ~60 s slow (see Blocked) and a deployed `ADMIN_HOSTS` without `localhost` turned every successful form action into a 404 (fixed in the host `.env`, now documented and logged). (Migration 0010 and the MFA build were then applied and deployed on the host on 2026-10-21; checked live: a password-only admin is redirected to `/mfa` on `/admin`, `/admin/users` and `/admin/coupons`. Enrolling a TOTP in a real browser has not been done.)
 5. Retire Clerk after cutover; duplicate-email audit then the unique-email index (next available migration; 0010 is admin MFA); the Windows box (`harshit-windows-coding`) was offline, so the audit queries in `okf/architecture/control-plane.md` have not been run on real data.
 6. ~~Update `okf/architecture/identity.md`~~ done.
 7. Updater/release channels, phone OTP, announcements (deferred, milestone 2).
 
 ## Completed verification (2026-10-20 continuation)
 
-- Streaming mutations used isolated copies of `services/accounts-sync` through `SERVICES_DIR`, one change per run:
+- Streaming mutations used isolated copies of `services/api` through `SERVICES_DIR`, one change per run:
   removing the response-close abort failed “the provider call was cancelled”; removing the `stream_options` strip
   failed the caller-options assertion; replacing the usage estimate with zero failed “charged 0, expected 211”.
   **Each: 25 pass, 1 fail, 0 skipped.** Real source restored on the host by the next runner invocation:

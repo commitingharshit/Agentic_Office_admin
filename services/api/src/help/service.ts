@@ -15,6 +15,7 @@ export interface HelpDeps { provider: HelpModel; ro: Pick<pg.Pool, 'query'>; adm
 export interface Answer { answered: boolean; answer: string; sources: Array<{ n: number; source: string; heading: string; route: string | null }>; questionId: number | null }
 
 export const MAX_QUESTION = 1000;
+/** Below this cosine similarity nothing documented is "close enough" and the model is not called. The default is a guess: measure it with evals/run-help-eval.ts and set AO_HELP_MIN_SCORE. */
 export const MIN_SCORE = 0.3;
 
 /** Removes what must not leave the building if an admin pastes it into the question: emails, bearer tokens and key-like strings, long digit runs. */

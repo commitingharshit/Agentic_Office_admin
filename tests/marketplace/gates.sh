@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Marketplace gates in CI form (Plan 4 Task 18): fast, deterministic, CI-safe. One PASS/FAIL/SKIP line per gate and a final tally.
 #
-#   scripts/dev/marketplace-gates.sh [--only <gate>] [--allow-skip <gate>[,<gate>...]] [--perf] [--full-desktop] [--list]
+#   tests/marketplace/gates.sh [--only <gate>] [--allow-skip <gate>[,<gate>...]] [--perf] [--full-desktop] [--list]
 #
 # Exit 1 on any FAIL, and on any SKIP that is not named by --allow-skip (a gate that cannot run is not a pass).
 # Logs per gate: ${TMPDIR:-/tmp}/marketplace-gates/<gate>.log. bash 3.2 compatible (macOS).
@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
 done
 LOGS="${TMPDIR:-/tmp}/marketplace-gates"; mkdir -p "$LOGS"
 NPASS=0; NFAIL=0; NSKIP=0; BADSKIP=0; GATES=""
-SVC="$ROOT/services/accounts-sync"; DESK="$ROOT/apps/desktop"
+SVC="$ROOT/services/api"; DESK="$ROOT/apps/desktop"
 
 # gate <name> <description> -- runs the function gate_<name> in a subshell; exit 0 (pass), non-zero (fail) or 77 via skip() (reason in $LOGS/<name>.skip)
 gate() {
@@ -49,7 +49,7 @@ skip() { echo "$1" > "$LOGS/${FUNCNAME[1]#gate_}.skip"; exit 77; }   # gates run
 
 gate_invariants()   { cd "$ROOT" && python3 scripts/dev/check-repo-layout.py && python3 scripts/dev/check-okf.py && scripts/verify-repo-invariants.sh; }
 gate_migrations()   { cd "$SVC" && node --test test/migration-numbers.test.ts test/marketplace-migrations.test.ts test/marketplace-migrations-compose.test.ts; }
-gate_accounts_sync() { [ -d "$SVC/node_modules" ] || skip "no node_modules in services/accounts-sync (npm ci)"; cd "$SVC" && npm test; }
+gate_accounts_sync() { [ -d "$SVC/node_modules" ] || skip "no node_modules in services/api (npm ci)"; cd "$SVC" && npm test; }
 gate_accounts_sync_utc() { [ -d "$SVC/node_modules" ] || skip "no node_modules"; cd "$SVC" && TZ=UTC npm test; }
 gate_postgres() {
 	# the Postgres-gated tests: a local PostgreSQL with pgvector (test:postgres) or, failing that, a throwaway docker pgvector container
@@ -75,7 +75,7 @@ gate_verification_eval() {
 gate_zip_differential() {
 	[ -x "$PY" ] || skip "no Hermes python (set PYTHON_BIN)"
 	[ -d "$DESK/node_modules" ] || skip "no apps/desktop/node_modules (the desktop reader is one of the three)"
-	cd "$ROOT" && FUZZ_ITERS="${FUZZ_ITERS:-400}" HERMES_PYTHON="$PY" node scripts/dev/marketplace-zip-differential.mjs
+	cd "$ROOT" && FUZZ_ITERS="${FUZZ_ITERS:-400}" HERMES_PYTHON="$PY" node tests/marketplace/zip-differential.mjs
 }
 gate_hermes() { [ -x "$PY" ] || skip "no Hermes python (set PYTHON_BIN)"; "$PY" -c 'import pytest' 2>/dev/null || skip "pytest is not installed in $PY"; cd "$ROOT/vendor/hermes-agent" && "$PY" -m pytest tests/tools/test_agentic_marketplace_source.py tests/hermes_cli/marketplace_ext -q -p no:cacheprovider; }
 gate_desktop() {
@@ -92,11 +92,11 @@ gate_desktop_types() { [ -d "$DESK/node_modules" ] || skip "no apps/desktop/node
 gate_desktop_layers() { [ -d "$DESK/node_modules" ] || skip "no apps/desktop/node_modules"; cd "$DESK" && node build/checker/layersChecker.ts && npx tsgo --project build/checker/tsconfig.electron-main.json && npx tsgo --project build/checker/tsconfig.browser.json; }
 gate_bench() {
 	[ -d "$DESK/node_modules" ] || skip "no apps/desktop/node_modules"
-	cd "$ROOT" && if [ "$PERF" = 1 ]; then node scripts/dev/marketplace-bench/run.mjs --check; else node scripts/dev/marketplace-bench/run.mjs --check --no-server; fi
+	cd "$ROOT" && if [ "$PERF" = 1 ]; then node tests/marketplace/bench/run.mjs --check; else node tests/marketplace/bench/run.mjs --check --no-server; fi
 }
-gate_control_plane_pages() { cd "$ROOT/services/control-plane" && npx tsc --noEmit && node --import tsx --test test/marketplace.test.ts test/marketplace-verification.test.ts test/marketplace-plan2.test.ts; }
-gate_color_audit() { cd "$ROOT" && node scripts/dev/marketplace-color-audit.mjs --self-test && node scripts/dev/marketplace-color-audit.mjs; }
-gate_truth_table() { cd "$ROOT" && node scripts/dev/marketplace-truth-table.mjs --check; }
+gate_control_plane_pages() { cd "$ROOT/apps/console" && npx tsc --noEmit && node --import tsx --test test/marketplace.test.ts test/marketplace-verification.test.ts test/marketplace-plan2.test.ts; }
+gate_color_audit() { cd "$ROOT" && node tests/marketplace/color-audit.mjs --self-test && node tests/marketplace/color-audit.mjs; }
+gate_truth_table() { cd "$ROOT" && node tests/marketplace/truth-table.mjs --check; }
 
 gate invariants "repo layout, okf and repo invariants"
 gate migrations "migration numbering, rollback scripts, composition"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stops ONLY what scripts/dev/marketplace-demo.sh started (the pids it recorded, plus any process whose command line carries its own
+# Stops ONLY what tests/marketplace/demo.sh started (the pids it recorded, plus any process whose command line carries its own
 # user-data-dir). Never touches your own Agentic Office window or any other process.
 set -uo pipefail
 BASE="$(cd /tmp && pwd -P)/ao-mkt-demo"

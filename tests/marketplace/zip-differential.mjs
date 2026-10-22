@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Three-reader zip differential for marketplace packages (Plan 4, Task 9).
 //
-// The three readers cannot share a runtime: the server (services/accounts-sync/src/marketplace/artifacts.ts), the
+// The three readers cannot share a runtime: the server (services/api/src/marketplace/artifacts.ts), the
 // desktop (apps/desktop/src/vs/platform/marketplace/node/safeUnzip.ts) and Hermes (tools/skill_sources/agentic_marketplace.py,
 // Python zipfile). So: generate a deterministic corpus into a temp dir, run each reader's runner on it, and compare the
 // per-zip verdicts here.
 //
-//   node scripts/dev/marketplace-zip-differential.mjs [--iters N] [--seed N] [--out DIR] [--keep] [--json]
+//   node tests/marketplace/zip-differential.mjs [--iters N] [--seed N] [--out DIR] [--keep] [--json]
 //   FUZZ_ITERS (default 400) and FUZZ_SEED override the defaults; HERMES_PYTHON picks the Python with Hermes' dependencies.
 //
 // Rules enforced (exit 1 on any violation):
@@ -34,7 +34,7 @@ const keep = argv.includes('--keep');
 const READERS = ['server', 'desktop', 'python'];
 const POLICY = new Set(['zip-slip', 'symlink', 'bad-path', 'duplicate', 'too-large', 'too-many-files']);
 
-const fuzz = await import(pathToFileURL(join(repo, 'services/accounts-sync/test/lib/zipfuzz.ts')).href);
+const fuzz = await import(pathToFileURL(join(repo, 'services/api/test/lib/zipfuzz.ts')).href);
 const work = arg('--out', mkdtempSync(join(tmpdir(), 'zipdiff-')));
 const corpusDir = join(work, 'corpus'), outDir = join(work, 'out');
 mkdirSync(outDir, { recursive: true });
@@ -48,7 +48,7 @@ const env = { ...process.env, ZIPDIFF_CORPUS: corpusDir, ZIPDIFF_OUT: outDir };
 const py = process.env.HERMES_PYTHON
   ?? ['/Users/harshitverma/Desktop/Agentic_Office_ultra/vendor/hermes-agent/venv/bin/python', join(repo, 'vendor/hermes-agent/venv/bin/python')].find(existsSync) ?? 'python3';
 const runs = {
-  server: ['node', ['--test', 'test/marketplace-zipdiff.test.ts'], join(repo, 'services/accounts-sync')],
+  server: ['node', ['--test', 'test/marketplace-zipdiff.test.ts'], join(repo, 'services/api')],
   desktop: ['node', ['--experimental-transform-types', '--no-warnings', join(here, 'marketplace-zip-differential/desktop-driver.mjs'),
     join(repo, 'apps/desktop/src/vs/platform/marketplace/test/node/zipCorpus.test.ts')], repo],
   python: [py, ['-m', 'pytest', '-q', '-p', 'no:cacheprovider', 'tests/tools/test_agentic_marketplace_zip_corpus.py'], join(repo, 'vendor/hermes-agent')],

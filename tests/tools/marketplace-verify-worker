@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the marketplace verifier worker (Plan 4 Task 5). See okf/services/marketplace-verify-worker.md.
-#   AO_VERIFY_API=http://127.0.0.1:8787 AO_VERIFY_TOKEN=... scripts/dev/marketplace-verify-worker
+#   AO_VERIFY_API=http://127.0.0.1:8787 AO_VERIFY_TOKEN=... tests/marketplace/verify-worker
 # The API must run with AO_VERIFY_MODE=queue, and the token's admin id must map to the `verifier` role in AO_MARKETPLACE_ROLES.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec node "$here/../../services/accounts-sync/verify-worker/main.ts" "$@"
+exec node "$here/../../services/worker-verify/main.ts" "$@"

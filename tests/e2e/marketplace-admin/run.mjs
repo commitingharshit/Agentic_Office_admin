@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // The marketplace admin console, end to end, against the REAL accounts-sync admin API on a REAL Postgres. NOT wired into CI.
 //
-//   node scripts/e2e/marketplace-admin/run.mjs [--out <dir>] [--keep-going]
+//   node tests/e2e/marketplace-admin/run.mjs [--out <dir>] [--keep-going]
 //
 // Starts (all on loopback, all torn down when the run ends, pass or fail):
 //   1. a throwaway docker pgvector/pgvector:pg17 on a free port, migrations 0001-latest applied with all five role passwords set;
-//   2. services/accounts-sync/scripts/marketplace-admin-e2e-server.ts: the real admin handlers (admin.ts + marketplace-admin.ts) with the real
+//   2. services/api/scripts/marketplace-admin-e2e-server.ts: the real admin handlers (admin.ts + marketplace-admin.ts) with the real
 //      service-token authentication, the real role map and the real validators (in-memory artifact store; only differences from main.ts);
 //   3. the control-plane (`next start`, production build) pointed at it, signed in through the console's own signed session cookie;
 //   4. a private headless Chrome on a free debug port (never 9351, 9361 or 9399), driven over CDP: real clicks, real form posts.
@@ -13,7 +13,7 @@
 // admin_audit in the database after every mutation. Exit code 0 only if every step passed.
 //
 // Needs: docker, Google Chrome (AO_E2E_CHROME to override), node 24, python3 for the skill scanner (AO_E2E_PYTHON), npm deps installed in
-// services/accounts-sync, and services/control-plane with a real node_modules (a symlink breaks turbopack). The control-plane is built
+// services/api, and apps/console with a real node_modules (a symlink breaks turbopack). The control-plane is built
 // (`next build`) when it has no .next.
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -26,8 +26,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..', '..', '..');
-const sync = join(repo, 'services', 'accounts-sync');
-const cp = join(repo, 'services', 'control-plane');
+const sync = join(repo, 'services', 'api');
+const cp = join(repo, 'apps', 'console');
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const OUT = resolve(opt('--out', join(tmpdir(), `ao-mp-admin-e2e-${Date.now()}`)));
@@ -174,8 +174,8 @@ async function main() {
   try { execFileSync('docker', ['info'], { stdio: 'ignore' }); } catch { throw new Error('docker is not running'); }
   const CHROME = process.env.AO_E2E_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   must(existsSync(CHROME), `no Chrome at ${CHROME} (set AO_E2E_CHROME)`);
-  must(existsSync(join(sync, 'node_modules')), 'run npm ci in services/accounts-sync first');
-  must(existsSync(join(cp, 'node_modules', 'next')), 'services/control-plane has no node_modules: run npm ci there (a symlink breaks turbopack)');
+  must(existsSync(join(sync, 'node_modules')), 'run npm ci in services/api first');
+  must(existsSync(join(cp, 'node_modules', 'next')), 'apps/console has no node_modules: run npm ci there (a symlink breaks turbopack)');
   const env0 = { ...process.env }; delete env0.NODE_OPTIONS;
 
   // 1. Postgres in docker, all five role passwords

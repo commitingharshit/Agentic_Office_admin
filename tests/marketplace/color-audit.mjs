@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Static half of the Marketplace theme-consistency pass (Plan 4 Task 17): no raw color literal outside theme tokens.
-//   node scripts/dev/marketplace-color-audit.mjs [--self-test] [file ...]     default files: the Marketplace stylesheet
+//   node tests/marketplace/color-audit.mjs [--self-test] [file ...]     default files: the Marketplace stylesheet
 // A "raw color" is a #hex, rgb()/rgba()/hsl()/hsla() or a named CSS color used as a value, anywhere that is not inside var(--vscode-*) or a
 // workbench token. Fallbacks inside var(--x, #abc) count: a fallback is a hard-coded color that ignores the theme. Exit 1 when any is found.
 // The live half (computed-style contrast >= 4.5:1 per theme, no horizontal scroll at the narrow width) needs the window and is in marketplace-shots.mjs.

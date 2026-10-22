@@ -130,7 +130,7 @@ services:
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
       CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-}
       AO_APP_PASSWORD: ${AO_APP_PASSWORD}
-      # Our own sign-in (services/control-plane). AUTH_ISSUER is its public base URL; the keys are fetched over the compose network.
+      # Our own sign-in (apps/console). AUTH_ISSUER is its public base URL; the keys are fetched over the compose network.
       # Announcement email (off unless both are set): Resend's API key and the verified sender address.
       # Signs the app's links to promotion media (32+ characters; without it links only last for one API process).
       AO_MEDIA_SIGNING_KEY: ${AO_MEDIA_SIGNING_KEY:-}
@@ -151,7 +151,7 @@ services:
       KEYCLOAK_API_SECRET: ${KEYCLOAK_API_SECRET:-}
       AUTH_ISSUER: ${AUTH_ISSUER:-}
       AUTH_JWKS_URL: ${AUTH_JWKS_URL:-}
-      # Payments (off unless AO_PAYMENTS is set and the provider settings exist). The provider is experimental; see okf/services/accounts-sync.md.
+      # Payments (off unless AO_PAYMENTS is set and the provider settings exist). The provider is experimental; see okf/services/api.md.
       AO_BILLING_PASSWORD: ${AO_BILLING_PASSWORD:-}
       AO_PAYMENTS: ${AO_PAYMENTS:-}
       YOUPI_API_URL: ${YOUPI_API_URL:-}

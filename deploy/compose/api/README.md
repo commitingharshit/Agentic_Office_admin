@@ -15,7 +15,7 @@ compose file uses Chainguard's build of the same AGPL source, pinned by digest.
    `BIND_IP=100.94.155.4`, and long random values for every password
    (`openssl rand -hex 24`). Keep `.env` on the host only.
 2. `docker compose -p ao-data up -d`
-3. From any tailnet machine, with `services/accounts-sync/` checked out:
+3. From any tailnet machine, with `services/api/` checked out:
    ```bash
    cd server && npm install
    DATABASE_URL=postgres://ao_owner:<PG_OWNER_PASSWORD>@100.94.155.4:5432/agentic_office \
@@ -51,7 +51,7 @@ SSH in as `tanmaykumar@100.94.155.4`; the stack lives in `C:\Users\tanmaykumar\a
 - Run docker commands with `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine`.
 
 ## Admin API (the Admin Console's backend)
-`api` in the compose file runs `services/accounts-sync/src/api/main.ts` on `${BIND_IP}:8787` (Tailscale only until the public
+`api` in the compose file runs `services/api/src/api/main.ts` on `${BIND_IP}:8787` (Tailscale only until the public
 API exists). It reads as `ao_readonly`, acts as `ao_admin`, and writes every view, action and SQL query to
 `admin_audit` before doing it. Until Clerk admin sign-in is wired, admins authenticate with a bearer token
 from `AO_ADMIN_TOKENS=name:token` (24+ characters; only its hash is kept in memory). `CLERK_SECRET_KEY` is

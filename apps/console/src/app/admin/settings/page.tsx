@@ -33,7 +33,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       'Recreate the API service. This row turns to connected; announcement emails are then sent and recorded.'] },
     { name: 'Payments (YouPI, experimental)', on: payOn, label: payOn ? 'Provider on' : undefined, steps: [
       'Get a sandbox merchant account from the payment provider first; test with that before any real money.',
-      'Run scripts/dev/enable-payments-youpi.sh in a terminal. It asks for the API address, merchant id and webhook secret without showing them and writes them to the server file, mode 600.',
+      'Run deploy/scripts/enable-payments-youpi.sh in a terminal. It asks for the API address, merchant id and webhook secret without showing them and writes them to the server file, mode 600.',
       'It recreates the API. This row turns on; checkout then opens in the app, and a plan activates only after you settle the order on the Payments page.'] },
     { name: 'Managed AI models', on: false, label: 'Per plan', steps: [
       'Set the model provider key on the API service environment (never in this console).',

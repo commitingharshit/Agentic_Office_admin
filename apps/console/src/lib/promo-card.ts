@@ -1,7 +1,7 @@
-// GENERATED from packages/promo-card/src/card.ts by scripts/dev/sync-promo-card.mjs. Do not edit: change the source and re-run the script.
+// GENERATED from packages/promo-card/src/card.ts by tests/tools/sync-promo-card.mjs. Do not edit: change the source and re-run the script.
 // promo-card v1: the declarative content of an Agentic Office promotion, and its validator.
 //
-// SINGLE SOURCE. scripts/dev/sync-promo-card.mjs copies this file, byte for byte under a generated header, to the places that
+// SINGLE SOURCE. tests/tools/sync-promo-card.mjs copies this file, byte for byte under a generated header, to the places that
 // must not import packages/ (the accounts-sync container, the desktop fork, the admin console); verify-repo-invariants fails if a
 // copy drifts. Edit it here only.
 //

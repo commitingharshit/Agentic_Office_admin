@@ -7,12 +7,12 @@ import { chunkMarkdown, type Chunk } from './chunk.ts';
 export interface Embedder { readonly embedModel: string; embed(texts: string[]): Promise<number[][]> }
 export interface Hit { id: string; source: string; heading: string; route: string | null; body: string; score: number }
 
-/** Every .md file under dir, as docs-relative paths with forward slashes. Hidden folders and node_modules are skipped. */
+/** Every .md file under dir (not COVERAGE.md), as docs-relative paths with forward slashes. Hidden folders and node_modules are skipped. */
 export function listDocs(dir: string): string[] {
   const out: string[] = [];
   const walk = (d: string) => {
     for (const n of readdirSync(d)) {
-      if (n.startsWith('.') || n === 'node_modules') continue;
+      if (n.startsWith('.') || n === 'node_modules' || n === 'COVERAGE.md') continue;   // COVERAGE.md is the writers' checklist, not an answer
       const p = join(d, n);
       if (statSync(p).isDirectory()) walk(p); else if (n.endsWith('.md')) out.push(relative(dir, p).split(sep).join('/'));
     }

@@ -1,5 +1,5 @@
 # The growth stack for LOCAL work (never the server): Postgres, MinIO, the API, the ffmpeg media worker, a migrate job and a dev seed.
-# Used by scripts/dev/growth-stack.sh as
+# Used by tests/tools/growth-stack.sh as
 #   docker compose -p ao-growth -f docker-compose.yml -f docker-compose.growth.yml --profile growth ...
 # The one-shot jobs below only run with --profile growth, so a normal `docker compose up` on the server never starts them.
 services:

@@ -102,6 +102,7 @@ describe('index, retrieval and ask (real Postgres)', { skip }, () => {
     dir = mkdtempSync(join(tmpdir(), 'help-docs-'));
     mkdirSync(join(dir, 'admin-guide'));
     writeFileSync(join(dir, 'admin-guide', 'coupons.md'), '---\ntitle: Coupons\nroute: /admin/coupons\n---\n## Create a coupon\nOpen Coupons and press New coupon. Choose the credit amount, the expiry date and how many people can redeem it, then save the coupon.\n');
+    writeFileSync(join(dir, 'admin-guide', 'COVERAGE.md'), '# Coverage\nThis checklist lists every page and must never be retrieved as an answer to a question.\n');
     writeFileSync(join(dir, 'admin-guide', 'users.md'), '---\ntitle: Users\nroute: /admin/users\n---\n## Disable a user\nOpen the user in Users, then press Disable account. The person is signed out of every device immediately.\n');
   });
   after(async () => { await h?.stop(); rmSync(dir, { recursive: true, force: true }); });

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # The growth stack on THIS machine (Docker Desktop), for building and testing promotions: Postgres, MinIO, the API, the ffmpeg media worker,
 # the migrations and a dev seed. Throwaway test passwords live in $AO_GROWTH_DIR/env (mode 600), never in the repo; nothing leaves this machine.
-#   scripts/dev/growth-stack.sh up      start, migrate and seed; prints the API address and the dev tokens
-#   scripts/dev/growth-stack.sh smoke   check the seeded promotions through the real HTTP API (all three placements, ad-free, opt-out)
-#   scripts/dev/growth-stack.sh reset   forget what the seed people were shown, so promotions appear for them again
-#   scripts/dev/growth-stack.sh down    stop it and delete its data (only this project, only local Docker)
+#   tests/tools/growth-stack.sh up      start, migrate and seed; prints the API address and the dev tokens
+#   tests/tools/growth-stack.sh smoke   check the seeded promotions through the real HTTP API (all three placements, ad-free, opt-out)
+#   tests/tools/growth-stack.sh reset   forget what the seed people were shown, so promotions appear for them again
+#   tests/tools/growth-stack.sh down    stop it and delete its data (only this project, only local Docker)
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)/services/accounts-sync/deploy"
+cd "$(git rev-parse --show-toplevel)/deploy/compose/api"
 DIR=${AO_GROWTH_DIR:-/tmp/ao-growth}; ENVF=$DIR/env; PROJ=aogrowthstack
 API_PORT=${AO_GROWTH_API_PORT:-18787}
 dc() { docker compose -p "$PROJ" --env-file "$ENVF" -f docker-compose.yml -f docker-compose.growth.yml --profile growth "$@"; }
@@ -48,7 +48,7 @@ ENV
     echo "API: http://127.0.0.1:$API_PORT   (dev tokens: aod_seed_free_dev_token, aod_seed_adfree_dev_token, aod_seed_optout_dev_token)"
     ;;
   smoke)
-    node "$(git rev-parse --show-toplevel)/scripts/dev/growth-smoke.mjs" "http://127.0.0.1:$API_PORT"
+    node "$(git rev-parse --show-toplevel)/tests/tools/growth-smoke.mjs" "http://127.0.0.1:$API_PORT"
     ;;
   reset)
     # Forget what the seed people were shown or dismissed, so a promotion can be shown to them again (local data only).

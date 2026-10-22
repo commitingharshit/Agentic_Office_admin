@@ -1,12 +1,12 @@
 // A real browser against a real Keycloak: the desktop app's sign-in (authorization code + PKCE S256 to a loopback address), a new
 // account made on Keycloak's own page, the ID token's claims, and the admin-data client (service account) reading users and events.
-// Usage: KC=http://127.0.0.1:8180 KC_API_SECRET=... node scripts/dev/keycloak-check.mjs   (open a tunnel to the host first)
+// Usage: KC=http://127.0.0.1:8180 KC_API_SECRET=... node tests/tools/keycloak-check.mjs   (open a tunnel to the host first)
 // It creates one throwaway person and deletes them at the end.
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { JwksVerifier } from '../../services/accounts-sync/src/auth/jwks.ts';
-import { KeycloakAdmin } from '../../services/accounts-sync/src/api/keycloak-admin.ts';
+import { JwksVerifier } from '../../services/api/src/auth/jwks.ts';
+import { KeycloakAdmin } from '../../services/api/src/api/keycloak-admin.ts';
 const require = createRequire(process.env.PLAYWRIGHT_FROM ?? new URL('../../apps/editors/docx/', import.meta.url).pathname);
 const { chromium } = require('@playwright/test');
 const KC = process.env.KC ?? 'http://127.0.0.1:8180', REALM = 'agentic-office', SECRET = process.env.KC_API_SECRET;

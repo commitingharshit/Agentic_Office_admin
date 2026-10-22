@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # One-command local run of the Extension Marketplace (DEV ONLY, macOS).
 #
-#   scripts/dev/marketplace-demo.sh [--no-window] [--server-port 8793] [--cdp-port 9361] [--no-advanced] [--admin]
+#   tests/marketplace/demo.sh [--no-window] [--server-port 8793] [--cdp-port 9361] [--no-advanced] [--admin]
 #
 # Starts, all on loopback and all under /tmp/ao-mkt-demo (never your real profile or your running Agentic Office window):
 #   1. fake HTTPS servers for the bridge and connector examples (ONLY because this script sets AGENTICOFFICE_DEV_MODE=1);
-#   2. the dev marketplace server (services/accounts-sync/scripts/marketplace-dev-server.ts: embedded Postgres, seeded real packages:
+#   2. the dev marketplace server (services/api/scripts/marketplace-dev-server.ts: embedded Postgres, seeded real packages:
 #      2 templates, 2 skills, and one example of each operational advanced type, each through the real validator of its type);
 #   3. unless --no-window: a SEPARATE Agentic Office window (own user-data-dir, CDP port 9361, throwaway HERMES_HOME) pointed at it.
-# Everything it starts is recorded in /tmp/ao-mkt-demo/pids; scripts/dev/marketplace-demo-stop.sh kills only those.
+# Everything it starts is recorded in /tmp/ao-mkt-demo/pids; tests/marketplace/demo-stop.sh kills only those.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -34,7 +34,7 @@ port_busy() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
 
 command -v node >/dev/null || die "node is required (Node 24, see apps/desktop/.nvmrc)"
 command -v openssl >/dev/null || die "openssl is required"
-[ -d "$REPO/services/accounts-sync/node_modules" ] || die "run 'npm ci' in services/accounts-sync first"
+[ -d "$REPO/services/api/node_modules" ] || die "run 'npm ci' in services/api first"
 PY="${AO_E2E_PYTHON:-}"
 [ -n "$PY" ] || for c in "$REPO/vendor/hermes-agent/venv/bin/python" "/Users/$USER/Desktop/Agentic_Office_ultra/vendor/hermes-agent/venv/bin/python"; do [ -x "$c" ] && PY="$c" && break; done
 [ -x "$PY" ] || die "no Hermes python: set AO_E2E_PYTHON to the python of vendor/hermes-agent's venv"
@@ -45,7 +45,7 @@ if [ "$WINDOW" = 1 ]; then
   [ -x "$APP" ] || die "no fork build at $APP (use --no-window, or build the fork: see BUILD_MACOS.md)"
   [ -d "$REPO/apps/desktop/out" ] || die "apps/desktop/out is missing: run 'npm run transpile-client' in apps/desktop (or use --no-window)"
 fi
-if [ -e "$BASE/pids" ]; then die "a previous demo is recorded in $BASE/pids: run scripts/dev/marketplace-demo-stop.sh first"; fi
+if [ -e "$BASE/pids" ]; then die "a previous demo is recorded in $BASE/pids: run tests/marketplace/demo-stop.sh first"; fi
 
 rm -rf "$BASE"; mkdir -p "$BASE"/{bin,ws,mkt,hermes-root,hermes-home,ud,logs}
 : > "$BASE/pids"
@@ -75,7 +75,7 @@ fi
 
 echo "starting the dev marketplace server on 127.0.0.1:$SERVER_PORT (embedded Postgres + validators: 30-120 s)..."
 ADMIN_ARGS=(); [ "$ADMIN" = 1 ] && ADMIN_ARGS=(--admin)
-( cd "$REPO/services/accounts-sync" && exec env "${DEV_ENV[@]}" NODE_ENV=development OFFICECLI_TIMEOUT_MS=150000 DAG_RUNTIME_PYTHON="$PY" \
+( cd "$REPO/services/api" && exec env "${DEV_ENV[@]}" NODE_ENV=development OFFICECLI_TIMEOUT_MS=150000 DAG_RUNTIME_PYTHON="$PY" \
   node scripts/marketplace-dev-server.ts --port "$SERVER_PORT" --state "$BASE/server.json" ${BRIDGE_ARGS[@]+"${BRIDGE_ARGS[@]}"} ${ADMIN_ARGS[@]+"${ADMIN_ARGS[@]}"} \
   ) > "$BASE/logs/server.log" 2>&1 &
 echo $! > "$BASE/server.pid"   # the subshell execs into node, so this is node's pid
@@ -126,5 +126,5 @@ Next steps
   - Advanced types (routine, memory, hook, bridge, connector, workflow) show in Discover; installing one asks for a native confirmation.
     Configure / Grant screens for them are a separate UI step; see docs/guides/marketplace-getting-started.md for what works today.
   - API:  curl -s -H 'authorization: Bearer dev-token' $URL/v1/marketplace/listings | head -c 600     (https: add -k)
-  - Stop everything this script started:  scripts/dev/marketplace-demo-stop.sh
+  - Stop everything this script started:  tests/marketplace/demo-stop.sh
 EOM

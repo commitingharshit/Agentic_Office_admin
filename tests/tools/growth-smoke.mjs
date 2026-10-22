@@ -1,4 +1,4 @@
-// Through the real HTTP API of the local growth stack (scripts/dev/growth-stack.sh up): the seeded promotions reach a normal person on every
+// Through the real HTTP API of the local growth stack (tests/tools/growth-stack.sh up): the seeded promotions reach a normal person on every
 // placement, never an ad-free or opted-out person, events are counted once, and a dismissal ends it. Exit 1 on the first failure.
 const base = process.argv[2] || 'http://127.0.0.1:18787';
 const tok = { free: 'aod_seed_free_dev_token', adfree: 'aod_seed_adfree_dev_token', optout: 'aod_seed_optout_dev_token' };

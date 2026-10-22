@@ -3,8 +3,8 @@ type: Reference
 title: "Marketplace catalog service"
 description: "Marketplace catalog, search, artifact download, favorites, reviews, install sync and reports: public routes inside accounts-sync."
 toolchain: "Node 24 (TypeScript by type stripping), npm"
-build: "cd services/accounts-sync && npm ci"
-test: "cd services/accounts-sync && npm test (marketplace-api, -admin, -creator, -rls, -artifacts, -manifest, -schema; embedded Postgres, no setup needed)"
+build: "cd services/api && npm ci"
+test: "cd services/api && npm test (marketplace-api, -admin, -creator, -rls, -artifacts, -manifest, -schema; embedded Postgres, no setup needed)"
 run: "part of accounts-sync (node src/api/main.ts, port 8787); the routes need the sync API and MinIO configured"
 owns_data: "marketplace_* tables (listings, versions, artifacts, installs, reviews, reports) from migration 0016; artifact bytes in the MinIO bucket ao-marketplace by sha256"
 depends_on: []
@@ -13,7 +13,7 @@ tags: [marketplace, accounts, postgres]
 timestamp: 2026-10-21T00:00:00Z
 ---
 
-The catalog read path and the signed-in user actions, inside [accounts-sync](/services/accounts-sync.md).
+The catalog read path and the signed-in user actions, inside [accounts-sync](/services/api.md).
 Code: `src/marketplace/` (`store.ts` SQL, `search.ts` query building, `artifacts.ts`, `manifest.ts`,
 `ratelimit.ts`) and the HTTP layer `src/api/marketplace.ts`, registered in `main.ts` ahead of the sync
 handler (it reuses sync's `authenticate`: Clerk session or `aod_` device token). Model, states and
@@ -151,7 +151,7 @@ no registered pipeline or a pipeline crash never publishes. Admin approval of pu
 
 Skill task evaluations (`stages/skill/taskEvals.ts`, `taskCheckers.ts`, `taskSchema.ts`; sandboxed half
 `verify/worker/taskeval.mjs`, runners `verify/worker/taskevalTools.ts`; fixtures and runner under
-`services/accounts-sync/evals/skill-tasks/` and `evals/run-skill-tasks.ts`). A skill declares up to 5 example tasks in
+`services/api/evals/skill-tasks/` and `evals/run-skill-tasks.ts`). A skill declares up to 5 example tasks in
 `evals/tasks.json` (text-only skill packages, so input and expected files travel as sha256-pinned base64). The stage runs
 each task through `PipelineTools.hermes.runTask` and judges the produced files with deterministic checkers only
 (`functional`, `integrity`, `render`, `fidelity`, `diff`, `regression`; no LLM judge, no score). Semantics: with no runner
@@ -180,7 +180,7 @@ reports devices with install rows against devices known, so partial telemetry is
 The Marketplace section of the Next.js control-plane console (Overview, Catalog, Publish New, Submissions, Review
 Queue, Installations, Usage Analytics, Ratings & Reviews, Publishers, Versions & Releases, Security Reports,
 Settings, a Marketplace tab on the user page; Agents & Bundles, Team Assignments and Install Policy for Plan 2) is
-committed in `services/control-plane` (what each page shows, env and what was verified are in
+committed in `apps/console` (what each page shows, env and what was verified are in
 [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)). The pages call only the
 routes above; the console shows nav items by the `marketplace.*` permissions that `GET /admin/marketplace/me` returns (the same table the API enforces) and the API enforces them again.
 
@@ -206,7 +206,7 @@ word and an icon per stage, evidence behind an expander, "Not yet verified" is n
 verification row of that version references) and `GET security/verification`. Regression gates: `npm run eval` now
 includes the advanced-type hostile corpora (`evals/run-advanced-gate.ts`: size floors, no crash counted as detection),
 and `npm run eval:verification` runs the real template pipeline with the real officecli and Rust kernels over 75
-packages (benign, hostile, valid-but-broken). `scripts/dev/marketplace-gates.sh` runs every gate in CI form (PASS, FAIL or
+packages (benign, hostile, valid-but-broken). `tests/marketplace/gates.sh` runs every gate in CI form (PASS, FAIL or
 SKIP per gate; a SKIP not named by `--allow-skip` fails), `marketplace-truth-table.mjs` computes what is operational from
 the tree, and `db/rollback/` holds a rollback script per marketplace migration (applied and re-applied by
 `test/marketplace-migrations.test.ts`). Hook scripts stay off at three layers (the `OPERATIONAL` flag, the validator and
@@ -218,4 +218,4 @@ the Hermes payload parser).
 - [`docs/audits/marketplace-admin-pages.md`](/../docs/audits/marketplace-admin-pages.md)
 - [`docs/audits/marketplace-admin-pages-current.md`](/../docs/audits/marketplace-admin-pages-current.md)
 - [`docs/audits/marketplace-release-readiness.md`](/../docs/audits/marketplace-release-readiness.md)
-- [`services/accounts-sync/README.md`](/../services/accounts-sync/README.md)
+- [`services/api/README.md`](/../services/api/README.md)

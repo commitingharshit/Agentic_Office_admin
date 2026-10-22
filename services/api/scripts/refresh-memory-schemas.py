@@ -1,7 +1,7 @@
 """Regenerates src/marketplace/validate/memory-provider-schemas.json from the bundled Hermes memory providers.
 
 Run from vendor/hermes-agent with its python:
-    HERMES_HOME=$(mktemp -d) venv/bin/python ../../services/accounts-sync/scripts/refresh-memory-schemas.py
+    HERMES_HOME=$(mktemp -d) venv/bin/python ../../services/api/scripts/refresh-memory-schemas.py
 
 The snapshot is what the publish-time validator checks config keys and secret env names against. It lists, per
 bundled provider, only: config keys (non-secret), secret fields (key + env_var) and whether the provider has a

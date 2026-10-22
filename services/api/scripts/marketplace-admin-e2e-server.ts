@@ -1,5 +1,5 @@
 // DEV/E2E ONLY. The REAL accounts-sync admin API on a REAL Postgres (migrations 0001-latest, real roles, real RLS), for the control-plane
-// marketplace console end-to-end run (scripts/e2e/marketplace-admin/run.mjs). It composes the same handlers src/api/main.ts composes
+// marketplace console end-to-end run (tests/e2e/marketplace-admin/run.mjs). It composes the same handlers src/api/main.ts composes
 // (adminHandler + marketplaceAdminHandler with the real `authenticate` and the real AO_MARKETPLACE_ROLES role map) and differs from main.ts
 // only in two honest ways: the artifact store is in memory (main.ts needs MinIO) and the user-facing marketplace API accepts one fixed bearer
 // (`dev-token` = usr_dev) so the run can ask the catalog what a client would be served. Refuses NODE_ENV=production.

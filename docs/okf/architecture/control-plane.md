@@ -2,7 +2,7 @@
 type: Architecture
 title: Control plane
 description: The planned central backend (Better Auth identity, admin console, credits and coupons, managed inference) beside the local-first desktop, the schema mapping that keeps existing user ids, and the API contract.
-resource: services/accounts-sync/
+resource: services/api/
 tags: [control-plane, auth, better-auth, admin, credits, coupons, accounts]
 timestamp: 2026-10-20T00:00:00Z
 ---
@@ -31,7 +31,7 @@ never routed through our server.
 
 | Concern | Owner | Notes |
 |---|---|---|
-| Who is this person (Google, Microsoft, email, later phone) | Better Auth (`services/control-plane`, Next.js) | replaces Clerk behind `AUTH_PROVIDER=clerk\|better-auth` until cutover |
+| Who is this person (Google, Microsoft, email, later phone) | Better Auth (`apps/console`, Next.js) | replaces Clerk behind `AUTH_PROVIDER=clerk\|better-auth` until cutover |
 | Credential the desktop presents to `/v1/*` | accounts-sync `aod_` device token (`device_tokens`) | unchanged: hashed, per device, revocable, sliding 90 days |
 | Entitlements, credits, coupons | accounts-sync Postgres | append-only ledger |
 | Local documents, agent state | desktop SQLite and files | never reachable from admin APIs |
@@ -129,11 +129,11 @@ verified in scratch databases; these checks do not establish a live deployment o
 # Citations
 
 - [Identity](identity.md), the current Clerk-based sign-in and token types
-- [`services/accounts-sync/db/migrations/`](/../services/accounts-sync/db/migrations/)
-- [`services/accounts-sync/src/api/sync.ts`](/../services/accounts-sync/src/api/sync.ts), [`admin.ts`](/../services/accounts-sync/src/api/admin.ts)
+- [`database/migrations/`](/../database/migrations/)
+- [`services/api/src/api/sync.ts`](/../services/api/src/api/sync.ts), [`admin.ts`](/../services/api/src/api/admin.ts)
 - [`apps/editors/docx/extension/src/account/account.ts`](/../apps/editors/docx/extension/src/account/account.ts)
 - [`apps/desktop/src/vs/workbench/contrib/agenticOffice/browser/account.contribution.ts`](/../apps/desktop/src/vs/workbench/contrib/agenticOffice/browser/account.contribution.ts)
 - Better Auth docs: database customisation (`modelName`, `fields`, `generateId`, `additionalFields`) and the OAuth provider plugin (native public client, PKCE, loopback redirects)
 
-- [Admin MFA configuration](/../services/control-plane/src/lib/auth.ts), [admin gate](/../services/control-plane/src/lib/session.ts), [migration 0010](/../services/accounts-sync/db/migrations/0010_admin_mfa.sql)
-- [Real web and form tests](/../services/control-plane/test/web.test.ts), [verification record](/../docs/plans/2026-10-20-control-plane.md)
+- [Admin MFA configuration](/../apps/console/src/lib/auth.ts), [admin gate](/../apps/console/src/lib/session.ts), [migration 0010](/../database/migrations/0010_admin_mfa.sql)
+- [Real web and form tests](/../apps/console/test/web.test.ts), [verification record](/../docs/plans/2026-10-20-control-plane.md)

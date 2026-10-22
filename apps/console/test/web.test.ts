@@ -8,7 +8,7 @@ import { createServer, request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
-import { adminHandler, parseTokens } from '../../accounts-sync/src/api/admin.ts';
+import { adminHandler, parseTokens } from '../../../services/api/src/api/admin.ts';
 import { adminHostAllowed, adminMfaRequired } from '../src/lib/session';
 
 const ownerUrl = process.env.AUTH_TEST_PG;

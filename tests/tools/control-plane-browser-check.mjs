@@ -1,5 +1,5 @@
 // A real (headless) browser against a deployed control plane: sign in, get held at MFA, enrol a TOTP, reach the console, use its forms.
-// Usage: node scripts/dev/control-plane-browser-check.mjs <admin-email> <password> <screenshot-dir>
+// Usage: node tests/tools/control-plane-browser-check.mjs <admin-email> <password> <screenshot-dir>
 //   The account must already be an admin (promote it with POST /admin/users/<id>/role) and have no authenticator yet. Use a THROWAWAY
 //   admin: the check enrols its own TOTP secret, so the account is not usable by a person afterwards. It creates a coupon and a ledger
 //   grant on the account it signs in as. Env: WEB (default http://100.95.14.113:8791), PLAYWRIGHT_FROM, CHROMIUM_PATH.

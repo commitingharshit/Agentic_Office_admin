@@ -9,9 +9,9 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
-import { adminHandler, parseTokens } from '../../accounts-sync/src/api/admin.ts';
-import { syncHandler } from '../../accounts-sync/src/api/sync.ts';
-import { JwksVerifier } from '../../accounts-sync/src/auth/jwks.ts';
+import { adminHandler, parseTokens } from '../../../services/api/src/api/admin.ts';
+import { syncHandler } from '../../../services/api/src/api/sync.ts';
+import { JwksVerifier } from '../../../services/api/src/auth/jwks.ts';
 
 const ownerUrl = process.env.AUTH_TEST_PG;
 const skip = !ownerUrl && 'AUTH_TEST_PG not set';

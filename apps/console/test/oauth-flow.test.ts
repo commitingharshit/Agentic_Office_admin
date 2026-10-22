@@ -10,8 +10,8 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { toNodeHandler } from 'better-auth/node';
 import pg from 'pg';
-import { JwksVerifier } from '../../accounts-sync/src/auth/jwks.ts';
-import { syncHandler } from '../../accounts-sync/src/api/sync.ts';
+import { JwksVerifier } from '../../../services/api/src/auth/jwks.ts';
+import { syncHandler } from '../../../services/api/src/api/sync.ts';
 import { createAuth, DESKTOP_CLIENT_ID } from '../src/lib/auth';
 
 const ownerUrl = process.env.AUTH_TEST_PG;

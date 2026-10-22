@@ -1,6 +1,6 @@
 // Runs one fork mocha-style (tdd) node test file without the fork's build: resolves the fork's `.js` import suffixes to
 // their `.ts` sources, supplies suite/test/setup/teardown globals, then runs the collected tests in order.
-// Usage: node --experimental-transform-types scripts/dev/marketplace-zip-differential/desktop-driver.mjs <test.ts>
+// Usage: node --experimental-transform-types tests/marketplace/zip-differential/desktop-driver.mjs <test.ts>
 import { register } from 'node:module';
 import { pathToFileURL } from 'node:url';
 

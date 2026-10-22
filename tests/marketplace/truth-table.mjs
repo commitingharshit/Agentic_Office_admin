@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Marketplace truth table (Plan 4 Task 18): for each listing type, what is registered and whether it is operational.
-//   node scripts/dev/marketplace-truth-table.mjs [--json] [--check]
+//   node tests/marketplace/truth-table.mjs [--json] [--check]
 // Columns: validator registered | verification pipeline registered | desktop install adapter present | acceptance evidence passed | operational (server flag).
-// "Operational" is the OPERATIONAL flag in services/accounts-sync/src/marketplace/support.ts; the evidence column is read from the evidence
+// "Operational" is the OPERATIONAL flag in services/api/src/marketplace/support.ts; the evidence column is read from the evidence
 // records (docs/audits/marketplace-type-evidence*) that test/marketplace-enablement.test.ts also enforces. --check exits 1 when a type is flagged
 // operational without evidence (the disagreement the UI must never show). Nothing here is hand-written: every cell is computed from the tree.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const svc = (p) => pathToFileURL(join(root, 'services/accounts-sync/src/marketplace', p)).href;
+const svc = (p) => pathToFileURL(join(root, 'services/api/src/marketplace', p)).href;
 const { OPERATIONAL } = await import(svc('support.ts'));
 const { getValidator } = await import(svc('validate/index.ts'));
 const { LISTING_TYPES } = await import(svc('types.ts'));
@@ -19,7 +19,7 @@ const skillStages = await import(svc('verify/stages/skill/index.ts'));
 skillStages.registerSkillPipeline();   // the server registers it at start; a factory, not an import side effect
 const { getPipeline } = await import(svc('verify/registry.ts'));
 // agent and bundle register their validators when the bridge starts (agents.ts); report them from the source instead of pretending
-const contextRegistered = new Set(readFileSync(join(root, 'services/accounts-sync/src/marketplace/agents.ts'), 'utf8').match(/registerContextValidator\('(\w+)'/g)?.map((m) => m.match(/'(\w+)'/)[1]) ?? []);
+const contextRegistered = new Set(readFileSync(join(root, 'services/api/src/marketplace/agents.ts'), 'utf8').match(/registerContextValidator\('(\w+)'/g)?.map((m) => m.match(/'(\w+)'/)[1]) ?? []);
 
 const adapterDir = join(root, 'apps/desktop/src/vs/platform/marketplace/node');
 const adapterPresent = (t) => ['template', 'skill'].includes(t) ? existsSync(join(adapterDir, 'marketplaceInstaller.ts')) : t === 'agent' ? existsSync(join(adapterDir, 'agentAdapter.ts')) : t === 'bundle' ? existsSync(join(adapterDir, 'bundleInstaller.ts')) : existsSync(join(adapterDir, 'adapters', `${t}Adapter.ts`));

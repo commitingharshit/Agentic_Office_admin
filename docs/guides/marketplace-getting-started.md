@@ -4,18 +4,18 @@ What was verified on 2026-10-21 is marked as such; the rest says what it is. Det
 
 ## Run it locally in one command (macOS)
 
-    scripts/dev/marketplace-demo.sh          # server + fake bridge/API + a SEPARATE app window (CDP 9361)
-    scripts/dev/marketplace-demo.sh --no-window   # server and fakes only
-    scripts/dev/marketplace-demo-stop.sh     # stops only what the demo started (pids in /tmp/ao-mkt-demo/pids)
+    tests/marketplace/demo.sh          # server + fake bridge/API + a SEPARATE app window (CDP 9361)
+    tests/marketplace/demo.sh --no-window   # server and fakes only
+    tests/marketplace/demo-stop.sh     # stops only what the demo started (pids in /tmp/ao-mkt-demo/pids)
 
 It uses `/tmp/ao-mkt-demo` for everything (own user-data-dir, throwaway Hermes home, marketplace home), never your real profile and never your running
 window (it refuses port 9351 and any busy port). It prints the server URL, the dev bearer token (`dev-token`, honoured only with `AGENTICOFFICE_DEV_MODE=1`
 on loopback) and next steps. Seeded: 2 templates, 2 skills (one with a script, one without) and one example each of routine, memory, declarative hook,
 bridge (pointing at a local fake HTTPS MCP server), connector (local fake API, key `demo-key`) and workflow (only if the DAG runtime python works; the
 script reports a skipped seed). Every seed goes through the real validator of its type and the real admin review flow (submitted by one admin,
-approved with the permission-summary hash by another, published). Dev-seed titles say "(dev seed)"; the code lives in `services/accounts-sync/scripts/dev-seed/`, never in `src/`.
+approved with the permission-summary hash by another, published). Dev-seed titles say "(dev seed)"; the code lives in `services/api/scripts/dev-seed/`, never in `src/`.
 
-Needs: Node 24 (`apps/desktop/.nvmrc`), `npm ci` in `services/accounts-sync`, openssl, the Hermes venv python (`AO_E2E_PYTHON`, or `vendor/hermes-agent/venv`),
+Needs: Node 24 (`apps/desktop/.nvmrc`), `npm ci` in `services/api`, openssl, the Hermes venv python (`AO_E2E_PYTHON`, or `vendor/hermes-agent/venv`),
 `officecli` on PATH for template previews (a shipped thumbnail is used otherwise), and for the window: the fork build (`apps/desktop/.build/electron`) and
 `npm run transpile-client` in `apps/desktop`. Verified: server up in about 20 s, window attached, items listed.
 
@@ -31,16 +31,16 @@ Needs: Node 24 (`apps/desktop/.nvmrc`), `npm ci` in `services/accounts-sync`, op
 
 Public items are published by an admin through the API `/admin/marketplace/*` (token-driven): submit the zip, a different admin approves (with the
 permission summary hash for manual-review types: routine, memory, hook, bridge, connector, workflow, surface), then publish. The demo server's seeding
-code (`scripts/marketplace-dev-server.ts`, `--advanced`) is a working example of the whole sequence. The admin web pages are in `services/control-plane` (see `docs/audits/marketplace-admin-pages.md`).
+code (`scripts/marketplace-dev-server.ts`, `--advanced`) is a working example of the whole sequence. The admin web pages are in `apps/console` (see `docs/audits/marketplace-admin-pages.md`).
 Pass `--admin` to the demo script to also serve the admin API for that console, as one dev admin.
 
 ## Evals and acceptance
 
-    cd services/accounts-sync
+    cd services/api
     npm test 2>&1 | grep -E "^ℹ (tests|pass|fail|skipped|todo)"     # full server suite (about 6 minutes; some tests are load sensitive: rerun a failing one alone)
     npm run eval                                                    # scan gate + template validator gates
     node --test test/marketplace-enablement.test.ts                 # a type is operational only with passing evidence
-    HERMES_PYTHON=<venv python> node ../../scripts/dev/marketplace-zip-differential.mjs
+    HERMES_PYTHON=<venv python> node ../../tests/marketplace/zip-differential.mjs
     # the six type flows, one at a time (AO_E2E_PYTHON = Hermes venv python; workflow also AO_DAG_RUNTIME_PYTHON):
     node scripts/e2e/plan/marketplace-{hook,memory,routine,bridge,workflow,connector}-flow.mjs   # bridge/connector take --evidence <file> to rewrite their record
     node scripts/e2e/plan/marketplace-flow.mjs                      # real window, templates and skills (port 9361; needs the pptx extension built)

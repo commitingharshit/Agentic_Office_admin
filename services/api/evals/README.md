@@ -19,7 +19,7 @@ Positive class = malicious; "detected" = the package was rejected (at unpack or 
 ## Running
 
 ```
-cd services/accounts-sync
+cd services/api
 npm run eval              # all (scan gate, templates, blueprints, bundles, advanced types)
 npm run eval:advanced     # the six advanced-type hostile corpora
 npm run eval:scan-gate    # needs python3 and vendor/hermes-agent in the checkout

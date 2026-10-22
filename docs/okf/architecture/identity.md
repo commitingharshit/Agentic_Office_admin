@@ -2,20 +2,20 @@
 type: Architecture
 title: Identity
 description: Every user table, token type, migration and client-side credential store in the repo, and where each piece of sign-in code lives (Clerk, and our own Better Auth sign-in service that is replacing it).
-resource: services/accounts-sync/src/auth/
+resource: services/api/src/auth/
 tags: [identity, auth, accounts, collab, clerk, sync]
 timestamp: 2026-10-17T00:00:00Z
 ---
 
 Two account stores exist today. Phase 2 of the reorganisation merges the second into the first.
 
-Sign-in itself is moving from Clerk to our own service ([Control plane](control-plane.md), `services/control-plane`): the server advertises which one it uses in `GET /v1/auth/config` (`oauth` for ours, `publishableKey` for Clerk) and the desktop follows it, so both work during the cutover.
+Sign-in itself is moving from Clerk to our own service ([Control plane](control-plane.md), `apps/console`): the server advertises which one it uses in `GET /v1/auth/config` (`oauth` for ours, `publishableKey` for Clerk) and the desktop follows it, so both work during the cutover.
 
 ## Account stores
 
 | Store | Where | Tables | Migrations | Keyed by |
 |---|---|---|---|---|
-| **accounts-sync** (primary) | Postgres, `services/accounts-sync` | `users`, `oauth_accounts`, `devices`, `device_tokens`, `sessions`, `session_events`, `workspaces`, `document_revisions`, `memory_references`, `agent_runs`, `device_metrics`, `sync_cursors`, `admin_audit`; view `admin_user_overview` | versioned, `db/migrations/0001…0005_*.sql`, applied once each by `db/migrate.ts` | `users.id` = `usr_<ulid>` (ours); `clerk_user_id` unique |
+| **accounts-sync** (primary) | Postgres, `services/api` | `users`, `oauth_accounts`, `devices`, `device_tokens`, `sessions`, `session_events`, `workspaces`, `document_revisions`, `memory_references`, `agent_runs`, `device_metrics`, `sync_cursors`, `admin_audit`; view `admin_user_overview` | versioned, `db/migrations/0001…0005_*.sql`, applied once each by `db/migrate.ts` | `users.id` = `usr_<ulid>` (ours); `clerk_user_id` unique |
 | **collab** (phase-2 merge) | SQLite `accounts.db`, `services/collab/src/accounts/store.ts` | `accounts`, `refresh_tokens`, `room_members`, `invites` | none: `CREATE TABLE IF NOT EXISTS` at start | `accounts.id`; `firebase_uid` holds `clerk:<user id>` for Clerk sign-ins |
 | ~~Go gateway~~ | archived (`archive/collab-gateway-go`, W0) | its own `users` table | — | — |
 
@@ -26,8 +26,8 @@ Postgres roles: `ao_app` (row-level security, `own_rows`/`own_user` policies), `
 
 | Token | Issued by | Verified by | Lifetime | Stored by the client |
 |---|---|---|---|---|
-| Clerk session JWT | Clerk (Google/Microsoft/GitHub/email) | `services/accounts-sync/src/auth/clerk.ts` (JWKS from the publishable key, `azp` pinned) and, separately, `services/collab/src/accounts/clerk.ts` | Clerk's session | not kept: exchanged at once |
-| ID token (EdDSA JWT) from the sign-in service | `services/control-plane` (Better Auth OAuth provider: authorization code + PKCE, loopback redirect) | `services/accounts-sync/src/auth/jwks.ts` (issuer's JWKS; audience `agentic-office-desktop`; the nonce this device chose) | 10 min; used once, at the exchange | not kept |
+| Clerk session JWT | Clerk (Google/Microsoft/GitHub/email) | `services/api/src/auth/clerk.ts` (JWKS from the publishable key, `azp` pinned) and, separately, `services/collab/src/accounts/clerk.ts` | Clerk's session | not kept: exchanged at once |
+| ID token (EdDSA JWT) from the sign-in service | `apps/console` (Better Auth OAuth provider: authorization code + PKCE, loopback redirect) | `services/api/src/auth/jwks.ts` (issuer's JWKS; audience `agentic-office-desktop`; the nonce this device chose) | 10 min; used once, at the exchange | not kept |
 | Browser session cookie (`auth_sessions`) | the sign-in service | the sign-in service and the admin console | Better Auth's session | the browser only |
 | API key `aok_…` (row `key_<ulid>`, hash only) | accounts-sync `POST /v1/api-keys`, shown once | `src/api/sync.ts` `keyUser`; allowed on `/v1/inference/*` only | until revoked (max 10 live per user) | wherever the user put it |
 | Device token `aod_…` (row `dtk_<ulid>`) | accounts-sync `POST /v1/auth/exchange` (from a Clerk token or our ID token) | `src/api/sync.ts` (hash lookup in `device_tokens`) | 90 days, sliding on use | VS Code SecretStorage (docx extension `account/account.ts`) |
@@ -41,7 +41,7 @@ Postgres roles: `ao_app` (row-level security, `own_rows`/`own_user` policies), `
 
 ## Where sign-in code lives
 
-- **Server:** `services/accounts-sync/src/auth/` (`clerk.ts`, and `jwks.ts` for our own ID tokens); `services/control-plane/src/lib/auth.ts` (the sign-in service, as the least-privilege `ao_auth` role; only `users` is shared with accounts-sync, its other tables are `auth_*` from migration 0006 and `oauth*`/`jwks` from 0009). Collab's account module
+- **Server:** `services/api/src/auth/` (`clerk.ts`, and `jwks.ts` for our own ID tokens); `apps/console/src/lib/auth.ts` (the sign-in service, as the least-privilege `ao_auth` role; only `users` is shared with accounts-sync, its other tables are `auth_*` from migration 0006 and `oauth*`/`jwks` from 0009). Collab's account module
   (`services/collab/src/accounts/`) keeps its own verifier and tokens until phase 2; its README
   says so.
 - **Client:** one module in the docx extension, `apps/editors/docx/extension/src/account/`:
@@ -60,8 +60,8 @@ collab keeps only room-scoped state (session tokens, delegations, members/invite
 
 # Citations
 
-- [`services/accounts-sync/db/migrations/`](/../services/accounts-sync/db/migrations/)
-- [`services/accounts-sync/src/api/sync.ts`](/../services/accounts-sync/src/api/sync.ts), [`admin.ts`](/../services/accounts-sync/src/api/admin.ts), [`src/auth/clerk.ts`](/../services/accounts-sync/src/auth/clerk.ts)
+- [`database/migrations/`](/../database/migrations/)
+- [`services/api/src/api/sync.ts`](/../services/api/src/api/sync.ts), [`admin.ts`](/../services/api/src/api/admin.ts), [`src/auth/clerk.ts`](/../services/api/src/auth/clerk.ts)
 - [`services/collab/src/accounts/store.ts`](/../services/collab/src/accounts/store.ts), [`docs/reference/COLLABORATION_BACKEND.md`](/../docs/reference/COLLABORATION_BACKEND.md) §8
 - [`apps/editors/docx/extension/src/account/`](/../apps/editors/docx/extension/src/account/)
 - [`vendor/hermes-agent/agent/kernel/state/device_sync.py`](/../vendor/hermes-agent/agent/kernel/state/device_sync.py)

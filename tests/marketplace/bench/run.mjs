@@ -3,7 +3,7 @@
 // (apps/desktop/out, so run `cd apps/desktop && node build/next/index.ts transpile` first) against a generated 200-item
 // installed set, and the accounts-sync dev server (embedded Postgres, seed data + 30 bulk listings) for the API side.
 //
-//   node scripts/dev/marketplace-bench/run.mjs [--strict] [--init-budgets] [--check] [--no-server | --server-url <url>]
+//   node tests/marketplace/bench/run.mjs [--strict] [--init-budgets] [--check] [--no-server | --server-url <url>]
 //        [--runs 15] [--warmup 3] [--requests 120] [--items 200]
 //
 //   (default)        measure, compare with budgets.json, write docs/audits/2026-10-21-marketplace-perf.{md,json}
@@ -262,7 +262,7 @@ function render(r) {
   L.push(`Load average (1/5/15 min) at start: ${r.machine.loadAverageAtStart.join(' / ')}; at end: ${r.machine.loadAverageAtEnd.join(' / ')}.`);
   L.push(`\`uptime\`: ${r.machine.uptime}`, '');
   L.push(`Run: ${r.mode.runs} measured runs after ${r.mode.warmup} warm-up runs (medians), ${r.mode.requests} list requests, ${r.mode.items}-item synthetic installed set, ${r.mode.strict ? 'strict (budgets x1)' : `noise multiplier x${r.mode.multiplier}`}. Result: **${r.ok ? 'within budget' : 'BUDGET EXCEEDED'}**.`);
-  L.push('Machine-readable copy: [2026-10-21-marketplace-perf.json](2026-10-21-marketplace-perf.json). Budgets and their justification: `scripts/dev/marketplace-bench/budgets.json`.', '');
+  L.push('Machine-readable copy: [2026-10-21-marketplace-perf.json](2026-10-21-marketplace-perf.json). Budgets and their justification: `tests/marketplace/bench/budgets.json`.', '');
   L.push('| Metric | Kind | Measured | Budget | Effective limit | Result |', '|---|---|---|---|---|---|');
   for (const x of r.results) L.push(`| \`${x.name}\` | ${x.kind} | ${x.value ?? '-'} ${x.unit ?? ''} | ${x.budget ?? '-'} | ${x.effective ?? '-'} | ${x.status} |`);
   const info = Object.entries(r.metrics).filter(([, m]) => m.informational);
@@ -273,7 +273,7 @@ function render(r) {
     '- `reconcile200.offline*`: `reconcile()` planning cost with no network (the fetch refuses): recovery pass (journal, store sweep), lockfile read, device lookup, request construction. Server cost is not included.',
     '- `startup.*` and `installed.storeFilesRead`: structural, measured in a fresh child process with `fs.promises`, `fetch` and `child_process` instrumented. Construction uses exactly the options `NativeMarketplaceInstallService` passes (autoRecover with the 60 s deferral).',
     '- `memory.*`: `process.memoryUsage()` deltas in fresh children (median of 5), 200 items minus 0 items.',
-    '- `server.*`: wall time of one HTTP request including body read and JSON parse, against `services/accounts-sync/scripts/marketplace-dev-server.ts --http --bulk 30` (embedded Postgres, 34 listings). `list24` is the first catalog page (24 items) and is the closest thing to first paint that can be measured without a window; the DOM first paint is covered by the real-window flow (Task 16).',
+    '- `server.*`: wall time of one HTTP request including body read and JSON parse, against `services/api/scripts/marketplace-dev-server.ts --http --bulk 30` (embedded Postgres, 34 listings). `list24` is the first catalog page (24 items) and is the closest thing to first paint that can be measured without a window; the DOM first paint is covered by the real-window flow (Task 16).',
     '', '## Renderer startup (audited, not timed)', '',
     'Checked by `apps/desktop/src/vs/workbench/contrib/marketplace/test/node/marketplaceLazyLoading.test.ts`: the background reconcile registers in `WorkbenchPhase.Eventually`, its constructor only arms a 30 s timer and focus/online listeners, `MarketplaceService` is a delayed singleton with an empty constructor, nothing statically reachable imports node or main-process modules, and the Templates gallery merge reads only `installed()`. The lockfile is first read when the 30 s timer fires with a configured marketplace (`session()` then `installed()`), or when the Marketplace tab or gallery asks.');
   L.push('');

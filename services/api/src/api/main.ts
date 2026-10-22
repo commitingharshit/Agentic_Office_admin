@@ -88,7 +88,7 @@ if (!deps.tokens.size && !clerk) { console.error('Set AO_ADMIN_TOKENS or CLERK_P
 // The help assistant: on when a provider is configured (AO_HELP_BASE_URL + AO_HELP_API_KEYS). It indexes AO_HELP_DOCS_DIR (default ./docs) at start
 // and every hour, embedding only what changed; it never needs the database to hold anything but documentation.
 const helpProvider = (() => { try { return providerFromEnv(env); } catch (e) { console.error('help assistant off:', (e as Error).message); return undefined; } })();
-if (helpProvider) (deps as { help?: ReturnType<typeof createHelp> }).help = createHelp({ provider: helpProvider, ro: deps.ro, admin: deps.admin });
+if (helpProvider) (deps as { help?: ReturnType<typeof createHelp> }).help = createHelp({ provider: helpProvider, ro: deps.ro, admin: deps.admin, ...(Number(env.AO_HELP_MIN_SCORE) > 0 && Number(env.AO_HELP_MIN_SCORE) < 1 ? { minScore: Number(env.AO_HELP_MIN_SCORE) } : {}) });
 if (helpProvider) {
   const docs = env.AO_HELP_DOCS_DIR || 'docs';
   const reindex = () => indexDocs(deps.admin, docs, helpProvider).then((r) => { (deps as any).help?.index.invalidate(); console.log(`help: indexed ${r.pages} pages, ${r.chunks} chunks (${r.embedded} embedded, ${r.removed} removed)`); }).catch((e) => console.error('help index failed:', e.message));
