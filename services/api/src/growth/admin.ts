@@ -313,7 +313,7 @@ export const GUARDRAILS = { minImpressions: 50, maxDismissRate: 0.35, maxOptOutR
 export async function overview(deps: AdminDeps, days = 30) {
   const per = await rows(deps.ro, `
     SELECT k.id, k.name, k.status, k.tier, k.holdout_pct,
-           count(*) FILTER (WHERE e.type = 'impression')::int AS impressions, count(*) FILTER (WHERE e.type = 'view')::int AS views,
+           count(*) FILTER (WHERE e.type = 'served')::int AS served, count(*) FILTER (WHERE e.type = 'impression')::int AS impressions, count(*) FILTER (WHERE e.type = 'view')::int AS views,
            count(*) FILTER (WHERE e.type = 'click')::int AS clicks, count(*) FILTER (WHERE e.type = 'dismiss')::int AS dismissals,
            count(*) FILTER (WHERE e.type = 'conversion')::int AS conversions, count(*) FILTER (WHERE e.type = 'holdout')::int AS held_out
       FROM campaigns k LEFT JOIN promo_events e ON e.campaign_id = k.id AND e.ts > now() - make_interval(days => $1)
@@ -324,7 +324,7 @@ export async function overview(deps: AdminDeps, days = 30) {
     FROM user_promo_prefs`, [days]);
   return {
     days, guardrails: GUARDRAILS, prefs,
-    campaigns: per.map((c) => ({ ...c, ctr: rate(c.clicks, c.impressions), dismiss_rate: rate(c.dismissals, c.impressions), conversion_rate: rate(c.conversions, c.impressions),
+    campaigns: per.map((c) => ({ ...c, reach_rate: rate(c.impressions, c.served), ctr: rate(c.clicks, c.impressions), dismiss_rate: rate(c.dismissals, c.impressions), conversion_rate: rate(c.conversions, c.impressions),
       breaching: c.impressions >= GUARDRAILS.minImpressions && (c.dismissals / c.impressions) > GUARDRAILS.maxDismissRate })),
   };
 }

@@ -13,7 +13,7 @@ Page: /admin/growth
 The Growth overview page (Growth group, titled "Growth") shows what people saw in the app, what they did with it and whether it helps, for the last 30 days. Permission needed: `growth.read` (every role).
 
 - **Choices people made**: Active people, how many switched in-app promotions off, how many agreed to marketing email, how many unsubscribed in this period.
-- **Campaigns**: Campaign, Status, Tier, Impressions, Clicks, CTR, Dismissed, Converted, Held out. A warning mark means the dismiss rate is over the guardrail. Click a campaign to open it.
+- **Campaigns**: Campaign, Status, Tier, Served, Impressions, Reached, Clicks, CTR, Dismissed, Converted, Held out. **Served** is how many times the server handed the promotion to someone's app (once a day per person); **Impressions** is what the app reported showing; **Reached** is impressions as a share of served. High Served with low Reached means the app is being sent the promotion but not drawing it (for example an older app, a hidden placement or a media file that does not load); Served of zero on a live campaign means nobody is eligible or nobody is signed in. A warning mark means the dismiss rate is over the guardrail. Click a campaign to open it.
 
 Guardrail: a live promotion with at least 50 impressions and more than 35.0% of them dismissed is paused automatically; the check runs every 10 minutes, and looks at the last 7 days. With `growth.publish` click **Check guardrails now** to run it at once; the page then names what was paused, or says every live promotion is within its guardrails. Automatic pauses are audited as `guardrail_pause` by `system`.
 

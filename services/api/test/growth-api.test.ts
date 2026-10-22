@@ -149,3 +149,13 @@ test('media links: a forged or expired link is refused before storage is touched
   assert.equal((await http(mediaLink(Buffer.alloc(32, 9), 1), null)).status, 403);
   assert.equal((await http(good, null)).status, 503, 'valid signature, no storage configured in this test');
 });
+
+test('an item handed to a device is counted as served once a day, and an impression is the app confirming it drew it', { skip }, async () => {
+  const u = await signedIn('served');
+  const c = await campaign('served', [u.id], { priority: 97 });
+  assert.equal((await eligible(u.tok)).body.item?.campaign_id, c);
+  assert.equal((await eligible(u.tok)).body.item?.campaign_id, c);
+  await send('/v1/promotions/events', u.tok, { events: [event(c, 'impression')] });
+  const rows = (await owner.query('SELECT type FROM promo_events WHERE campaign_id = $1 ORDER BY id', [c])).rows.map((r) => r.type);
+  assert.deepEqual(rows, ['served', 'impression'], 'two pulls the same day are one served; the impression is separate');
+});

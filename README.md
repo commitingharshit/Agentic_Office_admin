@@ -15,7 +15,7 @@ services/
   worker-verify/      marketplace verification worker (queue mode)
   keycloak/           realm, login theme
   gateway/            the nginx allow-lists that are the only public doors (API gate, Keycloak gate)
-database/             migrations, the migrator, seeds: the only owner of the schema
+database/             migrations, the migrator, seeds: the only owner of the schema (SCHEMA.md is the generated data dictionary: every table, column, key, index and grant)
 packages/
   contracts/          the wire shapes the desktop app depends on, and mirrors of desktop files this repo's tests compare against
   promo-card/         single source of the promotion card renderer

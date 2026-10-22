@@ -190,6 +190,8 @@ export async function exposureFor(c: pg.PoolClient, userId: string): Promise<Map
 
 const EVENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const EVENT_TYPES = new Set(['impression', 'view', 'click', 'dismiss', 'conversion']);
+const servedEventId = (userId: string, campaignId: string, placement: string, now: Date) =>
+  `s_${createHash('sha256').update(`${userId}:${campaignId}:${placement}:${now.toISOString().slice(0, 10)}`).digest('base64url').slice(0, 40)}`;
 const holdoutEventId = (userId: string, campaignId: string, now: Date) =>
   `h_${createHash('sha256').update(`${userId}:${campaignId}:${now.toISOString().slice(0, 10)}`).digest('base64url').slice(0, 40)}`;
 
@@ -210,6 +212,10 @@ export async function eligible(c: pg.PoolClient, userId: string, q: URLSearchPar
   const { campaign, creative } = d.candidate;
   const files = (await c.query('SELECT id, role, width, height, mime, bytes FROM creative_media WHERE creative_id = $1 AND role <> \'source\' ORDER BY role, width', [creative.id])).rows;
   if (creative.kind === 'clip' && !files.some((f) => f.role === 'mp4' || f.role === 'webm')) return { placement, item: null, ttl };
+  // The server handed this campaign to a device: counted once a day per person, linked to them only if they share usage.
+  const consent = (await c.query('SELECT shared FROM usage_consent WHERE user_id = $1', [userId])).rows[0]?.shared === true;
+  await c.query(`INSERT INTO promo_events(event_id, user_id, campaign_id, creative_id, placement, type) VALUES ($1, $2, $3, $4, $5, 'served') ON CONFLICT (event_id) DO NOTHING`,
+    [servedEventId(userId, campaign.id, placement, now), consent ? userId : null, campaign.id, creative.id, placement]);
   return {
     placement, ttl,
     item: {

@@ -12,5 +12,6 @@ for _ in $(seq 1 60); do docker exec "$NAME" psql -U ao_owner -d agentic_office 
 export AO_TEST_PG="postgres://ao_owner:owner-test@127.0.0.1:$PORT/agentic_office" DATABASE_URL="postgres://ao_owner:owner-test@127.0.0.1:$PORT/agentic_office"
 export AO_APP_PASSWORD=app-test AO_READONLY_PASSWORD=ro-test AO_ADMIN_PASSWORD=admin-test AO_AUTH_PASSWORD=auth-test AO_BILLING_PASSWORD=billing-test
 cd "$ROOT/database" && npm ci --no-audit --no-fund >/dev/null && node migrate.ts
+node "$ROOT/database/tools/schema-doc.ts" --check   # the data dictionary must match the migrations
 cd "$ROOT/services/api" && npm ci --no-audit --no-fund >/dev/null
 if [ "$#" -gt 0 ]; then node --test "$@"; else node --test test/*.test.ts; fi
