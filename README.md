@@ -52,3 +52,7 @@ payment credentials or a help-assistant key.
 No secret is printed, logged or committed. A webhook is an observation, never proof of payment. Admins never see document content, prompts,
 file names, memories or API-key secrets (`session_events.payload` is never selected). Marketplace uploads are never accepted unverified:
 while the verifier is unreachable they answer 503.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE).
