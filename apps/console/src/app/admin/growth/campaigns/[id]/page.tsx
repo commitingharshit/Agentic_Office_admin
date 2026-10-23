@@ -3,6 +3,7 @@ import { PromoPreview } from '../../../../../components/admin/PromoPreview';
 import { load } from '../../../../../lib/admin-api';
 import { adminContext } from '../../../../../lib/session';
 import { previewForPerson, publishCreative, saveCreative, saveTargets, sendCampaignEmail, setCampaignStatus, updateCampaign, uploadCreativeMedia } from '../../actions';
+import { EntityHistory } from '../../../../../components/admin/EntityHistory';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Campaign' };
@@ -128,6 +129,7 @@ export default async function Campaign({ params, searchParams }: { params: Promi
             <button className="btn">Save</button>
           </form>
         </Section>)}
+      <EntityHistory type="campaign" id={id} />
     </>
   );
 }

@@ -28,10 +28,10 @@ The console only answers on the host names listed in the server setting `ADMIN_H
 
 Left sidebar: the pages you may open, in six groups (Workspace, Business, Marketplace, Growth, Intelligence, System). A group or page you cannot open is not listed. **Collapse** shrinks the sidebar to icons; the choice is remembered in your browser.
 
-Top bar, left to right: breadcrumbs, **Search users** box, **Help** button, **⌘K** button, a health dot (Healthy, Down or unknown: whether the admin API answers), the bell, and your name menu with your role and **Sign out**.
+Top bar, left to right: breadcrumbs (a page that belongs to one item reads, for example, "Users / User usr_8f3a…" or "Payments / Payment 3f2a…"; click an earlier part to go back up), **Search users** box, **Help** button, **⌘K** button, a health dot (Healthy, Down or unknown: whether the admin API answers), the bell, and your name menu with your role and **Sign out**.
 
 - **Search users.** Type an email, name or id and press Enter: opens the Users page filtered by that text. Press `/` anywhere (outside a text field) to jump into this box.
-- **Command palette.** Press Ctrl+K (Windows, Linux) or Cmd+K (Mac), or click **⌘K**. Type to filter the pages you may open, or choose "Find a user" to search. Arrow keys move, Enter opens.
+- **Command palette.** Press Ctrl+K (Windows, Linux) or Cmd+K (Mac), or click **⌘K**. Type to filter the pages you may open, or choose "Find a user" to search. Paste an id from a log, an email or a ticket (8 characters or more) and the palette offers to open it as a payment, an agent run, a session, a ticket or a marketplace version (a `usr_` id also as a user), and to show its audit trail. It does not know which kind an id is, so pick the one you mean; a wrong kind shows "not found". Other text can also search the audit log. Arrow keys move, Enter opens.
 - **Help button.** Opens the help assistant, which answers how-do-I questions from this guide, with links to the pages it names. It is off ("not switched on for this server yet") until the platform owner adds a provider key. Vote Yes or No on each answer.
 - **Bell.** The number is how many items need attention (red when one needs action). Click it to see them; "All notifications" opens the Notifications page.
 

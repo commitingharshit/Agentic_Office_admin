@@ -4,6 +4,7 @@ import { ErrorState, Flash, Notice, PageHeader, Section, StatusBadge, when } fro
 import { load } from '../../../../lib/admin-api';
 import { adminContext } from '../../../../lib/session';
 import { refundOrder, rejectOrder, reconcileOrder, settleOrder } from '../../actions';
+import { EntityHistory } from '../../../../components/admin/EntityHistory';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Payment' };
@@ -65,6 +66,7 @@ export default async function Order({ params, searchParams }: { params: Promise<
         <div className="table-wrap"><table className="dt"><thead><tr><th>When</th><th>Event</th><th>Signature</th><th>Outcome</th></tr></thead><tbody>{(events as any[]).map((e) => <tr key={e.id}><td>{when(e.received_at)}</td><td>{e.event}</td><td><StatusBadge status={e.signature_ok ? 'active' : 'failed'}>{e.signature_ok ? 'valid' : 'bad'}</StatusBadge></td><td className="muted">{e.outcome ?? ''}</td></tr>)}
           {!events.length && <tr><td colSpan={4} className="muted">None.</td></tr>}</tbody></table></div>
       </Section>
+      <EntityHistory type="payment" id={id} />
     </>
   );
 }

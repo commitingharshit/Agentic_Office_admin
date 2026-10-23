@@ -63,9 +63,15 @@ Page: /admin/audit
 
 The Security & Audit page (System group) lists administrator actions, including the ones that were refused. Permission needed: `audit.read` (superadmin, engineer, support, finance).
 
-1. Filter by **Action** (exact name such as `set_role`, `settle_payment`, `denied`) or **Target user id** (usr_...).
-2. Read When, Admin (id; click to copy), Action, Target, Detail (the first 120 characters of the details). Newest first, 50 per page.
-3. Refused actions appear as `denied` with the permission needed, the role, method and path.
+1. Filter by **Action** (pick from the list of actions seen so far, such as `set_role`, `settle_payment`, `denied`), **Subject** (the kind of thing: User, Payment, Ticket, Campaign, Release, Version and so on) with **Subject id**, **Administrator id** (usr_...), a **From** and **To** date (both days included), or **Contains** (text in the action, the details or the subject id). Filters combine; **Clear** removes them.
+2. Read When, Administrator (email, linking to that person's page; `system` for automatic actions), Action, Subject and Detail. Newest first, 50 per page.
+3. **Subject** names what the action was about, such as a user, a payment, a ticket or a marketplace version. Click it to open its page (or the list it lives in when it has no page of its own). Click **trail** next to it to see every recorded action on that one thing.
+4. **Detail** shows the start of the record; click it to open the full record in place.
+5. Refused actions appear as `denied` with the permission needed, the role, method and path. A refused request has no subject.
+
+The same trail appears as a **History** panel at the bottom of a Payment, a Ticket, a Campaign and a marketplace Version page, with the person and time of each change and a **Full audit trail** link. It needs `audit.read`; without it the panel is not shown. Views and lists are left out of the panel (they stay on the audit page).
+
+Entries written before the Subject was recorded show a subject only when they were about a user.
 
 What is written: changes (account, credits, plans, coupons, payments, flags, announcements, tickets, roles, growth, marketplace) and some views: `view_overview`, `view_health`, `list_users`, `view_user`, `view_credits`, `list_coupons`, `export`, `export_users_csv`, and every marketplace read (`marketplace.` prefix). Not written: reads of Sessions, Agent Runs, Product Analytics, Reliability, Payments, Support, Flags, Plans or the audit log itself. Entries made through the console show which service token carried them (`via`). Automatic guardrail pauses appear as `guardrail_pause` by `system`.
 
