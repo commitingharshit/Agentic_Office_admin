@@ -13,7 +13,8 @@ It shares accounts-sync's Postgres and calls accounts-sync's admin API; it owns 
 
 Configuration (environment): `AUTH_BASE_URL` (the public https address; it is the OAuth issuer), `AUTH_SECRET`,
 `AUTH_DATABASE_URL` (as the `ao_auth` role), `AO_ADMIN_API_URL` + `AO_ADMIN_API_TOKEN`, `ADMIN_HOSTS`, `AUTH_IP_HEADER`,
-optional `GOOGLE_CLIENT_ID/SECRET` and `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID`.
+optional `GOOGLE_CLIENT_ID/SECRET` and `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID`, and optional `AO_TRACES_URL` (the Langfuse
+address; when set, the sidebar shows a "Traces" link under Intelligence for admins with `runs.read`).
 
 Things that are easy to get wrong:
 
