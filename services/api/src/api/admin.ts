@@ -189,6 +189,14 @@ export async function userDetail(deps: AdminDeps, id: string) {
   return { user: { ...user, storage_bytes: Number(user.storage_bytes) }, identities, devices, workspaces, usage, audit: auditTrail, sync };
 }
 
+// A person's memories with their text. memory_contents is readable only by ao_admin, so this reads through deps.admin, not deps.ro.
+export async function userMemories(deps: AdminDeps, id: string) {
+  const memories = await rows(deps.admin, `SELECT m.memory_id, m.workspace_id, m.kind, m.updated_at, m.deleted_at, c.content
+    FROM memory_references m LEFT JOIN memory_contents c ON c.memory_id = m.memory_id
+    WHERE m.user_id = $1 ORDER BY m.deleted_at IS NOT NULL, m.updated_at DESC LIMIT 500`, [id]);
+  return { memories };
+}
+
 export async function exportUser(deps: AdminDeps, id: string) {
   const tables = ['users', 'oauth_accounts', 'devices', 'workspaces', 'sessions', 'agent_runs', 'document_revisions', 'memory_references', 'sync_cursors'];
   const out: Record<string, unknown> = { exported_at: new Date().toISOString(), note: 'Account metadata only. Documents, transcripts and memories are encrypted on the user\'s devices; blob keys are listed.' };
@@ -528,6 +536,7 @@ export function adminHandler(deps: AdminDeps) {
         return q.get('format') === 'csv' ? send(200, toCsv(list.users), 'text/csv; charset=utf-8') : send(200, list);
       }
       if (m === 'GET' && a === 'users' && id && !act) { await need('users.read'); await audit(deps, adminId, 'view_user', id); return send(200, await userDetail(deps, id)); }
+      if (m === 'GET' && a === 'users' && id && act === 'memories') { await need('users.read'); await audit(deps, adminId, 'view_memories', id); return send(200, await userMemories(deps, id)); }
       if (m === 'GET' && a === 'users' && id && act === 'export') { await need('users.export'); await audit(deps, adminId, 'export', id); return send(200, await exportUser(deps, id)); }
       if (m === 'POST' && a === 'users' && id && (act === 'disable' || act === 'enable')) {
         await need('users.write');

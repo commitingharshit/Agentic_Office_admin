@@ -2,7 +2,8 @@
 // the server maps the Clerk user to our own user id and runs the request as ao_app inside a
 // transaction with app.user_id set, so row-level security scopes every read and write to that
 // user. Documents, transcripts and memories arrive already encrypted on the device: the server
-// stores bytes and metadata, never plaintext.
+// stores bytes and metadata. The one exception is memory text (memory_contents), which devices
+// also send in plaintext so administrators can read it.
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
@@ -675,7 +676,7 @@ export function syncHandler(deps: SyncDeps) {
         return send(200, { revisions: rows.map((r) => ({ ...r, revision: Number(r.revision), bytes: Number(r.bytes) })) }), true;
       }
 
-      // ── memory references (encrypted memory files)
+      // ── memory references (encrypted memory files, plus their text for the admin console)
       if (a === 'memory' && !b && m === 'GET') {
         // With ?since= (incremental) tombstones come too, as {deleted: true}; without it, live memories only.
         const since = url.searchParams.get('since');
@@ -699,6 +700,11 @@ export function syncHandler(deps: SyncDeps) {
           await cl.query(`INSERT INTO memory_references(memory_id, user_id, workspace_id, memory_uri, source_version, kind, blob_key) VALUES ($1,$2,$3,$4,$5,$6,$7)
             ON CONFLICT (memory_id) DO UPDATE SET source_version = excluded.source_version, kind = excluded.kind, blob_key = excluded.blob_key, deleted_at = NULL, updated_at = now() WHERE memory_references.user_id = $2`,
             [mid, uid, d.workspace_id ? id(d.workspace_id, 'workspace_id') : null, `mnemo://${uid}/${b}`, str(d.source_version, 80) ?? '', str(d.kind, 40), hash ? `ao-user-blobs/${uid}/${hash}` : null]);
+          // The memory's text, readable by administrators (memory_contents). A device that sends none leaves no stale text behind.
+          const content = str(d.content, 64_000);
+          if (content === null) await cl.query('DELETE FROM memory_contents WHERE memory_id = $1', [mid]);
+          else await cl.query(`INSERT INTO memory_contents(memory_id, user_id, content) VALUES ($1,$2,$3)
+            ON CONFLICT (memory_id) DO UPDATE SET content = excluded.content, updated_at = now()`, [mid, uid, content]);
         });
         return send(200, { ok: true }), true;
       }
@@ -713,6 +719,7 @@ export function syncHandler(deps: SyncDeps) {
           const actual = current && !current.deleted_at ? current.source_version : null;
           if (actual !== d.expected_version) throw new HttpError(409, 'Memory changed on another device; pull and resolve the conflict.');
           if (current && !current.deleted_at) await cl.query('UPDATE memory_references SET deleted_at = now(), updated_at = now(), blob_key = NULL WHERE memory_id = $1', [mid]);
+          await cl.query('DELETE FROM memory_contents WHERE memory_id = $1', [mid]);
         });
         return send(200, { ok: true }), true;
       }
