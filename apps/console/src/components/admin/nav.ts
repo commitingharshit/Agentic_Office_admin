@@ -1,6 +1,6 @@
 import type { IconName } from './Icon';
 
-export interface NavItem { href: string; label: string; icon: IconName; perm: string; soon?: boolean }
+export interface NavItem { href: string; label: string; icon: IconName; perm: string; soon?: boolean; external?: boolean }
 export interface NavGroup { label: string; items: NavItem[] }
 
 /** The console's pages. `perm` is the permission that shows the item; the API enforces it again on every call. `soon` pages say plainly what is missing. */
@@ -59,5 +59,9 @@ export const NAV: NavGroup[] = [
   ] },
 ];
 
-export const visibleNav = (permissions: string[]): NavGroup[] =>
-  NAV.map((g) => ({ ...g, items: g.items.filter((i) => permissions.includes(i.perm)) })).filter((g) => g.items.length);
+/** Langfuse, where every Hermes request is traced. It lives outside the console, so it shows only when `AO_TRACES_URL` names it. */
+const tracesItem = (url: string): NavItem => ({ href: url, label: 'Traces', icon: 'runs', perm: 'runs.read', external: true });
+
+export const visibleNav = (permissions: string[], tracesUrl = process.env.AO_TRACES_URL?.trim()): NavGroup[] =>
+  NAV.map((g) => ({ ...g, items: g.label === 'Intelligence' && tracesUrl ? [...g.items, tracesItem(tracesUrl)] : g.items }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => permissions.includes(i.perm)) })).filter((g) => g.items.length);
