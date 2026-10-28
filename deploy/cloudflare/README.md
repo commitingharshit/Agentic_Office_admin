@@ -5,12 +5,13 @@
 | `api.agenticoffice.work` | API gate `127.0.0.1:8183` (`/v1/*`, `/healthz`, `/status`) | public |
 | `auth.agenticoffice.work` | Keycloak gate `127.0.0.1:8181` (`/realms/agentic-office/*`, `/resources/*`) | public |
 | `admin.agenticoffice.work` | admin console `127.0.0.1:8791` | admins, through Cloudflare Access |
-| `langfuse.agenticoffice.work` | Langfuse web `127.0.0.1:3000` (from `~/ao-langfuse`, not this repo) | team, through Cloudflare Access |
+| `langfuse.agenticoffice.work` | Langfuse web `100.95.14.113:3000`, its tailnet port (from `~/ao-langfuse`, not this repo) | team, through Cloudflare Access |
 
 The console is one name only: it builds every sign-in return address from `AUTH_BASE_URL`, so its sign-in pages and the admin pages must
 share a host. The desktop app signs in through Keycloak, so nothing public needs the console's own sign-in pages any more.
 
-Done by a person. Cloudflare and Google are the owner's accounts; the host steps need root.
+Done by a person. Cloudflare and Google are the owner's accounts. On the host, `cloudflared` runs in Docker (container `ao-cloudflared`,
+files in `~/ao-cloudflared`), so no step needs root.
 
 ## 1. Cloudflare
 1. Add `agenticoffice.work` as a site (free plan) and switch the domain's nameservers at the registrar to the two Cloudflare gives. Wait for "Active".
@@ -18,11 +19,13 @@ Done by a person. Cloudflare and Google are the owner's accounts; the host steps
 
 ## 2. The tunnel (on the host)
 ```
-cloudflared tunnel login
-cloudflared tunnel create agentic-office          # prints the tunnel id and writes ~/.cloudflared/<id>.json
-sudo mkdir -p /etc/cloudflared && sudo mv ~/.cloudflared/<id>.json /etc/cloudflared/ && sudo chmod 600 /etc/cloudflared/<id>.json
-sudo cp ~/ao-platform/deploy/cloudflare/config.yml /etc/cloudflared/config.yml   # then put the id in place of <TUNNEL_ID> (twice)
-cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
+D=~/ao-cloudflared; mkdir -p $D && chmod 700 $D
+CF="docker run --rm -it --user $(id -u):$(id -g) -e HOME=/home/cf -v $D:/home/cf/.cloudflared cloudflare/cloudflared:latest"
+$CF tunnel login                                  # prints a link: the owner opens it and authorizes agenticoffice.work
+$CF tunnel create agentic-office                  # prints the tunnel id and writes $D/<id>.json
+chmod 600 $D/<id>.json
+sed "s#<TUNNEL_ID>#<id>#" ~/ao-platform/deploy/cloudflare/config.yml > $D/config.yml
+docker run --rm -v $D:/etc/cloudflared cloudflare/cloudflared:latest tunnel --config /etc/cloudflared/config.yml ingress validate
 ```
 
 ## 3. Cloudflare Access on admin and langfuse (before their DNS records exist)
@@ -36,11 +39,10 @@ anything that must post here later needs an Access service token.
 
 ## 4. DNS and start
 ```
-cloudflared tunnel route dns agentic-office api.agenticoffice.work
-cloudflared tunnel route dns agentic-office auth.agenticoffice.work
-cloudflared tunnel route dns agentic-office admin.agenticoffice.work
-cloudflared tunnel route dns agentic-office langfuse.agenticoffice.work
-sudo cloudflared service install && systemctl status cloudflared
+for h in api auth admin langfuse; do $CF tunnel route dns agentic-office $h.agenticoffice.work; done
+docker run -d --name ao-cloudflared --restart unless-stopped --network host --user $(id -u):$(id -g) -v $D:/etc/cloudflared:ro \
+  cloudflare/cloudflared:latest tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+docker logs ao-cloudflared 2>&1 | grep 'Registered tunnel connection'    # four connections
 ```
 
 ## 5. Google
@@ -71,8 +73,8 @@ PROBER_PROBES=[{"id":"api-public","label":"App sign-in API","url":"https://api.a
 ```
 `console/.env` also: `AO_TRACES_URL=https://langfuse.agenticoffice.work/project/<project id>/traces` (the Traces link).
 
-`~/ao-langfuse` (back up `docker-compose.yml` and `.env` first): under `langfuse-web` add the port `"127.0.0.1:3000:3000"` next to the
-tailnet one, delete the `cloudflared` service (the old quick tunnel), and in `.env` set `NEXTAUTH_URL=https://langfuse.agenticoffice.work`.
+`~/ao-langfuse` (back up `docker-compose.yml` and `.env` first): delete the `cloudflared` service (the old quick tunnel), and in `.env`
+set `NEXTAUTH_URL=https://langfuse.agenticoffice.work`. Its port stays on the tailnet address; the tunnel reaches it there.
 Then `docker compose up -d --remove-orphans langfuse-web langfuse-worker` there.
 
 `AUTH_ISSUER` must equal the console's `AUTH_BASE_URL`; tokens from the old Better Auth sign-in stop working (people sign in again through Keycloak).
@@ -100,5 +102,5 @@ Desktop builds in people's hands still call `https://tanmay-hp-linux-server.tail
 `auth.agenticoffice.work` to sign in, so they keep working. Ship a desktop build whose API address is `https://api.agenticoffice.work`,
 wait until old builds are gone, then `sudo tailscale funnel reset` and remove the `ts.net` Google redirect URI.
 
-Rollback: copy each `.env.pre-cloudflare.bak` back, rerun the three `stack.sh` lines, `sudo systemctl stop cloudflared`. For Langfuse,
+Rollback: copy each `.env.pre-cloudflare.bak` back, rerun the three `stack.sh` lines, `docker rm -f ao-cloudflared`. For Langfuse,
 copy its two backups back and `docker compose up -d` in `~/ao-langfuse` (the quick tunnel returns, with a new address).
