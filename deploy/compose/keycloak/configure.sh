@@ -29,3 +29,16 @@ for pair in "picture:picture" "ao_plan:ao_plan" "ao_role:ao_role"; do
   attr=${pair%%:*}; claim=${pair##*:}
   echo "token claim $claim -> $(code -X POST -H "$H" -H 'content-type: application/json' $R/client-scopes/$SID/protocol-mappers/models -d "{\"name\":\"$claim\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-usermodel-attribute-mapper\",\"config\":{\"user.attribute\":\"$attr\",\"claim.name\":\"$claim\",\"jsonType.label\":\"String\",\"id.token.claim\":\"true\",\"access.token.claim\":\"false\",\"userinfo.token.claim\":\"true\"}}") (201 made, 409 already there)"
 done
+# The admin console's sign-in return address: the realm file sets it from AO_PUBLIC_URL only on the first import, so a new public name
+# (e.g. moving to Cloudflare Tunnel) is added here. Old addresses are kept, so switching back still works. The client is piped, never saved.
+P=$(grep '^AO_PUBLIC_URL=' .env | cut -d= -f2- | sed 's#/*$##')
+if [ -n "$P" ]; then
+  CID=$(curl -s -H "$H" "$R/clients?clientId=ao-admin-console" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
+  echo "admin console return address $P -> $(curl -s -H "$H" $R/clients/$CID | P="$P" python3 -c '
+import sys, json, os
+c = json.load(sys.stdin); p = os.environ["P"]
+c["redirectUris"] = sorted(set(c.get("redirectUris", [])) | {p + "/admin/callback"})
+a = c.setdefault("attributes", {}); old = [u for u in a.get("post.logout.redirect.uris", "").split("##") if u]
+a["post.logout.redirect.uris"] = "##".join(sorted(set(old) | {p + "/*"}))
+print(json.dumps(c))' | curl -s -o /dev/null -w "%{http_code}" -X PUT -H "$H" -H 'content-type: application/json' $R/clients/$CID -d @-) (204 = set)"
+fi

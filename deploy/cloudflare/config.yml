@@ -1,0 +1,17 @@
+# Cloudflare Tunnel for agenticoffice.work: the only public doors. cloudflared runs on the host and dials out to Cloudflare, so the host
+# opens no ports; each name goes to a gate or service that listens on 127.0.0.1 only. Copy to /etc/cloudflared/config.yml on the host
+# and replace <TUNNEL_ID> with the id `cloudflared tunnel create agentic-office` printed. Steps and env values: README.md beside this file.
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  # The API gate: /v1/* for the desktop app, /healthz, and the public status page at /status. /admin/* answers 404 there.
+  - hostname: api.agenticoffice.work
+    service: http://127.0.0.1:8183
+  # The Keycloak gate: sign-in pages and tokens for the realm only; Keycloak's own administration answers 404 there.
+  - hostname: auth.agenticoffice.work
+    service: http://127.0.0.1:8181
+  # The admin console. A Cloudflare Access application must cover this whole name before the DNS record is added (README step 4).
+  - hostname: admin.agenticoffice.work
+    service: http://127.0.0.1:8791
+  - service: http_status:404
