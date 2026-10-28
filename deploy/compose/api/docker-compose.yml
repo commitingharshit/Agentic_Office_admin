@@ -188,8 +188,14 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on: [api]
+    # A template so LAYA_SHADOW_URL reaches the config; the filter keeps envsubst off every other $name in it.
+    environment:
+      NGINX_ENVSUBST_FILTER: ^LAYA_
+      # Where the shadow copy of each managed inference request goes (empty: off). nginx resolves it through Docker's DNS, so name
+      # a container on this project's network with no published port, e.g. http://laya:9100, not localhost or /etc/hosts names.
+      LAYA_SHADOW_URL: ${LAYA_SHADOW_URL:-}
     volumes:
-      - ../../../services/gateway/api-gate.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../../services/gateway/api-gate.conf:/etc/nginx/templates/default.conf.template:ro
       - ../../../apps/status:/usr/share/nginx/status:ro
     ports:
       - "127.0.0.1:${API_GATE_PORT:-8183}:8081"
