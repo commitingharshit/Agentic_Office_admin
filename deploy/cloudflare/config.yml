@@ -14,7 +14,8 @@ ingress:
   # The admin console. A Cloudflare Access application must cover this whole name before the DNS record is added (README step 4).
   - hostname: admin.agenticoffice.work
     service: http://127.0.0.1:8791
-  # Langfuse (traces), from ~/ao-langfuse, not this repo. It has its own login and sign-up is closed; README step 6 binds it to 127.0.0.1.
+  # Langfuse (traces), from ~/ao-langfuse, not this repo. Covered by its own Access application like admin (README step 3), with
+  # Langfuse's login behind it; README step 6 binds it to 127.0.0.1.
   - hostname: langfuse.agenticoffice.work
     service: http://127.0.0.1:3000
   - service: http_status:404

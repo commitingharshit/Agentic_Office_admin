@@ -5,7 +5,7 @@
 | `api.agenticoffice.work` | API gate `127.0.0.1:8183` (`/v1/*`, `/healthz`, `/status`) | public |
 | `auth.agenticoffice.work` | Keycloak gate `127.0.0.1:8181` (`/realms/agentic-office/*`, `/resources/*`) | public |
 | `admin.agenticoffice.work` | admin console `127.0.0.1:8791` | admins, through Cloudflare Access |
-| `langfuse.agenticoffice.work` | Langfuse web `127.0.0.1:3000` (from `~/ao-langfuse`, not this repo) | team, with their Langfuse login |
+| `langfuse.agenticoffice.work` | Langfuse web `127.0.0.1:3000` (from `~/ao-langfuse`, not this repo) | team, through Cloudflare Access |
 
 The console is one name only: it builds every sign-in return address from `AUTH_BASE_URL`, so its sign-in pages and the admin pages must
 share a host. The desktop app signs in through Keycloak, so nothing public needs the console's own sign-in pages any more.
@@ -25,10 +25,14 @@ sudo cp ~/ao-platform/deploy/cloudflare/config.yml /etc/cloudflared/config.yml  
 cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
 ```
 
-## 3. Cloudflare Access on admin (before its DNS record exists)
+## 3. Cloudflare Access on admin and langfuse (before their DNS records exist)
 Zero Trust > Access > Applications > Add > Self-hosted: domain `admin.agenticoffice.work` (whole name, no path), session 24 h.
 Policy: Allow, Emails = each admin's address (or a One-time PIN / Google login method limited to those emails). Save it.
 The console still asks for its own Keycloak sign-in and checks the admin role behind this; Access only keeps everyone else off the page.
+
+Same again for `langfuse.agenticoffice.work`, Emails = each teammate who reads traces. Langfuse's own login stays behind it. Traces are
+not sent through this name (Hermes and the telemetry relay post to Langfuse on the tailnet or 127.0.0.1), so Access only meets browsers;
+anything that must post here later needs an Access service token.
 
 ## 4. DNS and start
 ```
@@ -88,7 +92,8 @@ tests/tools/keycloak-gate-check.sh https://auth.agenticoffice.work
 ```
 Open `https://admin.agenticoffice.work/admin`: Access login, then Keycloak sign-in, then the console. From a browser that is not an admin's,
 the Access page must be the end of the road. `https://api.agenticoffice.work/status` shows all three probes up.
-`https://langfuse.agenticoffice.work` shows the Langfuse login and stays on that address after signing in; the console's Traces link opens it.
+`https://langfuse.agenticoffice.work`: Access login, then the Langfuse login, and it stays on that address after signing in; the console's
+Traces link opens it. From a browser not on the teammate list, the Access page must be the end of the road.
 
 ## 8. Retire the Tailscale doors
 Desktop builds in people's hands still call `https://tanmay-hp-linux-server.tail41864f.ts.net:8443`; the API there now sends them to
