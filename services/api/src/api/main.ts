@@ -11,6 +11,7 @@
 //   KEYCLOAK_ISSUER (+ KEYCLOAK_JWKS_URL, KEYCLOAK_CLIENT_IDS)   (Keycloak: the identity service; when set, the app is sent there to sign in)
 //   AUTH_ISSUER (public base URL of services/control-plane) [+ AUTH_AUDIENCE, AUTH_JWKS_URL] + AO_APP_PASSWORD   (our own sign-in: the sync API /v1/*)
 //   AO_PRICING (JSON, credits per 1,000 tokens per model) + AO_UPSTREAM_URL + AO_UPSTREAM_KEY   (managed inference)
+//   LAYA_URL (+ LAYA_API_KEY)   (Laya shadow mode: predictions kept 60 days in laya_shadow)
 import { accessSync, constants as fsConstants } from 'node:fs';
 import { createServer } from 'node:http';
 import pg from 'pg';
@@ -19,6 +20,7 @@ import { roleOf as consoleRoleOf } from './admin-console.ts';
 import { ClerkVerifier } from '../auth/clerk.ts';
 import { JwksVerifier } from '../auth/jwks.ts';
 import { httpStreamUpstream, httpUpstream, parsePricing } from './inference.ts';
+import { httpLaya } from './laya.ts';
 import { S3 } from './s3.ts';
 import { keycloakAdminFromEnv } from './keycloak-admin.ts';
 import { PaymentsService } from './payments/service.ts';
@@ -97,6 +99,10 @@ if (helpProvider) {
 const pricing = parsePricing(env.AO_PRICING);
 const upstream = env.AO_UPSTREAM_URL && env.AO_UPSTREAM_KEY ? httpUpstream(env.AO_UPSTREAM_URL, env.AO_UPSTREAM_KEY) : undefined;
 const streamUpstream = env.AO_UPSTREAM_URL && env.AO_UPSTREAM_KEY ? httpStreamUpstream(env.AO_UPSTREAM_URL, env.AO_UPSTREAM_KEY) : undefined;
+const laya = env.LAYA_URL ? httpLaya(env.LAYA_URL, env.LAYA_API_KEY || undefined) : undefined;
+// laya_shadow holds people's own words: nothing older than 60 days stays (database/migrations/0034_laya_shadow.sql).
+const pruneLaya = () => { deps.admin.query(`DELETE FROM laya_shadow WHERE created_at < now() - interval '60 days'`).catch((e) => console.error('laya_shadow cleanup failed:', e.message)); };
+pruneLaya(); setInterval(pruneLaya, 3_600_000).unref();
 const authIssuer = env.AUTH_ISSUER?.replace(/\/+$/, '');
 const authClient = env.AUTH_AUDIENCE ?? 'agentic-office-desktop';
 const idVerifier = authIssuer ? new JwksVerifier({ issuer: authIssuer, audience: authClient, jwksUrl: env.AUTH_JWKS_URL ?? `${authIssuer}/api/auth/jwks` }) : undefined;
@@ -109,7 +115,7 @@ const kcClient = kcClients[0];
 const keycloak = kcIssuer ? { issuer: kcIssuer, verify: (() => { const v = new JwksVerifier({ issuer: kcIssuer, audience: kcClients, jwksUrl: env.KEYCLOAK_JWKS_URL || `${kcIssuer}/protocol/openid-connect/certs`, algs: ['RS256', 'ES256'] }); return (t: string) => v.verify(t); })() } : undefined;
 const kcOauth = kcIssuer ? { issuer: kcIssuer, authorization_endpoint: `${kcIssuer}/protocol/openid-connect/auth`, token_endpoint: `${kcIssuer}/protocol/openid-connect/token`, client_id: kcClient } : undefined;
 const app = (clerk || idVerifier || keycloak) && env.AO_APP_PASSWORD ? pool('ao_app', env.AO_APP_PASSWORD) : undefined;
-const sync = app ? syncHandler({ app, verify: clerk ? (t) => clerk.verify(t) : undefined, verifyIdToken: idVerifier ? (t) => idVerifier.verify(t) : undefined, keycloak, keycloakAdmin: deps.keycloak, payments, oauth: kcOauth ?? oauth, s3, mediaKey: env.AO_MEDIA_SIGNING_KEY ? Buffer.from(env.AO_MEDIA_SIGNING_KEY) : undefined, pricing, upstream, streamUpstream, publishableKey: env.CLERK_PUBLISHABLE_KEY,
+const sync = app ? syncHandler({ app, verify: clerk ? (t) => clerk.verify(t) : undefined, verifyIdToken: idVerifier ? (t) => idVerifier.verify(t) : undefined, keycloak, keycloakAdmin: deps.keycloak, payments, oauth: kcOauth ?? oauth, s3, mediaKey: env.AO_MEDIA_SIGNING_KEY ? Buffer.from(env.AO_MEDIA_SIGNING_KEY) : undefined, pricing, upstream, streamUpstream, laya, publishableKey: env.CLERK_PUBLISHABLE_KEY,
   clerkIdentities: env.CLERK_SECRET_KEY ? async (sub) => {
     const r = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(sub)}`, { headers: { authorization: `Bearer ${env.CLERK_SECRET_KEY}` }, signal: AbortSignal.timeout(5000) });
     if (!r.ok) return [];

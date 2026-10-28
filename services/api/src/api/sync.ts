@@ -16,6 +16,7 @@ import type { PaymentsService } from './payments/service.ts';
 import * as telemetry from './telemetry.ts';
 import * as growth from '../growth/engine.ts';
 import { cost as priceCost, outputLimit, UsageMeter, usageOf, worstCase, type Pricing, type StreamUpstream, type Upstream } from './inference.ts';
+import { lastUserText, type Laya } from './laya.ts';
 import { RateLimiter } from './ratelimit.ts';
 import type { S3 } from './s3.ts';
 
@@ -26,6 +27,8 @@ export interface SyncDeps {
   upstream?: Upstream;
   /** The same provider, streaming. Without it a stream request is refused. */
   streamUpstream?: StreamUpstream;
+  /** Laya shadow mode (src/api/laya.ts): each answered request's last user message is predicted and kept in laya_shadow. Off without it. */
+  laya?: Laya;
   /** Sign-in exchanges allowed per client address per minute (default 30). */
   exchangeLimit?: number;
   /** Clerk session tokens (until Clerk is retired): absent when only our own sign-in is configured. */
@@ -434,6 +437,15 @@ export function syncHandler(deps: SyncDeps) {
         if (!deps.pricing) throw new HttpError(503, 'Managed inference is not configured.');
         return send(200, { object: 'list', data: Object.keys(deps.pricing).map((id) => ({ id, object: 'model', owned_by: 'agentic-office' })) }), true;
       }
+      // Laya shadow mode: after the answer, never in its way. Only requests the model really answered (and was charged for) are kept.
+      const shadow = (reqId: string, model: string, d: Record<string, unknown>) => {
+        const text = deps.laya && lastUserText(d);
+        if (!text) return;
+        void deps.laya!(text).then((p) => p && q((cl) => cl.query(
+          `INSERT INTO laya_shadow(user_id, request_id, model, request_text, pattern, confidence, probabilities, laya_model) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [uid, reqId, model, text, p.pattern, p.confidence, JSON.stringify(p.probabilities ?? {}), String(p.model ?? '')])))
+          .catch((e) => console.error('laya shadow failed:', (e as Error).message));
+      };
       // /responses is ours; /chat/completions is the path OpenAI-compatible clients (Hermes) append to a base URL.
       if (a === 'inference' && ((b === 'responses' && !c) || (b === 'chat' && c === 'completions')) && m === 'POST') {
         if (!deps.pricing || !deps.upstream) throw new HttpError(503, 'Managed inference is not configured.');
@@ -499,6 +511,7 @@ export function syncHandler(deps: SyncDeps) {
           const used = meter.usage ?? meter.estimate(body);
           const chargedStream = Math.min(priceCost(price, used.in, used.out), hold);
           await q((cl) => cl.query('SELECT ao_credit_settle($1,$2,$3,$4,$5)', [rid, chargedStream, model, used.in, used.out])).catch((e) => console.error('settle after stream failed', e));
+          if (used.out > 0) shadow(reqId, model, d);
           return true;
         }
         let out;
@@ -513,6 +526,7 @@ export function syncHandler(deps: SyncDeps) {
         }
         const charged = priceCost(price, used.in, used.out);
         await q((cl) => cl.query('SELECT ao_credit_settle($1,$2,$3,$4,$5)', [rid, charged, model, used.in, used.out]));
+        shadow(reqId, model, d);
         const left = await q(billing.balance);
         return send(200, { ...out.body, ao: { request_id: reqId, charged: Math.min(charged, hold), balance: left.total } }), true;
       }
