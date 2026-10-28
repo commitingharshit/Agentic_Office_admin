@@ -48,7 +48,7 @@ before(async () => {
   app = new pg.Pool({ connectionString: as('ao_app', process.env.AO_APP_PASSWORD) });
   ro = new pg.Pool({ connectionString: as('ao_readonly', process.env.AO_READONLY_PASSWORD) });
   adm = new pg.Pool({ connectionString: as('ao_admin', process.env.AO_ADMIN_PASSWORD) });
-  const sync = syncHandler({ app, verify: (t) => verifier.verify(t), pricing: PRICING, upstream: (m, b) => { upstreamCalls++; return behaviour(m, b); }, streamUpstream: (m, b, sig) => { streamCalls++; return streamBehaviour(m, b, sig); }, laya: (t) => layaBehaviour(t), exchangeLimit: 10_000 });
+  const sync = syncHandler({ app, verify: (t) => verifier.verify(t), pricing: PRICING, upstream: (m, b) => { upstreamCalls++; return behaviour(m, b); }, streamUpstream: (m, b, sig) => { streamCalls++; return streamBehaviour(m, b, sig); }, laya: (t, w) => layaBehaviour(t, w), exchangeLimit: 10_000 });
   const admin = adminHandler({ ro, admin: adm, tokens: parseTokens(`ops:${ADMIN_TOKEN}`) });
   api = createServer(async (req, res) => { if (!(await sync(req, res))) await admin(req, res); });
   await new Promise<void>((r) => api.listen(0, '127.0.0.1', r));
@@ -185,6 +185,26 @@ test('Laya shadow: an answered request is predicted and kept; a refused one, or 
   assert.equal(layaSaw.length, sawBefore, 'a refused request is never sent to Laya');
   assert.equal((await rows()).length, 1);
   assert.equal((await app.query('SELECT count(*) FROM laya_shadow').catch((e) => e)).code, '42501', 'the app role can write but not read');
+  layaBehaviour = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8 }, model: 'laya_test' }; };
+});
+
+test('Laya shadow for the app: /v1/laya/predict keeps the request with the route Hermes took and hands the prediction back', { skip }, async () => {
+  const u = await signedIn('layaapp');   // free plan, no credits: the app's own chat needs neither
+  const rows = async () => (await owner.query('SELECT request_id, model, request_text, pattern, workspace, route, status FROM laya_shadow WHERE user_id = $1 ORDER BY id', [u.id])).rows;
+  let sentWorkspace: string | undefined;
+  layaBehaviour = async (t, w) => { layaSaw.push(t); sentWorkspace = w; return { pattern: 'tool_chain', confidence: 0.7, probabilities: { tool_chain: 0.7 }, model: 'laya_test' }; };
+  assert.equal((await post('/v1/laya/predict', null, { text: 'x' })).status, 401);
+  assert.equal((await post('/v1/laya/predict', u.tok, { text: '  ' })).status, 400);
+  const r = await post('/v1/laya/predict', u.tok, { text: ' make a 10 slide deck ', workspace: 'files:3 | types:pptx | deps:0', route: 'inline', status: 'succeeded' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body, { pattern: 'tool_chain', confidence: 0.7, probabilities: { tool_chain: 0.7 }, model: 'laya_test' });
+  assert.equal(sentWorkspace, 'files:3 | types:pptx | deps:0');
+  assert.deepEqual(await rows(), [{ request_id: null, model: null, request_text: 'make a 10 slide deck', pattern: 'tool_chain', workspace: 'files:3 | types:pptx | deps:0', route: 'inline', status: 'succeeded' }]);
+  layaBehaviour = async () => undefined;
+  assert.equal((await post('/v1/laya/predict', u.tok, { text: 'busy' })).status, 503);
+  layaBehaviour = async () => { throw new Error('down'); };
+  assert.equal((await post('/v1/laya/predict', u.tok, { text: 'down' })).status, 502);
+  assert.equal((await rows()).length, 1, 'nothing is kept without a prediction');
   layaBehaviour = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8 }, model: 'laya_test' }; };
 });
 

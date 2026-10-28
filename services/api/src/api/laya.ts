@@ -1,11 +1,11 @@
-// Laya shadow mode: after a managed inference request is answered, the person's last message goes to Laya (the router being
-// calibrated) and its prediction is kept next to the model that really answered (table laya_shadow). Laya never routes anything and
-// nobody waits for it: a failure is logged and dropped.
+// Laya shadow mode: the person's request goes to Laya (the router being calibrated) and its prediction is kept (table laya_shadow).
+// Two sources: after a managed inference request is answered (next to the model that really answered), and POST /v1/laya/predict,
+// where Hermes on the person's laptop posts each chat request after answering it with their own provider. Laya never routes anything.
 //   LAYA_URL=http://<host>:8795  LAYA_API_KEY=…   (Laya's own serve.py: POST /predict {"text"} -> {pattern, confidence, probabilities, model})
 
 export interface LayaPrediction { pattern: string; confidence: number; probabilities: Record<string, number>; model: string }
 /** Resolves to undefined when the call was skipped because Laya is already busy. */
-export type Laya = (text: string) => Promise<LayaPrediction | undefined>;
+export type Laya = (text: string, workspace?: string) => Promise<LayaPrediction | undefined>;
 
 /** Longest text sent to Laya and stored. */
 export const MAX_TEXT = 20_000;
@@ -26,14 +26,14 @@ export function lastUserText(body: Record<string, unknown>): string | undefined 
 export function httpLaya(baseUrl: string, apiKey: string | undefined, timeoutMs = 10_000, maxInFlight = 4): Laya {
   const url = `${baseUrl.replace(/\/+$/, '')}/predict`;
   let inFlight = 0;
-  return async (text) => {
+  return async (text, workspace) => {
     if (inFlight >= maxInFlight) return undefined;
     inFlight++;
     try {
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(workspace ? { text, workspace } : { text }),
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (!r.ok) throw new Error(`Laya answered ${r.status}`);

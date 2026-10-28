@@ -16,7 +16,7 @@ import type { PaymentsService } from './payments/service.ts';
 import * as telemetry from './telemetry.ts';
 import * as growth from '../growth/engine.ts';
 import { cost as priceCost, outputLimit, UsageMeter, usageOf, worstCase, type Pricing, type StreamUpstream, type Upstream } from './inference.ts';
-import { lastUserText, type Laya } from './laya.ts';
+import { lastUserText, MAX_TEXT, type Laya, type LayaPrediction } from './laya.ts';
 import { RateLimiter } from './ratelimit.ts';
 import type { S3 } from './s3.ts';
 
@@ -147,6 +147,7 @@ export function syncHandler(deps: SyncDeps) {
   const badCodes = new RateLimiter(8, 15 * 60_000);
   const exchanges = new RateLimiter(deps.exchangeLimit ?? 30, 60_000);
   const modelCalls = new RateLimiter(60, 60_000);
+  const layaCalls = new RateLimiter(30, 60_000);
   const webhooks = new RateLimiter(120, 60_000);
   // The plan sets the per-minute allowance; one limiter per distinct allowance, keyed by user. `modelCalls` stays as the flat abuse ceiling.
   const planCalls = new Map<number, RateLimiter>();
@@ -437,15 +438,32 @@ export function syncHandler(deps: SyncDeps) {
         if (!deps.pricing) throw new HttpError(503, 'Managed inference is not configured.');
         return send(200, { object: 'list', data: Object.keys(deps.pricing).map((id) => ({ id, object: 'model', owned_by: 'agentic-office' })) }), true;
       }
-      // Laya shadow mode: after the answer, never in its way. Only requests the model really answered (and was charged for) are kept.
+      // ── Laya shadow mode (src/api/laya.ts). Observe only: nothing here changes an answer.
+      const keepLaya = (text: string, p: LayaPrediction, more: { request_id?: string; model?: string; workspace?: string | null; route?: string | null; status?: string | null }) => q((cl) => cl.query(
+        `INSERT INTO laya_shadow(user_id, request_id, model, request_text, pattern, confidence, probabilities, laya_model, workspace, route, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [uid, more.request_id ?? null, more.model ?? null, text, p.pattern, p.confidence, JSON.stringify(p.probabilities ?? {}), String(p.model ?? ''), more.workspace ?? null, more.route ?? null, more.status ?? null]));
+      // After a managed answer, never in its way. Only requests the model really answered (and was charged for) are kept.
       const shadow = (reqId: string, model: string, d: Record<string, unknown>) => {
         const text = deps.laya && lastUserText(d);
         if (!text) return;
-        void deps.laya!(text).then((p) => p && q((cl) => cl.query(
-          `INSERT INTO laya_shadow(user_id, request_id, model, request_text, pattern, confidence, probabilities, laya_model) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [uid, reqId, model, text, p.pattern, p.confidence, JSON.stringify(p.probabilities ?? {}), String(p.model ?? '')])))
+        void deps.laya!(text).then((p) => p && keepLaya(text, p, { request_id: reqId, model }))
           .catch((e) => console.error('laya shadow failed:', (e as Error).message));
       };
+      // The app's own chat: Hermes answers on the laptop with the person's provider, then posts the request here (after the turn, in the
+      // background). The prediction is kept and handed back so Hermes can add it to the turn's trace.
+      if (a === 'laya' && b === 'predict' && !c && m === 'POST') {
+        if (!deps.laya) throw new HttpError(503, 'Laya is not configured.');
+        if (!layaCalls.take(uid)) throw tooMany(layaCalls, uid);
+        const d = await json(req, 200_000);
+        const text = typeof d.text === 'string' ? d.text.trim().slice(0, MAX_TEXT) : '';
+        if (!text) throw new HttpError(400, 'text is required.');
+        const workspace = str(d.workspace, 500), route = str(d.route, 40), status = str(d.status, 40);
+        let p: LayaPrediction | undefined;
+        try { p = await deps.laya(text, workspace ?? undefined); } catch { throw new HttpError(502, 'Laya did not answer.'); }
+        if (!p) throw new HttpError(503, 'Laya is busy. Try again shortly.');
+        await keepLaya(text, p, { workspace, route, status });
+        return send(200, p), true;
+      }
       // /responses is ours; /chat/completions is the path OpenAI-compatible clients (Hermes) append to a base URL.
       if (a === 'inference' && ((b === 'responses' && !c) || (b === 'chat' && c === 'completions')) && m === 'POST') {
         if (!deps.pricing || !deps.upstream) throw new HttpError(503, 'Managed inference is not configured.');

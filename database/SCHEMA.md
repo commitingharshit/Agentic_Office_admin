@@ -506,20 +506,23 @@ Retired (Better Auth): signing keys of the old sign-in service. Unused since the
 
 ### laya_shadow  (row-level security)
 
-Laya shadow mode: each answered managed inference request's last user message and Laya's predicted pattern, next to the model that answered. Calibration data only; deleted after 60 days.
+Laya shadow mode: a request's last user message and Laya's predicted pattern, from managed inference (with our request id and model) or from the app's own chat via /v1/laya/predict (with the route Hermes took). Calibration data only; deleted after 60 days.
 
 | Column | Type | Null | Default |
 |---|---|---|---|
 | id | bigint | no | `nextval('laya_shadow_id_seq'::regclass)` |
 | user_id | text | no |  |
 | created_at | timestamp with time zone | no | `now()` |
-| request_id | text | no |  |
-| model | text | no |  |
+| request_id | text | yes |  |
+| model | text | yes |  |
 | request_text | text | no |  |
 | pattern | text | no |  |
 | confidence | real | no |  |
 | probabilities | jsonb | no |  |
 | laya_model | text | no |  |
+| workspace | text | yes |  |
+| route | text | yes |  |
+| status | text | yes |  |
 
 **Constraints**
 - foreign key: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
