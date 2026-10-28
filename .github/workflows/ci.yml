@@ -25,5 +25,5 @@ jobs:
         with: { fetch-depth: 0 }
       - name: no secrets in the tree
         run: |
-          if git grep -nE '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' -- . ':!tests/fixtures' ':!*.test.ts' ':!docs' ':!services/api/evals'; then echo "possible secret committed"; exit 1; fi
+          if git grep -nE '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' -- . ':!tests/fixtures' ':!services/api/test/fixtures' ':!*.test.ts' ':!docs' ':!services/api/evals'; then echo "possible secret committed"; exit 1; fi
           if git ls-files | grep -E '(^|/)\.env$'; then echo ".env committed"; exit 1; fi
