@@ -179,6 +179,9 @@ services:
       AO_HELP_API_KEYS: ${AO_HELP_API_KEYS:-}
       AO_HELP_CHAT_MODEL: ${AO_HELP_CHAT_MODEL:-}
       AO_HELP_EMBED_MODEL: ${AO_HELP_EMBED_MODEL:-}
+      # Laya shadow mode (off while LAYA_URL is empty): each answered managed inference request is predicted by Laya and kept 60 days.
+      LAYA_URL: ${LAYA_URL:-}
+      LAYA_API_KEY: ${LAYA_API_KEY:-}
     ports:
       - "${BIND_IP}:${API_PORT:-8787}:8787"
 

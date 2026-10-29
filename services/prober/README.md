@@ -9,14 +9,14 @@ Infrastructure page read it.
 - The API also runs its own checks (database, verifier, Keycloak keys). This container adds the outside view.
 - It shares the probe code with the API: `services/api/src/status/probe.ts`.
 
-Honest limit: it runs on the same host as the platform, so it cannot see the host or the Tailscale tunnel being gone. Point a free
-external monitor at `https://<host>:8443/v1/status` for that case.
+Honest limit: it runs on the same host as the platform, so it cannot see the host or the Cloudflare tunnel being gone. Point a free
+external monitor at `https://api.agenticoffice.work/v1/status` for that case.
 
-Example `AO_STATUS_PROBES`:
+Example `AO_STATUS_PROBES` (set as `PROBER_PROBES` in the API stack's `.env`):
 ```json
 [
- {"id":"console","label":"Admin console","url":"https://tanmay-hp-linux-server.tail41864f.ts.net/api/health"},
- {"id":"api-public","label":"App sign-in API","url":"https://tanmay-hp-linux-server.tail41864f.ts.net:8443/healthz"},
- {"id":"signin","label":"Sign-in (Keycloak)","url":"https://tanmay-hp-linux-server.tail41864f.ts.net:10000/realms/agentic-office/.well-known/openid-configuration"}
+ {"id":"console","label":"Admin console","url":"http://control-plane:8791/api/health"},
+ {"id":"api-public","label":"App sign-in API","url":"https://api.agenticoffice.work/healthz"},
+ {"id":"signin","label":"Sign-in (Keycloak)","url":"https://auth.agenticoffice.work/realms/agentic-office/.well-known/openid-configuration"}
 ]
 ```

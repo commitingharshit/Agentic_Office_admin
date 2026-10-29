@@ -10,6 +10,7 @@ import pg from 'pg';
 import { adminHandler, parseTokens } from '../src/api/admin.ts';
 import { ClerkVerifier } from '../src/auth/clerk.ts';
 import { estimateInputTokens, worstCase, type StreamUpstream, type Upstream } from '../src/api/inference.ts';
+import type { Laya } from '../src/api/laya.ts';
 import { syncHandler } from '../src/api/sync.ts';
 
 const ownerUrl = process.env.AO_TEST_PG;
@@ -34,6 +35,8 @@ let behaviour: Behaviour = async () => ({ status: 200, body: { choices: [{ messa
 let upstreamCalls = 0;
 let streamCalls = 0;
 let streamBehaviour: StreamUpstream = async () => ({ status: 200, body: null });
+const layaSaw: string[] = [];
+let layaBehaviour: Laya = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8, plan: 0.2 }, model: 'laya_test' }; };
 const users: string[] = [];
 
 before(async () => {
@@ -45,7 +48,7 @@ before(async () => {
   app = new pg.Pool({ connectionString: as('ao_app', process.env.AO_APP_PASSWORD) });
   ro = new pg.Pool({ connectionString: as('ao_readonly', process.env.AO_READONLY_PASSWORD) });
   adm = new pg.Pool({ connectionString: as('ao_admin', process.env.AO_ADMIN_PASSWORD) });
-  const sync = syncHandler({ app, verify: (t) => verifier.verify(t), pricing: PRICING, upstream: (m, b) => { upstreamCalls++; return behaviour(m, b); }, streamUpstream: (m, b, sig) => { streamCalls++; return streamBehaviour(m, b, sig); }, exchangeLimit: 10_000 });
+  const sync = syncHandler({ app, verify: (t) => verifier.verify(t), pricing: PRICING, upstream: (m, b) => { upstreamCalls++; return behaviour(m, b); }, streamUpstream: (m, b, sig) => { streamCalls++; return streamBehaviour(m, b, sig); }, laya: (t, w) => layaBehaviour(t, w), exchangeLimit: 10_000 });
   const admin = adminHandler({ ro, admin: adm, tokens: parseTokens(`ops:${ADMIN_TOKEN}`) });
   api = createServer(async (req, res) => { if (!(await sync(req, res))) await admin(req, res); });
   await new Promise<void>((r) => api.listen(0, '127.0.0.1', r));
@@ -161,6 +164,48 @@ test('managed inference: holds the worst case, charges the real use, returns the
   assert.deepEqual(use.totals, { cost: 72, tokens_in: 12, tokens_out: 30, requests: 1 });
   assert.equal(use.events[0].model, 'm-small');
   assert.equal((await http('/v1/credits/balance', u.tok)).body.reserved, 0);
+});
+
+test('Laya shadow: an answered request is predicted and kept; a refused one, or a Laya failure, is not', { skip }, async () => {
+  const u = await signedIn('laya'); await toBeta(u.id); await grantTo(u.id, 10_000);
+  const rows = async () => (await owner.query('SELECT request_id, model, request_text, pattern, confidence, probabilities, laya_model FROM laya_shadow WHERE user_id = $1 ORDER BY id', [u.id])).rows;
+  const settle = async (n: number) => { for (let i = 0; i < 50 && (await rows()).length < n; i++) await new Promise((r) => setTimeout(r, 20)); };
+  behaviour = async () => ({ status: 200, body: { choices: [{ message: { role: 'assistant', content: 'ok' } }], usage: { prompt_tokens: 3, completion_tokens: 2 } } });
+  const r = await chat(u.tok, { messages: [{ role: 'user', content: 'old' }, { role: 'assistant', content: 'a' }, { role: 'user', content: 'make a deck' }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  await settle(1);
+  assert.deepEqual(await rows(), [{ request_id: r.body.ao.request_id, model: 'm-small', request_text: 'make a deck', pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8, plan: 0.2 }, laya_model: 'laya_test' }]);
+  behaviour = async () => ({ status: 400, body: { error: 'no' } });
+  const sawBefore = layaSaw.length;
+  assert.equal((await chat(u.tok, { messages: [{ role: 'user', content: 'refused' }] })).status, 400);
+  layaBehaviour = async () => { throw new Error('down'); };
+  behaviour = async () => ({ status: 200, body: { usage: { prompt_tokens: 1, completion_tokens: 1 } } });
+  assert.equal((await chat(u.tok, { messages: [{ role: 'user', content: 'laya down' }] })).status, 200, 'Laya failing never fails the request');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(layaSaw.length, sawBefore, 'a refused request is never sent to Laya');
+  assert.equal((await rows()).length, 1);
+  assert.equal((await app.query('SELECT count(*) FROM laya_shadow').catch((e) => e)).code, '42501', 'the app role can write but not read');
+  layaBehaviour = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8 }, model: 'laya_test' }; };
+});
+
+test('Laya shadow for the app: /v1/laya/predict keeps the request with the route Hermes took and hands the prediction back', { skip }, async () => {
+  const u = await signedIn('layaapp');   // free plan, no credits: the app's own chat needs neither
+  const rows = async () => (await owner.query('SELECT request_id, model, request_text, pattern, workspace, route, status FROM laya_shadow WHERE user_id = $1 ORDER BY id', [u.id])).rows;
+  let sentWorkspace: string | undefined;
+  layaBehaviour = async (t, w) => { layaSaw.push(t); sentWorkspace = w; return { pattern: 'tool_chain', confidence: 0.7, probabilities: { tool_chain: 0.7 }, model: 'laya_test' }; };
+  assert.equal((await post('/v1/laya/predict', null, { text: 'x' })).status, 401);
+  assert.equal((await post('/v1/laya/predict', u.tok, { text: '  ' })).status, 400);
+  const r = await post('/v1/laya/predict', u.tok, { text: ' make a 10 slide deck ', workspace: 'files:3 | types:pptx | deps:0', route: 'inline', status: 'succeeded' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body, { pattern: 'tool_chain', confidence: 0.7, probabilities: { tool_chain: 0.7 }, model: 'laya_test' });
+  assert.equal(sentWorkspace, 'files:3 | types:pptx | deps:0');
+  assert.deepEqual(await rows(), [{ request_id: null, model: null, request_text: 'make a 10 slide deck', pattern: 'tool_chain', workspace: 'files:3 | types:pptx | deps:0', route: 'inline', status: 'succeeded' }]);
+  layaBehaviour = async () => undefined;
+  assert.equal((await post('/v1/laya/predict', u.tok, { text: 'busy' })).status, 503);
+  layaBehaviour = async () => { throw new Error('down'); };
+  assert.equal((await post('/v1/laya/predict', u.tok, { text: 'down' })).status, 502);
+  assert.equal((await rows()).length, 1, 'nothing is kept without a prediction');
+  layaBehaviour = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8 }, model: 'laya_test' }; };
 });
 
 test('managed inference: what is sent upstream is bounded by what was reserved', { skip }, async () => {
