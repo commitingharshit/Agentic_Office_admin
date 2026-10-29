@@ -23,7 +23,9 @@ export function lastUserText(body: Record<string, unknown>): string | undefined 
 
 // ponytail: Laya predicts one request at a time (serve.py holds a lock), so beyond `maxInFlight` calls are skipped, not queued;
 // raise it, or queue, if too many samples are lost at peak.
-export function httpLaya(baseUrl: string, apiKey: string | undefined, timeoutMs = 10_000, maxInFlight = 4): Laya {
+// 30 s, like Hermes' own Laya client: nobody waits on a shadow call, and Laya on the host's CPU, behind another
+// call or cold, took over 10 s (a request lost on 2026-10-29: Laya answered after we had hung up).
+export function httpLaya(baseUrl: string, apiKey: string | undefined, timeoutMs = 30_000, maxInFlight = 4): Laya {
   const url = `${baseUrl.replace(/\/+$/, '')}/predict`;
   let inFlight = 0;
   return async (text, workspace) => {
