@@ -2,7 +2,8 @@
 // the server maps the Clerk user to our own user id and runs the request as ao_app inside a
 // transaction with app.user_id set, so row-level security scopes every read and write to that
 // user. Documents, transcripts and memories arrive already encrypted on the device: the server
-// stores bytes and metadata, never plaintext.
+// stores bytes and metadata. The one exception is memory text (memory_contents), which devices
+// also send in plaintext so administrators can read it.
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type pg from 'pg';
@@ -16,6 +17,7 @@ import type { PaymentsService } from './payments/service.ts';
 import * as telemetry from './telemetry.ts';
 import * as growth from '../growth/engine.ts';
 import { cost as priceCost, outputLimit, UsageMeter, usageOf, worstCase, type Pricing, type StreamUpstream, type Upstream } from './inference.ts';
+import { lastUserText, MAX_TEXT, type Laya, type LayaPrediction } from './laya.ts';
 import { RateLimiter } from './ratelimit.ts';
 import type { S3 } from './s3.ts';
 
@@ -26,6 +28,8 @@ export interface SyncDeps {
   upstream?: Upstream;
   /** The same provider, streaming. Without it a stream request is refused. */
   streamUpstream?: StreamUpstream;
+  /** Laya shadow mode (src/api/laya.ts): each answered request's last user message is predicted and kept in laya_shadow. Off without it. */
+  laya?: Laya;
   /** Sign-in exchanges allowed per client address per minute (default 30). */
   exchangeLimit?: number;
   /** Clerk session tokens (until Clerk is retired): absent when only our own sign-in is configured. */
@@ -144,6 +148,7 @@ export function syncHandler(deps: SyncDeps) {
   const badCodes = new RateLimiter(8, 15 * 60_000);
   const exchanges = new RateLimiter(deps.exchangeLimit ?? 30, 60_000);
   const modelCalls = new RateLimiter(60, 60_000);
+  const layaCalls = new RateLimiter(30, 60_000);
   const webhooks = new RateLimiter(120, 60_000);
   // The plan sets the per-minute allowance; one limiter per distinct allowance, keyed by user. `modelCalls` stays as the flat abuse ceiling.
   const planCalls = new Map<number, RateLimiter>();
@@ -434,6 +439,32 @@ export function syncHandler(deps: SyncDeps) {
         if (!deps.pricing) throw new HttpError(503, 'Managed inference is not configured.');
         return send(200, { object: 'list', data: Object.keys(deps.pricing).map((id) => ({ id, object: 'model', owned_by: 'agentic-office' })) }), true;
       }
+      // ── Laya shadow mode (src/api/laya.ts). Observe only: nothing here changes an answer.
+      const keepLaya = (text: string, p: LayaPrediction, more: { request_id?: string; model?: string; workspace?: string | null; route?: string | null; status?: string | null }) => q((cl) => cl.query(
+        `INSERT INTO laya_shadow(user_id, request_id, model, request_text, pattern, confidence, probabilities, laya_model, workspace, route, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [uid, more.request_id ?? null, more.model ?? null, text, p.pattern, p.confidence, JSON.stringify(p.probabilities ?? {}), String(p.model ?? ''), more.workspace ?? null, more.route ?? null, more.status ?? null]));
+      // After a managed answer, never in its way. Only requests the model really answered (and was charged for) are kept.
+      const shadow = (reqId: string, model: string, d: Record<string, unknown>) => {
+        const text = deps.laya && lastUserText(d);
+        if (!text) return;
+        void deps.laya!(text).then((p) => p && keepLaya(text, p, { request_id: reqId, model }))
+          .catch((e) => console.error('laya shadow failed:', (e as Error).message));
+      };
+      // The app's own chat: Hermes answers on the laptop with the person's provider, then posts the request here (after the turn, in the
+      // background). The prediction is kept and handed back so Hermes can add it to the turn's trace.
+      if (a === 'laya' && b === 'predict' && !c && m === 'POST') {
+        if (!deps.laya) throw new HttpError(503, 'Laya is not configured.');
+        if (!layaCalls.take(uid)) throw tooMany(layaCalls, uid);
+        const d = await json(req, 200_000);
+        const text = typeof d.text === 'string' ? d.text.trim().slice(0, MAX_TEXT) : '';
+        if (!text) throw new HttpError(400, 'text is required.');
+        const workspace = str(d.workspace, 500), route = str(d.route, 40), status = str(d.status, 40);
+        let p: LayaPrediction | undefined;
+        try { p = await deps.laya(text, workspace ?? undefined); } catch { throw new HttpError(502, 'Laya did not answer.'); }
+        if (!p) throw new HttpError(503, 'Laya is busy. Try again shortly.');
+        await keepLaya(text, p, { workspace, route, status });
+        return send(200, p), true;
+      }
       // /responses is ours; /chat/completions is the path OpenAI-compatible clients (Hermes) append to a base URL.
       if (a === 'inference' && ((b === 'responses' && !c) || (b === 'chat' && c === 'completions')) && m === 'POST') {
         if (!deps.pricing || !deps.upstream) throw new HttpError(503, 'Managed inference is not configured.');
@@ -499,6 +530,7 @@ export function syncHandler(deps: SyncDeps) {
           const used = meter.usage ?? meter.estimate(body);
           const chargedStream = Math.min(priceCost(price, used.in, used.out), hold);
           await q((cl) => cl.query('SELECT ao_credit_settle($1,$2,$3,$4,$5)', [rid, chargedStream, model, used.in, used.out])).catch((e) => console.error('settle after stream failed', e));
+          if (used.out > 0) shadow(reqId, model, d);
           return true;
         }
         let out;
@@ -513,6 +545,7 @@ export function syncHandler(deps: SyncDeps) {
         }
         const charged = priceCost(price, used.in, used.out);
         await q((cl) => cl.query('SELECT ao_credit_settle($1,$2,$3,$4,$5)', [rid, charged, model, used.in, used.out]));
+        shadow(reqId, model, d);
         const left = await q(billing.balance);
         return send(200, { ...out.body, ao: { request_id: reqId, charged: Math.min(charged, hold), balance: left.total } }), true;
       }
@@ -675,7 +708,7 @@ export function syncHandler(deps: SyncDeps) {
         return send(200, { revisions: rows.map((r) => ({ ...r, revision: Number(r.revision), bytes: Number(r.bytes) })) }), true;
       }
 
-      // ── memory references (encrypted memory files)
+      // ── memory references (encrypted memory files, plus their text for the admin console)
       if (a === 'memory' && !b && m === 'GET') {
         // With ?since= (incremental) tombstones come too, as {deleted: true}; without it, live memories only.
         const since = url.searchParams.get('since');
@@ -699,6 +732,11 @@ export function syncHandler(deps: SyncDeps) {
           await cl.query(`INSERT INTO memory_references(memory_id, user_id, workspace_id, memory_uri, source_version, kind, blob_key) VALUES ($1,$2,$3,$4,$5,$6,$7)
             ON CONFLICT (memory_id) DO UPDATE SET source_version = excluded.source_version, kind = excluded.kind, blob_key = excluded.blob_key, deleted_at = NULL, updated_at = now() WHERE memory_references.user_id = $2`,
             [mid, uid, d.workspace_id ? id(d.workspace_id, 'workspace_id') : null, `mnemo://${uid}/${b}`, str(d.source_version, 80) ?? '', str(d.kind, 40), hash ? `ao-user-blobs/${uid}/${hash}` : null]);
+          // The memory's text, readable by administrators (memory_contents). A device that sends none leaves no stale text behind.
+          const content = str(d.content, 64_000);
+          if (content === null) await cl.query('DELETE FROM memory_contents WHERE memory_id = $1', [mid]);
+          else await cl.query(`INSERT INTO memory_contents(memory_id, user_id, content) VALUES ($1,$2,$3)
+            ON CONFLICT (memory_id) DO UPDATE SET content = excluded.content, updated_at = now()`, [mid, uid, content]);
         });
         return send(200, { ok: true }), true;
       }
@@ -713,6 +751,7 @@ export function syncHandler(deps: SyncDeps) {
           const actual = current && !current.deleted_at ? current.source_version : null;
           if (actual !== d.expected_version) throw new HttpError(409, 'Memory changed on another device; pull and resolve the conflict.');
           if (current && !current.deleted_at) await cl.query('UPDATE memory_references SET deleted_at = now(), updated_at = now(), blob_key = NULL WHERE memory_id = $1', [mid]);
+          await cl.query('DELETE FROM memory_contents WHERE memory_id = $1', [mid]);
         });
         return send(200, { ok: true }), true;
       }

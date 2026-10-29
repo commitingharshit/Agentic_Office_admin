@@ -45,8 +45,8 @@ payment credentials or a help-assistant key.
 - Payments: `deploy/scripts/enable-payments-youpi.sh` (experimental provider; sandbox credentials first).
 - Help assistant: `deploy/scripts/set-help-keys.sh` on the host (keys are typed hidden, stored mode 600, never printed), then
   `node services/api/evals/run-help-eval.ts` to measure retrieval and pick `AO_HELP_MIN_SCORE`.
-- Public doors: `sudo tailscale funnel --bg --https=8443 http://127.0.0.1:8183` (API gate, also serves `/status`), Keycloak gate on 10000,
-  console on 443. Details in `docs/plans/2026-10-21-keycloak.md`.
+- Public doors: Cloudflare Tunnel on agenticoffice.work (`api.` the API gate, also `/status`; `auth.` the Keycloak gate; `admin.` the
+  console behind Cloudflare Access). Setup, env values and rollback in `deploy/cloudflare/README.md`.
 
 ## Rules that hold everywhere
 No secret is printed, logged or committed. A webhook is an observation, never proof of payment. Admins never see document content, prompts,

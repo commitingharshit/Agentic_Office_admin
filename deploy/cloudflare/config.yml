@@ -1,0 +1,22 @@
+# Cloudflare Tunnel for agenticoffice.work: the only public doors. cloudflared runs on the host (in Docker, container ao-cloudflared) and
+# dials out to Cloudflare, so the host opens no ports; each name goes to a gate or service on the host that no public port reaches. Copy to
+# ~/ao-cloudflared/config.yml on the host and replace <TUNNEL_ID> with the id `cloudflared tunnel create agentic-office` printed (README
+# step 2). The paths below are inside the container, where ~/ao-cloudflared is mounted at /etc/cloudflared.
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  # The API gate: /v1/* for the desktop app, /healthz, and the public status page at /status. /admin/* answers 404 there.
+  - hostname: api.agenticoffice.work
+    service: http://127.0.0.1:8183
+  # The Keycloak gate: sign-in pages and tokens for the realm only; Keycloak's own administration answers 404 there.
+  - hostname: auth.agenticoffice.work
+    service: http://127.0.0.1:8181
+  # The admin console. A Cloudflare Access application must cover this whole name before the DNS record is added (README step 4).
+  - hostname: admin.agenticoffice.work
+    service: http://127.0.0.1:8791
+  # Langfuse (traces), from ~/ao-langfuse, not this repo. Covered by its own Access application like admin (README step 3), with
+  # Langfuse's login behind it. It listens on the host's tailnet address only (teammates and Hermes reach it there too).
+  - hostname: langfuse.agenticoffice.work
+    service: http://100.95.14.113:3000
+  - service: http_status:404

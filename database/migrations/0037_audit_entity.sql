@@ -22,5 +22,5 @@ COMMENT ON COLUMN admin_audit.target_id IS 'The id of that thing, in the table i
 --   DROP INDEX IF EXISTS ix_audit_target;
 --   DROP INDEX IF EXISTS ix_audit_admin;
 --   ALTER TABLE admin_audit DROP COLUMN IF EXISTS target_type, DROP COLUMN IF EXISTS target_id;
---   DELETE FROM schema_migrations WHERE name = '0034_audit_entity.sql';
+--   DELETE FROM schema_migrations WHERE name = '0037_audit_entity.sql';
 --   COMMIT;

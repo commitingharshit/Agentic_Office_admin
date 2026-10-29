@@ -47,5 +47,5 @@ ssh_ "cd ~/$AO_HOME && deploy/stack.sh console up -d --build && deploy/stack.sh 
 echo "8/8 checks against the gate on the host"
 ssh_ "cd ~/$AO_HOME && tests/tools/api-gate-check.sh http://127.0.0.1:8183 && tests/tools/keycloak-gate-check.sh http://127.0.0.1:8181"
 echo "done ($COMMIT). Payments are off; the help assistant is off until keys are set (deploy/scripts/set-help-keys.sh on the host)."
-echo "Public side, once (root, on the host):  sudo tailscale funnel --bg --https=8443 http://127.0.0.1:8183   (already set if sign-in worked before)"
-echo "Then from any network:  tests/tools/api-gate-check.sh https://tanmay-hp-linux-server.tail41864f.ts.net:8443   and open  .../status"
+echo "Public side: Cloudflare Tunnel (deploy/cloudflare/README.md, set up once). From any network:"
+echo "  tests/tools/api-gate-check.sh https://api.agenticoffice.work   and open  https://api.agenticoffice.work/status"

@@ -27,7 +27,7 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, helpOn, children }:
   useEffect(() => { try { setCollapsed(localStorage.getItem('ao.sidebar') === '1'); } catch { /* storage may be blocked */ } }, []);
   const toggle = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem('ao.sidebar', n ? '1' : '0'); } catch { /* ignore */ } return n; });
 
-  const items = useMemo(() => nav.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label }))), [nav]);
+  const items = useMemo(() => nav.flatMap((g) => g.items.filter((i) => !i.external).map((i) => ({ ...i, group: g.label }))), [nav]);
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     const pages = items.filter((i) => !q || i.label.toLowerCase().includes(q)).map((i) => ({ href: i.href, label: i.label, group: 'Go to', icon: i.icon }));
@@ -82,7 +82,10 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, helpOn, children }:
           {nav.map((g) => (
             <div className="nav-group" key={g.label}>
               <span className="nav-label">{g.label}</span>
-              {g.items.map((i) => (
+              {g.items.map((i) => i.external ? (
+                <a key={i.href} href={i.href} target="_blank" rel="noopener noreferrer" className="nav-item" title={collapsed ? i.label : undefined}>
+                  <Icon name={i.icon} /><span>{i.label}</span><span className="faint" aria-hidden="true">↗</span>
+                </a>) : (
                 <Link key={i.href} href={i.href} className="nav-item" aria-current={current(i.href) ? 'page' : undefined} title={collapsed ? i.label : undefined}>
                   <Icon name={i.icon} /><span>{i.label}</span>{i.soon && <span className="soon">soon</span>}
                 </Link>))}

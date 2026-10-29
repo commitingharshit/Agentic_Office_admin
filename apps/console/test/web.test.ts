@@ -15,6 +15,7 @@ const ownerUrl = process.env.AUTH_TEST_PG;
 const skip = !ownerUrl && 'AUTH_TEST_PG not set';
 const tag = Date.now().toString(36);
 const SERVICE_TOKEN = `service-token-${tag}-0123456789abcdef`;
+const TRACES_URL = 'http://traces.test:3000';
 const as = (role: string, pw: string | undefined) => { const u = new URL(ownerUrl!); u.username = role; u.password = pw ?? ''; return u.toString(); };
 const free = async () => { const s = createServer(); await new Promise<void>((r) => s.listen(0, '127.0.0.1', r)); const p = (s.address() as AddressInfo).port; await new Promise<void>((r) => s.close(() => r())); return p; };
 
@@ -36,7 +37,7 @@ before(async () => {
   base = `http://127.0.0.1:${port}`;
   web = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(port), '-H', '127.0.0.1'], {
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1', AUTH_BASE_URL: base, AUTH_SECRET: 'test-secret-0123456789abcdef0123456789abcdef',
-      AUTH_DATABASE_URL: as('ao_auth', process.env.AO_AUTH_PASSWORD), AO_ADMIN_API_URL: `http://127.0.0.1:${apiPort}`, AO_ADMIN_API_TOKEN: SERVICE_TOKEN, ADMIN_HOSTS: '127.0.0.1', AUTH_IP_HEADER: 'x-test-ip' },
+      AUTH_DATABASE_URL: as('ao_auth', process.env.AO_AUTH_PASSWORD), AO_ADMIN_API_URL: `http://127.0.0.1:${apiPort}`, AO_ADMIN_API_TOKEN: SERVICE_TOKEN, ADMIN_HOSTS: '127.0.0.1', AUTH_IP_HEADER: 'x-test-ip', AO_TRACES_URL: TRACES_URL },
   });
   web.stdout?.on('data', (d) => { output += d; }); web.stderr?.on('data', (d) => { output += d; });
   for (let i = 0; i < 100; i++) {
@@ -198,7 +199,15 @@ test('an admin sees the console, with real data, and nothing secret in the page'
   const detail = await get(`/admin/users/${target.id}`, { cookie: a.cookie });
   assert.equal(detail.status, 200);
   assert.ok(detail.body.includes(target.email));
-  assert.match(detail.body, /Documents, transcripts and memories are encrypted/);
+  assert.match(detail.body, /Documents and transcripts are encrypted/);
+  // The Memories tab shows each synced memory's text, newest first, and opening it is audited.
+  await owner.query(`INSERT INTO memory_references(memory_id, user_id, memory_uri, source_version, kind) VALUES ($1, $2, $3, 'v1', 'preference')`, [`mem_web_${tag}`, target.id, `mnemo://${target.id}/mem_web_${tag}`]);
+  await owner.query('INSERT INTO memory_contents(memory_id, user_id, content) VALUES ($1, $2, $3)', [`mem_web_${tag}`, target.id, 'Prefers short replies, no emojis']);
+  const mems = await get(`/admin/users/${target.id}?tab=memories`, { cookie: a.cookie });
+  assert.equal(mems.status, 200);
+  assert.match(mems.body, /Prefers short replies, no emojis/);
+  assert.match(mems.body, /preference/);
+  assert.equal((await owner.query(`SELECT count(*)::int AS n FROM admin_audit WHERE action = 'view_memories' AND target_user_id = $1`, [target.id])).rows[0].n, 1);
   const coupons = await get('/admin/coupons', { cookie: a.cookie });
   assert.equal(coupons.status, 200);
   assert.match(coupons.body, /never a credential/);
@@ -423,6 +432,9 @@ test('payments and notifications pages: a finance admin sees them, an analyst ca
   await owner.query(`INSERT INTO admin_roles(user_id, role) VALUES ($1,'analyst') ON CONFLICT (user_id) DO UPDATE SET role='analyst'`, [an.id]);
   const denied = await get('/admin/payments', { cookie: an.cookie });
   assert.match(denied.body, /not allowed|forbidden|permission|You do not have/i, 'an analyst has no payments page');
+  const tracesLink = new RegExp(`<a href="${TRACES_URL}" target="_blank" rel="noopener noreferrer"[^>]*>.*?Traces`);
+  assert.match((await get('/admin', { cookie: an.cookie })).body, tracesLink, 'an analyst (runs.read) gets the Traces link, opening in a new tab');
+  assert.ok(!list.body.includes(TRACES_URL), 'finance (no runs.read) does not');
   const bad = await get('/admin/payments/ord_doesnotexist12345', { cookie: fin.cookie });
   assert.equal(bad.status, 404);
 });

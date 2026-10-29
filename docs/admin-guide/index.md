@@ -10,7 +10,7 @@ This guide describes the Agentic Office admin console: where each feature is and
 
 The admin console is a private web application for people who run Agentic Office. It shows account, billing, marketplace, growth and platform information, and lets an administrator change some of it (credits, plans, coupons, accounts, flags, campaigns, marketplace versions).
 
-It never shows what people write or create: documents, prompts, file names and memories stay encrypted on their devices. See the Privacy page of this guide.
+It never shows what people write or create: documents, prompts and file names stay encrypted on their devices. The exception is memories: their text is shown on a person's Memories tab. See the Privacy page of this guide.
 
 The console only answers on the host names listed in the server setting `ADMIN_HOSTS` (loopback only when unset). Any other host name gets a "Not found" page, even for an administrator. Every change goes through the admin API, which checks the role again and writes the audit log.
 

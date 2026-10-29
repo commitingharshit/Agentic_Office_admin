@@ -51,7 +51,7 @@ Listing is audited as `list_users`, with the filters used.
 
 Page: /admin/users/[id]
 
-The User detail page (Workspace group, opened from Users) is one person's account, with eight tabs: Overview, Authentication & Devices, Workspace Sessions, Agent Runs, Usage & Credits, Support & Communications, Security & Audit, Marketplace. Permission to open: `users.read`; each tab needs its own read permission and says "Your role cannot view ..." without it. Opening is audited as `view_user`.
+The User detail page (Workspace group, opened from Users) is one person's account, with nine tabs: Overview, Authentication & Devices, Workspace Sessions, Memories, Agent Runs, Usage & Credits, Support & Communications, Security & Audit, Marketplace. Permission to open: `users.read`; each tab needs its own read permission and says "Your role cannot view ..." without it. Opening is audited as `view_user`.
 
 Buttons at the top (need `users.write`: support, superadmin; hidden on your own account):
 
@@ -64,6 +64,8 @@ Overview tab: Status, Plan, Devices, Work sessions, Memories tiles, an Account c
 - **Grant or adjust credits** (needs `credits.write`): Type, Pool, Amount, Expires after, Reason, **Record**. See Compute & Credits for the rules.
 - **Plan** (needs `plans.write`): choose a plan and click **Set plan**. This changes the plan without a payment.
 - **Administrator access** (needs `roles.write`): see the Roles page.
+
+Memories tab (needs `users.read`): every memory this person's devices synced, newest first, with Type, Memory (the text), Project ("personal" when none), Last changed and State (active or forgotten). A memory synced before devices started sending text says "no text synced yet" until it changes. Opening the tab is audited as `view_memories`.
 
 ## User detail: Authentication & Devices
 

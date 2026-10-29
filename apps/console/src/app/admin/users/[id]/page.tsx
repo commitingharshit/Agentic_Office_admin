@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'User' };
 const TABS = [
   { key: 'overview', label: 'Overview' }, { key: 'auth', label: 'Authentication & Devices' }, { key: 'sessions', label: 'Workspace Sessions' },
-  { key: 'runs', label: 'Agent Runs' }, { key: 'usage', label: 'Usage & Credits' }, { key: 'support', label: 'Support & Communications' }, { key: 'audit', label: 'Security & Audit' }, { key: 'marketplace', label: 'Marketplace' },
+  { key: 'memories', label: 'Memories' }, { key: 'runs', label: 'Agent Runs' }, { key: 'usage', label: 'Usage & Credits' }, { key: 'support', label: 'Support & Communications' }, { key: 'audit', label: 'Security & Audit' }, { key: 'marketplace', label: 'Marketplace' },
 ];
 
 export default async function UserPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -36,6 +36,7 @@ export default async function UserPage({ params, searchParams }: { params: Promi
     tab === 'auth' && can('sessions.read') ? load<any>(`/admin/users/${encodeURIComponent(id)}/keycloak`, person.id) : null,
     tab === 'auth' && can('sessions.read') ? load<any>(`/admin/users/${encodeURIComponent(id)}/sign-ins`, person.id) : null,
   ]);
+  const mems = tab === 'memories' && can('users.read') ? await load<any>(`/admin/users/${encodeURIComponent(id)}/memories`, person.id) : null;
   const mkt = tab === 'marketplace' && can('marketplace.read') ? await load<any>(`/admin/marketplace/users/${encodeURIComponent(id)}/installs`, person.id) : null;
   const label = u.email ?? u.id;
 
@@ -61,9 +62,9 @@ export default async function UserPage({ params, searchParams }: { params: Promi
             <MetricCard icon="billing" label="Plan" value={credits?.ok ? credits.data.plan_id : '—'} hint={credits?.ok ? `${num(credits.data.promo)} promo · ${num(credits.data.paid)} paid credits` : 'no access to billing'} />
             <MetricCard icon="device" label="Devices" value={num(u.devices)} hint={`${num(u.workspaces)} workspaces`} />
             <MetricCard icon="sessions" label="Work sessions" value={num(u.sessions)} hint={`last active ${ago(u.last_active_at)}`} />
-            <MetricCard icon="coupons" label="Memories" value={num(u.memories)} hint={`${(Number(u.storage_bytes) / 1e6).toFixed(1)} MB stored, encrypted`} />
+            <MetricCard icon="coupons" label="Memories" value={num(u.memories)} hint={`${(Number(u.storage_bytes) / 1e6).toFixed(1)} MB of documents stored, encrypted`} />
           </div>
-          <Notice icon="info"><span>Documents, transcripts and memories are encrypted on this person's devices. This console shows ids, counts, timings and states only; it cannot read their work.</span></Notice>
+          <Notice icon="info"><span>Documents and transcripts are encrypted on this person's devices; this console shows ids, counts, timings and states only. Memories are the exception: their text is readable under Memories, and every view is audited.</span></Notice>
 
           <Section title="Account">
             <div className="card"><div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 180px) 1fr', gap: '8px 16px' }}>
@@ -166,6 +167,17 @@ export default async function UserPage({ params, searchParams }: { params: Promi
         <DataTable<any> base={`/admin/users/${id}`} query={{ tab: 'sessions' }} rowKey={(r) => r.id} rows={sessions.data.sessions} emptyTitle="No synced work sessions" emptyHint="Sessions appear here once this person's devices sync. Their contents stay encrypted."
           columns={[{ key: 'id', label: 'Session', render: (r) => <Link href={`/admin/sessions/${r.id}`} className="mono">{r.id.slice(0, 18)}</Link> }, { key: 'events', label: 'Events', align: 'right', render: (r) => num(r.events) }, { key: 'created', label: 'Started', render: (r) => when(r.created_at) }, { key: 'last', label: 'Last event', render: (r) => ago(r.last_event) }] as Column<any>[]} />
       ) : sessions ? <ErrorState message={sessions.error} /> : <Notice icon="alert">Your role cannot view sessions.</Notice>)}
+
+      {tab === 'memories' && (mems?.ok ? (
+        <Section title="Memories" count={(mems.data.memories as any[]).filter((r) => !r.deleted_at).length}>
+          <div className="table-wrap"><table className="dt"><thead><tr><th>Type</th><th>Memory</th><th>Project</th><th>Last changed</th><th>State</th></tr></thead>
+            <tbody>{(mems.data.memories as any[]).map((r) => <tr key={r.memory_id}><td>{r.kind ?? '—'}</td>
+              <td style={{ whiteSpace: 'pre-wrap', maxWidth: 560 }}>{r.content ?? <span className="faint">{r.deleted_at ? 'forgotten' : 'no text synced yet'}</span>}</td>
+              <td className="mono">{r.workspace_id ?? <span className="faint">personal</span>}</td><td>{ago(r.updated_at)}</td>
+              <td>{r.deleted_at ? <StatusBadge status="revoked">forgotten</StatusBadge> : <StatusBadge status="active" />}</td></tr>)}
+              {!mems.data.memories.length && <tr><td colSpan={5} className="dt-empty">No synced memories.</td></tr>}</tbody></table></div>
+        </Section>
+      ) : mems ? <ErrorState message={mems.error} /> : <Notice icon="alert">Your role cannot view memories.</Notice>)}
 
       {tab === 'runs' && (runs?.ok ? (
         runs.data.total === 0

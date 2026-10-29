@@ -122,7 +122,7 @@ test('migration 0034 backfills old rows and can be applied again without harm', 
   const u = await person('legacy');
   await owner.query(`INSERT INTO admin_audit(admin_user_id, action, target_user_id, detail) VALUES ('old-admin', 'disable', $1, '{}')`, [u]);
   await owner.query(`INSERT INTO admin_audit(admin_user_id, action, target_user_id, target_type, target_id, detail) VALUES ('old-admin', 'noop', NULL, NULL, NULL, '{}')`);
-  const sql = readFileSync(new URL('../../../database/migrations/0034_audit_entity.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../../../database/migrations/0037_audit_entity.sql', import.meta.url), 'utf8');
   await owner.query(sql);
   await owner.query(sql);
   const row = (await owner.query(`SELECT target_type, target_id FROM admin_audit WHERE admin_user_id = 'old-admin' AND action = 'disable'`)).rows[0];
