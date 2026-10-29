@@ -465,6 +465,18 @@ export function syncHandler(deps: SyncDeps) {
         await keepLaya(text, p, { workspace, route, status });
         return send(200, p), true;
       }
+      // Live Laya: the gateway forwards each edit kept or undone (its /v1/agentic/outcome), to judge Laya's picks above.
+      if (a === 'laya' && b === 'outcome' && !c && m === 'POST') {
+        if (!layaCalls.take(uid)) throw tooMany(layaCalls, uid);
+        const d = await json(req, 20_000);
+        if (typeof d.accepted !== 'boolean') throw new HttpError(400, 'accepted (true or false) is required.');
+        const count = Number.isInteger(d.count) ? d.count : null;
+        const authors = Array.isArray(d.authors) ? JSON.stringify(d.authors.slice(0, 20).map((x: unknown) => String(x).slice(0, 100))) : null;
+        await q((cl) => cl.query(
+          `INSERT INTO laya_outcome(user_id, accepted, source, file, count, authors, session_id, response_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [uid, d.accepted, str(d.source, 40), str(d.file, 1000), count, authors, str(d.session_id, 200), str(d.response_id, 200)]));
+        return send(200, { recorded: true }), true;
+      }
       // /responses is ours; /chat/completions is the path OpenAI-compatible clients (Hermes) append to a base URL.
       if (a === 'inference' && ((b === 'responses' && !c) || (b === 'chat' && c === 'completions')) && m === 'POST') {
         if (!deps.pricing || !deps.upstream) throw new HttpError(503, 'Managed inference is not configured.');
