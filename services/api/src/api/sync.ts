@@ -440,9 +440,9 @@ export function syncHandler(deps: SyncDeps) {
         return send(200, { object: 'list', data: Object.keys(deps.pricing).map((id) => ({ id, object: 'model', owned_by: 'agentic-office' })) }), true;
       }
       // ── Laya shadow mode (src/api/laya.ts). Observe only: nothing here changes an answer.
-      const keepLaya = (text: string, p: LayaPrediction, more: { request_id?: string; model?: string; workspace?: string | null; route?: string | null; status?: string | null }) => q((cl) => cl.query(
-        `INSERT INTO laya_shadow(user_id, request_id, model, request_text, pattern, confidence, probabilities, laya_model, workspace, route, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [uid, more.request_id ?? null, more.model ?? null, text, p.pattern, p.confidence, JSON.stringify(p.probabilities ?? {}), String(p.model ?? ''), more.workspace ?? null, more.route ?? null, more.status ?? null]));
+      const keepLaya = (text: string, p: LayaPrediction, more: { request_id?: string; model?: string; workspace?: string | null; route?: string | null; status?: string | null; turn_id?: string | null }) => q((cl) => cl.query(
+        `INSERT INTO laya_shadow(user_id, request_id, model, request_text, pattern, confidence, probabilities, laya_model, workspace, route, status, turn_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [uid, more.request_id ?? null, more.model ?? null, text, p.pattern, p.confidence, JSON.stringify(p.probabilities ?? {}), String(p.model ?? ''), more.workspace ?? null, more.route ?? null, more.status ?? null, more.turn_id ?? null]));
       // After a managed answer, never in its way. Only requests the model really answered (and was charged for) are kept.
       const shadow = (reqId: string, model: string, d: Record<string, unknown>) => {
         const text = deps.laya && lastUserText(d);
@@ -458,12 +458,27 @@ export function syncHandler(deps: SyncDeps) {
         const d = await json(req, 200_000);
         const text = typeof d.text === 'string' ? d.text.trim().slice(0, MAX_TEXT) : '';
         if (!text) throw new HttpError(400, 'text is required.');
-        const workspace = str(d.workspace, 500), route = str(d.route, 40), status = str(d.status, 40);
+        const workspace = str(d.workspace, 500), route = str(d.route, 40), status = str(d.status, 40), turn_id = str(d.turn_id, 80);
         let p: LayaPrediction | undefined;
         try { p = await deps.laya(text, workspace ?? undefined); } catch { throw new HttpError(502, 'Laya did not answer.'); }
         if (!p) throw new HttpError(503, 'Laya is busy. Try again shortly.');
-        await keepLaya(text, p, { workspace, route, status });
+        await keepLaya(text, p, { workspace, route, status, turn_id });
         return send(200, p), true;
+      }
+      // Live Laya, when the turn ends: who really decided, how it ended, and the ids a Keep/Undo (laya_outcome) carries, for the row
+      // the ask above kept under the gateway's turn_id. 404 when there is none (Laya never answered the server, or not yet).
+      if (a === 'laya' && b === 'turn' && !c && m === 'POST') {
+        if (!layaCalls.take(uid)) throw tooMany(layaCalls, uid);
+        const d = await json(req, 20_000);
+        const turn_id = str(d.turn_id, 80);
+        if (!turn_id) throw new HttpError(400, 'turn_id is required.');
+        // Only the fields sent are set: the app role may write these columns but not read them back.
+        const set = Object.entries({ decided_by: str(d.decided_by, 20), route: str(d.route, 40), status: str(d.status, 40), session_id: str(d.session_id, 200), response_id: str(d.response_id, 200) })
+          .filter(([, v]) => v !== null);
+        if (!set.length) throw new HttpError(400, 'Nothing to update.');
+        const r = await q((cl) => cl.query(`UPDATE laya_shadow SET ${set.map(([k], i) => `${k} = $${i + 2}`).join(', ')} WHERE turn_id = $1`, [turn_id, ...set.map(([, v]) => v)]));
+        if (!r.rowCount) throw new HttpError(404, 'No Laya request with that turn_id.');
+        return send(200, { updated: true }), true;
       }
       // Live Laya: the gateway forwards each edit kept or undone (its /v1/agentic/outcome), to judge Laya's picks above.
       if (a === 'laya' && b === 'outcome' && !c && m === 'POST') {

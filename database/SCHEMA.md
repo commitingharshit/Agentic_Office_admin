@@ -551,6 +551,10 @@ Laya shadow mode: a request's last user message and Laya's predicted pattern, fr
 | workspace | text | yes |  |
 | route | text | yes |  |
 | status | text | yes |  |
+| turn_id | text | yes |  |
+| decided_by | text | yes |  |
+| session_id | text | yes |  |
+| response_id | text | yes |  |
 
 **Constraints**
 - foreign key: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
@@ -558,6 +562,7 @@ Laya shadow mode: a request's last user message and Laya's predicted pattern, fr
 
 **Indexes**
 - `USING btree (created_at)`
+- `USING btree (user_id, turn_id) WHERE (turn_id IS NOT NULL)`
 - `USING btree (user_id)`
 - `UNIQUE USING btree (id)`
 

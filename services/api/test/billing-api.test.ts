@@ -184,7 +184,7 @@ test('Laya shadow: an answered request is predicted and kept; a refused one, or 
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(layaSaw.length, sawBefore, 'a refused request is never sent to Laya');
   assert.equal((await rows()).length, 1);
-  assert.equal((await app.query('SELECT count(*) FROM laya_shadow').catch((e) => e)).code, '42501', 'the app role can write but not read');
+  assert.equal((await app.query('SELECT request_text FROM laya_shadow').catch((e) => e)).code, '42501', 'the app role can write but not read');
   layaBehaviour = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8 }, model: 'laya_test' }; };
 });
 
@@ -206,6 +206,22 @@ test('Laya shadow for the app: /v1/laya/predict keeps the request with the route
   assert.equal((await post('/v1/laya/predict', u.tok, { text: 'down' })).status, 502);
   assert.equal((await rows()).length, 1, 'nothing is kept without a prediction');
   layaBehaviour = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8 }, model: 'laya_test' }; };
+});
+
+test('Live Laya: /v1/laya/turn fills in who decided, how the turn ended and its ids, for the ask kept under that turn_id', { skip }, async () => {
+  const u = await signedIn('layaturn'), other = await signedIn('layaturn2');
+  const rows = async () => (await owner.query('SELECT turn_id, decided_by, route, status, session_id, response_id FROM laya_shadow WHERE user_id = $1 ORDER BY id', [u.id])).rows;
+  assert.equal((await post('/v1/laya/predict', u.tok, { text: 'make a deck', route: 'laya_live:rules_single', status: 'pending', turn_id: 't1' })).status, 200);
+  assert.equal((await post('/v1/laya/turn', null, { turn_id: 't1' })).status, 401);
+  assert.equal((await post('/v1/laya/turn', u.tok, {})).status, 400);
+  assert.equal((await post('/v1/laya/turn', u.tok, { turn_id: 't1' })).status, 400, 'nothing to update');
+  assert.equal((await post('/v1/laya/turn', u.tok, { turn_id: 'nope', status: 'failed' })).status, 404);
+  assert.equal((await post('/v1/laya/turn', other.tok, { turn_id: 't1', decided_by: 'rules' })).status, 404, "another person's row is not theirs to change");
+  const r = await post('/v1/laya/turn', u.tok, { turn_id: 't1', decided_by: 'laya', route: 'inline', status: 'succeeded', session_id: 's1', response_id: 'r1' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await rows(), [{ turn_id: 't1', decided_by: 'laya', route: 'inline', status: 'succeeded', session_id: 's1', response_id: 'r1' }]);
+  assert.equal((await post('/v1/laya/turn', u.tok, { turn_id: 't1', status: 'failed' })).status, 200);
+  assert.deepEqual((await rows())[0], { turn_id: 't1', decided_by: 'laya', route: 'inline', status: 'failed', session_id: 's1', response_id: 'r1' }, 'fields left out stay as they were');
 });
 
 test('Live Laya: /v1/laya/outcome keeps each edit kept or undone', { skip }, async () => {
