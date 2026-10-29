@@ -90,6 +90,7 @@ test('every admin route is checked on the server, per role (the console hiding a
     ['POST', `/admin/users/${target}/credits`, { amount: 5, reason: 'rbac matrix' }, ['superadmin', 'finance']],
     ['POST', '/admin/coupons', { code: `RBAC-${tag}-X`.toUpperCase(), amount: 1 }, ['superadmin', 'finance']],
     ['POST', `/admin/users/${target}/plan`, { plan_id: 'beta' }, ['superadmin', 'finance']],
+    ['GET', `/admin/users/${target}/memories`, undefined, ['superadmin', 'engineer', 'support', 'finance', 'analyst']],
     ['GET', `/admin/users/${target}/sign-ins`, undefined, ['superadmin', 'engineer', 'support', 'analyst']],
     ['GET', `/admin/users/${target}/keycloak`, undefined, ['superadmin', 'engineer', 'support', 'analyst']],
     ['GET', '/admin/sessions', undefined, ['superadmin', 'engineer', 'support', 'analyst']],

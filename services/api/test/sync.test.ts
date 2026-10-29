@@ -185,6 +185,20 @@ test('two devices cannot silently overwrite a memory or resurrect a private one'
   assert.equal((await call('/v1/memory', tokenA())).body.memories.some((m: { memory_id: string }) => m.memory_id === mid), false);
 });
 
+test('memory text reaches admins, not the SQL runner, and goes when the memory is forgotten', { skip }, async () => {
+  const mid = `mem_text_${tag}`;
+  assert.equal((await call(`/v1/memory/${mid}`, tokenA(), { method: 'PUT', body: JSON.stringify({ source_version: 'v1', kind: 'preference', expected_version: null, content: 'Prefers short replies' }) })).status, 200);
+  const uid = (await owner.query('SELECT id FROM users WHERE clerk_user_id = $1', [A])).rows[0].id;
+  const adminTok = mint({ sub: ADM, email: `adm.${tag}@example.test`, role: 'admin' });
+  const seen = await call(`/admin/users/${uid}/memories`, adminTok);
+  assert.equal(seen.status, 200);
+  assert.equal(seen.body.memories.find((m: { memory_id: string }) => m.memory_id === mid).content, 'Prefers short replies');
+  assert.equal((await call(`/admin/users/${uid}/memories`, tokenA())).status, 403);
+  await assert.rejects(ro.query('SELECT content FROM memory_contents'), /permission denied/);
+  assert.equal((await call(`/v1/memory/${mid}`, tokenA(), { method: 'DELETE', body: JSON.stringify({ expected_version: 'v1' }) })).status, 200);
+  assert.equal((await owner.query('SELECT count(*)::int AS n FROM memory_contents WHERE memory_id = $1', [mid])).rows[0].n, 0);
+});
+
 test('admins sign in with Clerk: role claim or our admin row; others get 403', { skip }, async () => {
   const adminTok = mint({ sub: ADM, email: `adm.${tag}@example.test`, role: 'admin' });
   const ok = await call('/admin/me', adminTok);

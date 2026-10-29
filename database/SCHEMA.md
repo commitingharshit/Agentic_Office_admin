@@ -535,6 +535,28 @@ Laya shadow mode: a request's last user message and Laya's predicted pattern, fr
 
 **Grants**: ao_admin (DELETE, SELECT); ao_app (INSERT); ao_owner (DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE); ao_readonly (SELECT)
 
+### memory_contents  (row-level security)
+
+The plaintext of each synced memory, for administrators to read in the console. Not readable by the SQL runner. Removed when the person forgets the memory.
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| memory_id | text | no |  |
+| user_id | text | no |  |
+| content | text | no |  |
+| updated_at | timestamp with time zone | no | `now()` |
+
+**Constraints**
+- foreign key: `FOREIGN KEY (memory_id) REFERENCES memory_references(memory_id) ON DELETE CASCADE`
+- foreign key: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- primary key: `PRIMARY KEY (memory_id)`
+
+**Indexes**
+- `USING btree (user_id)`
+- `UNIQUE USING btree (memory_id)`
+
+**Grants**: ao_admin (DELETE, INSERT, SELECT, UPDATE); ao_app (DELETE, INSERT, SELECT, UPDATE); ao_owner (DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE)
+
 ### oauthAccessToken
 
 Retired (Better Auth): access tokens issued by the old sign-in service.
@@ -2611,7 +2633,7 @@ Metadata of document saves the sync API accepted (revision number, size, hash). 
 
 ### memory_references  (row-level security)
 
-Pointers to agent memory items a person synced (id and kind only, never the memory text).
+Pointers to agent memory items a person synced: id, kind and version. The text is in memory_contents.
 
 | Column | Type | Null | Default |
 |---|---|---|---|
