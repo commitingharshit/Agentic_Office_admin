@@ -208,6 +208,20 @@ test('Laya shadow for the app: /v1/laya/predict keeps the request with the route
   layaBehaviour = async (t) => { layaSaw.push(t); return { pattern: 'direct', confidence: 0.8, probabilities: { direct: 0.8 }, model: 'laya_test' }; };
 });
 
+test('Live Laya: /v1/laya/outcome keeps each edit kept or undone', { skip }, async () => {
+  const u = await signedIn('layaout');
+  const rows = async () => (await owner.query('SELECT accepted, source, file, count, authors, session_id, response_id FROM laya_outcome WHERE user_id = $1 ORDER BY id', [u.id])).rows;
+  assert.equal((await post('/v1/laya/outcome', null, { accepted: true })).status, 401);
+  assert.equal((await post('/v1/laya/outcome', u.tok, { accepted: 'yes' })).status, 400);
+  assert.equal((await post('/v1/laya/outcome', u.tok, { accepted: true, source: 'chat', file: 'deck.pptx', session_id: 's1', response_id: 'r1' })).status, 200);
+  assert.equal((await post('/v1/laya/outcome', u.tok, { accepted: false, source: 'changes', count: 3, authors: ['assistant'] })).status, 200);
+  assert.deepEqual(await rows(), [
+    { accepted: true, source: 'chat', file: 'deck.pptx', count: null, authors: null, session_id: 's1', response_id: 'r1' },
+    { accepted: false, source: 'changes', file: null, count: 3, authors: ['assistant'], session_id: null, response_id: null },
+  ]);
+  assert.equal((await app.query('SELECT count(*) FROM laya_outcome').catch((e) => e)).code, '42501', 'the app role can write but not read');
+});
+
 test('managed inference: what is sent upstream is bounded by what was reserved', { skip }, async () => {
   const u = await signedIn('bound'); await toBeta(u.id); await grantTo(u.id, 100_000);
   let seen: Record<string, unknown> = {};
