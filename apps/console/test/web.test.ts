@@ -199,7 +199,15 @@ test('an admin sees the console, with real data, and nothing secret in the page'
   const detail = await get(`/admin/users/${target.id}`, { cookie: a.cookie });
   assert.equal(detail.status, 200);
   assert.ok(detail.body.includes(target.email));
-  assert.match(detail.body, /Documents, transcripts and memories are encrypted/);
+  assert.match(detail.body, /Documents and transcripts are encrypted/);
+  // The Memories tab shows each synced memory's text, newest first, and opening it is audited.
+  await owner.query(`INSERT INTO memory_references(memory_id, user_id, memory_uri, source_version, kind) VALUES ($1, $2, $3, 'v1', 'preference')`, [`mem_web_${tag}`, target.id, `mnemo://${target.id}/mem_web_${tag}`]);
+  await owner.query('INSERT INTO memory_contents(memory_id, user_id, content) VALUES ($1, $2, $3)', [`mem_web_${tag}`, target.id, 'Prefers short replies, no emojis']);
+  const mems = await get(`/admin/users/${target.id}?tab=memories`, { cookie: a.cookie });
+  assert.equal(mems.status, 200);
+  assert.match(mems.body, /Prefers short replies, no emojis/);
+  assert.match(mems.body, /preference/);
+  assert.equal((await owner.query(`SELECT count(*)::int AS n FROM admin_audit WHERE action = 'view_memories' AND target_user_id = $1`, [target.id])).rows[0].n, 1);
   const coupons = await get('/admin/coupons', { cookie: a.cookie });
   assert.equal(coupons.status, 200);
   assert.match(coupons.body, /never a credential/);

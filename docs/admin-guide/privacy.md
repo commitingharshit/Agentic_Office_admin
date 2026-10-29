@@ -12,7 +12,6 @@ The admin API reads account data through a read-only database role. The queries 
 
 - Document content, prompts, transcripts and model answers. They are encrypted on the person's devices.
 - File names, workspace names and session titles. A user export leaves these columns out.
-- Memories: only the count and stored size of a person's memories are shown, never their text or names.
 - The contents of synced events. `session_events.payload` is never selected, and the read-only database role is not even granted that column. Only an event's type, count and time are shown.
 - API key secrets. Keys are stored as hashes, and no admin page lists or reveals them.
 - Passwords and one-time codes. Keycloak keeps those; the console shows only whether an authenticator app is set up.
@@ -24,6 +23,7 @@ Run, session and usage pages show ids, counts, timings, states and token numbers
 - Account facts: email, display name, sign-in provider, status, plan, dates, last activity, number of devices, workspaces, sessions, memories and bytes stored.
 - Sign-in facts: device names and platforms, browser user agent, and IP addresses of sign-ins, as recorded from Keycloak.
 - Credit ledger rows, with the reasons administrators typed.
+- Memories: the text of each memory a person's devices synced (what the assistant remembers about them), its type, project and last change, on the Memories tab of the User detail page. Memories kept "on this computer only" never reach the server. The text is read through the admin database role only; the SQL runner cannot read it. Every opening of the tab is audited as `view_memories`.
 - Text people chose to write for you: support tickets and replies, marketplace reviews, and install failure reasons (device-reported, with hosts, urls, emails, paths and ids removed).
 - Order amounts, provider references and the bank reference an administrator typed.
 
