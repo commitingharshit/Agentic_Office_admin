@@ -188,7 +188,7 @@ async function main() {
   await waitFor(async () => { const c = new pg.Client({ connectionString: dburl }); try { await c.connect(); await c.query('SELECT 1'); return true; } finally { await c.end().catch(() => {}); } }, 'postgres', 90_000);
   await sleep(1500);   // the image restarts once after init
   await waitFor(async () => { const c = new pg.Client({ connectionString: dburl }); try { await c.connect(); await c.query('SELECT 1'); return true; } finally { await c.end().catch(() => {}); } }, 'postgres after init', 60_000);
-  const mig = execFileSync('node', ['db/migrate.ts'], { cwd: sync, env: { ...env0, DATABASE_URL: dburl, ...pw }, encoding: 'utf8' });
+  const mig = execFileSync('node', ['../../database/migrate.ts'], { cwd: sync, env: { ...env0, DATABASE_URL: dburl, ...pw }, encoding: 'utf8' });
   const applied = (mig.match(/^applied /gm) ?? []).length;
   must(applied >= 30, `expected migrations 0001-0030 applied, saw ${applied}`);
   owner = new pg.Client({ connectionString: dburl }); await owner.connect();

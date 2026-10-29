@@ -5,6 +5,7 @@ import { ErrorState, Flash, PageHeader, Section, StatusBadge } from '../../../..
 import { load } from '../../../../lib/admin-api';
 import { adminContext } from '../../../../lib/session';
 import { replyTicket, setTicketStatus } from '../../actions';
+import { EntityHistory } from '../../../../components/admin/EntityHistory';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Ticket' };
@@ -31,6 +32,7 @@ export default async function Ticket({ params, searchParams }: { params: Promise
             <label className="field" style={{ flex: 1, minWidth: 280 }}><span>Message</span><textarea name="body" required rows={4} maxLength={4000} style={{ width: '100%' }} /></label>
             <button className="btn primary">Send reply</button></form>
         </Section>)}
+      <EntityHistory type="ticket" id={id} />
     </>
   );
 }

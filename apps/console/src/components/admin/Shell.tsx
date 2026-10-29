@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { authClient } from '../../lib/auth-client';
 import { HelpPanel } from './HelpPanel';
+import { crumbLabel } from '../../lib/entities';
 import { Icon } from './Icon';
 import type { NavGroup } from './nav';
 
@@ -32,7 +33,20 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, helpOn, children }:
     const pages = items.filter((i) => !q || i.label.toLowerCase().includes(q)).map((i) => ({ href: i.href, label: i.label, group: 'Go to', icon: i.icon }));
     const ask = q ? [{ href: '#help', label: `Ask the help assistant: “${query.trim()}”`, group: 'Help', icon: 'search' as const }] : [{ href: '#help', label: 'Ask the help assistant', group: 'Help', icon: 'search' as const }];
     const find = q ? [{ href: `/admin/users?q=${encodeURIComponent(query.trim())}`, label: `Find a user: “${query.trim()}”`, group: 'Search', icon: 'search' as const }] : [];
-    return [...ask, ...find, ...pages];
+    // An id pasted from a log, a ticket or an email: open it as each kind of thing, or read its audit trail. No guessing which kind it is.
+    const raw = query.trim();
+    const e = encodeURIComponent(raw);
+    const byId = /^[A-Za-z0-9_.:@-]{8,120}$/.test(raw) ? [
+      ...(/^usr_/.test(raw) ? [{ href: `/admin/users/${e}`, label: `Open user ${raw}`, group: 'Open id', icon: 'user' as const }] : []),
+      { href: `/admin/payments/${e}`, label: `Open payment ${raw}`, group: 'Open id', icon: 'billing' as const },
+      { href: `/admin/runs/${e}`, label: `Open agent run ${raw}`, group: 'Open id', icon: 'runs' as const },
+      { href: `/admin/sessions/${e}`, label: `Open session ${raw}`, group: 'Open id', icon: 'sessions' as const },
+      { href: `/admin/support/${e}`, label: `Open ticket ${raw}`, group: 'Open id', icon: 'support' as const },
+      { href: `/admin/marketplace/versions/${e}`, label: `Open marketplace version ${raw}`, group: 'Open id', icon: 'inbox' as const },
+      { href: `/admin/audit?targetId=${e}`, label: `Audit trail for ${raw}`, group: 'Audit', icon: 'security' as const },
+    ] : [];
+    const trail = q && !byId.length ? [{ href: `/admin/audit?q=${encodeURIComponent(raw)}`, label: `Search the audit log for “${raw}”`, group: 'Audit', icon: 'security' as const }] : [];
+    return [...ask, ...byId, ...find, ...trail, ...pages];
   }, [items, query]);
 
   useEffect(() => {
@@ -50,11 +64,11 @@ export function Shell({ nav, admin, mfaOff, healthy, alerts, helpOn, children }:
     const segs = path.split('/').filter(Boolean).slice(1);
     const out: Array<{ href: string; label: string }> = [{ href: '/admin', label: 'Admin' }];
     let acc = '/admin';
-    for (const s of segs) {
+    segs.forEach((s, n) => {
       acc += `/${s}`;
       const known = items.find((i) => i.href === acc);
-      out.push({ href: acc, label: known?.label ?? (isId(s) ? s.slice(0, 14) + (s.length > 14 ? '…' : '') : s.replace(/-/g, ' ')) });
-    }
+      out.push({ href: acc, label: known?.label ?? (isId(s) ? crumbLabel(segs[n - 1], decodeURIComponent(s)) : s.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase())) });
+    });
     return out;
   }, [path, items]);
 

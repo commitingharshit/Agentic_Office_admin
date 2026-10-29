@@ -7,6 +7,7 @@ import { load } from '../../../../../lib/admin-api';
 import { ADVANCED_TYPES, isSensitiveCapability, label } from '../../../../../lib/marketplace';
 import { adminContext } from '../../../../../lib/session';
 import { approveReviewed } from '../../actions';
+import { EntityHistory } from '../../../../../components/admin/EntityHistory';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Marketplace Version' };
@@ -74,6 +75,7 @@ export default async function VersionPage({ params, searchParams }: { params: Pr
       <Section title="Release events" count={(v.events as any[]).length}>
         {(v.events as any[]).length ? <Timeline items={(v.events as any[]).map((e) => ({ at: e.at, title: <>{e.event} <span className="faint">by {e.actor ?? 'system'}</span></>, detail: e.detail?.reason ? `Reason: ${e.detail.reason}` : e.detail?.from ? `${e.detail.from} to ${e.detail.to}` : undefined, tone: ['rejected', 'quarantined', 'revoked'].includes(e.event) ? 'bad' : e.event === 'published' ? 'ok' : undefined }))} /> : <p className="hint">No release events.</p>}
       </Section>
+      <EntityHistory type="marketplace_version" id={id} />
       <p><Link className="btn" href="/admin/marketplace/catalog">Back to the catalog</Link></p>
     </>
   );

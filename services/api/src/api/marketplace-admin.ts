@@ -23,6 +23,7 @@ import { runPipeline } from '../marketplace/verify/runner.ts';
 import { MAX_RESULT_BYTES, type PipelineTools } from '../marketplace/verify/types.ts';
 import { claimJob, clampLease, clipErr, enqueueJob, failJob, heartbeatJob, latestJob, lockLeased, validWorkerId, LeaseLostError } from '../marketplace/verify/jobs.ts';
 import { checkApprovalGate, latestVerification, normaliseResult, recordVerification, validateAgainstVersion, VerificationError, toView } from '../marketplace/verifyStore.ts';
+import { deriveEntity } from './audit-entity.ts';
 
 export interface MarketplaceAdminDeps {
   /** ao_admin. The only pool this module touches. */
@@ -209,7 +210,8 @@ export function marketplaceAdminHandler(deps: MarketplaceAdminDeps) {
     finally { c.release(); }
   }
   const audit = (c: Client, adminId: string, action: string, target: string | null, detail: Record<string, unknown>) =>
-    c.query('INSERT INTO admin_audit(admin_user_id, action, target_user_id, detail) VALUES ($1,$2,$3,$4)', [adminId, `marketplace.${action}`, target, JSON.stringify(detail)]);
+    c.query('INSERT INTO admin_audit(admin_user_id, action, target_user_id, target_type, target_id, detail) VALUES ($1,$2,$3,$4,$5,$6)',
+      [adminId, `marketplace.${action}`, target, deriveEntity(action, target, detail)?.type ?? null, deriveEntity(action, target, detail)?.id ?? null, JSON.stringify(detail)]);
   /** A read: the query and its audit row share one transaction. */
   const read = <T>(adminId: string, action: string, target: string | null, detail: Record<string, unknown>, fn: (c: Client) => Promise<T>) =>
     tx(async (c) => { const r = await fn(c); await audit(c, adminId, action, target, detail); return r; });

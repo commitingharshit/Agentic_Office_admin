@@ -21,6 +21,7 @@ import { keycloakView, mirrorKeycloak } from './keycloak-link.ts';
 import { publicStatus } from '../status/probe.ts';
 import * as consoleApi from './admin-console.ts';
 import { can, permissionsOf, isAdminRole, type AdminRole, type Permission } from './rbac.ts';
+import { deriveEntity } from './audit-entity.ts';
 
 export interface AdminDeps {
   ro: pg.Pool;
@@ -83,7 +84,8 @@ export async function authenticate(req: IncomingMessage, deps: AdminDeps): Promi
 }
 
 async function auditRow(deps: AdminDeps, adminId: string, action: string, target: string | null, detail: Record<string, unknown> = {}) {
-  await deps.admin.query('INSERT INTO admin_audit(admin_user_id, action, target_user_id, detail) VALUES ($1,$2,$3,$4)', [adminId, action, target, JSON.stringify(detail)]);
+  const e = deriveEntity(action, target, detail);
+  await deps.admin.query('INSERT INTO admin_audit(admin_user_id, action, target_user_id, target_type, target_id, detail) VALUES ($1,$2,$3,$4,$5,$6)', [adminId, action, target, e?.type ?? null, e?.id ?? null, JSON.stringify(detail)]);
 }
 
 async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -270,12 +272,27 @@ export async function auditLog(deps: AdminDeps, q: URLSearchParams) {
   const size = int(q.get('pageSize'), 50, 10, 200), page = int(q.get('page'), 0, 0, 1_000_000);
   const args: unknown[] = [];
   const where: string[] = [];
-  if (q.get('action')) { args.push(q.get('action')); where.push(`action = $${args.length}`); }
-  if (q.get('target')) { args.push(q.get('target')); where.push(`target_user_id = $${args.length}`); }
+  const eq = (col: string, v: string | null) => { if (v) { args.push(v); where.push(`${col} = $${args.length}`); } };
+  eq('a.action', q.get('action'));
+  eq('a.target_user_id', q.get('target'));
+  eq('a.target_type', q.get('targetType'));
+  eq('a.target_id', q.get('targetId'));
+  eq('a.admin_user_id', q.get('admin'));
+  const day = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const from = day(q.get('from')), to = day(q.get('to'));
+  if (from) { args.push(from); where.push(`a.at >= $${args.length}::date`); }
+  if (to) { args.push(to); where.push(`a.at < ($${args.length}::date + 1)`); }
+  const text = q.get('q')?.trim().slice(0, 100);
+  if (text) { args.push(`%${text.replace(/[\\%_]/g, '\\$&')}%`); where.push(`(a.action ILIKE $${args.length} OR a.detail::text ILIKE $${args.length} OR a.target_id ILIKE $${args.length})`); }
   const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const [{ total }] = await rows(deps.ro, `SELECT count(*)::int AS total FROM admin_audit ${w}`, args);
-  const list = await rows(deps.ro, `SELECT id::int, admin_user_id, action, target_user_id, detail, at FROM admin_audit ${w} ORDER BY at DESC, id DESC LIMIT ${size} OFFSET ${page * size}`, args);
-  return { total, page, pageSize: size, entries: list };
+  const [{ total }] = await rows(deps.ro, `SELECT count(*)::int AS total FROM admin_audit a ${w}`, args);
+  // The administrator and a user target are shown by name and email, not only by id: users.id is what admin_user_id holds for a signed-in admin.
+  const list = await rows(deps.ro, `SELECT a.id::int, a.admin_user_id, au.email AS admin_email, au.display_name AS admin_name, a.action, a.target_user_id, tu.email AS target_email,
+      a.target_type, a.target_id, a.detail, a.at
+    FROM admin_audit a LEFT JOIN users au ON au.id = a.admin_user_id LEFT JOIN users tu ON tu.id = a.target_user_id
+    ${w} ORDER BY a.at DESC, a.id DESC LIMIT ${size} OFFSET ${page * size}`, args);
+  const actions = (await rows(deps.ro, `SELECT DISTINCT action FROM admin_audit ORDER BY 1 LIMIT 300`)).map((r) => r.action as string);
+  return { total, page, pageSize: size, entries: list, actions };
 }
 
 /** One read-only statement as ao_readonly (the role is read-only and has a 30 s timeout; this adds a row cap). */

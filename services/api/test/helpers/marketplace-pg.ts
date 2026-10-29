@@ -56,7 +56,7 @@ export async function startMarketplacePg(): Promise<MarketplacePg> {
     CREATE POLICY own_rows ON devices USING (user_id = current_setting('app.user_id', true));
     GRANT SELECT ON devices TO ao_app;
     CREATE TABLE admin_audit (
-      id bigserial PRIMARY KEY, admin_user_id text NOT NULL, action text NOT NULL, target_user_id text,
+      id bigserial PRIMARY KEY, admin_user_id text NOT NULL, action text NOT NULL, target_user_id text, target_type text, target_id text,
       detail jsonb NOT NULL DEFAULT '{}', at timestamptz NOT NULL DEFAULT now());
     GRANT SELECT ON users, devices TO ao_admin, ao_readonly;
     GRANT SELECT, INSERT ON admin_audit TO ao_admin;

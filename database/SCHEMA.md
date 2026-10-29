@@ -1296,6 +1296,8 @@ Every admin view of a user, every admin action, every admin SQL query.
 | target_user_id | text | yes |  |
 | detail | jsonb | no | `'{}'::jsonb` |
 | at | timestamp with time zone | no | `now()` |
+| target_type | text | yes |  |
+| target_id | text | yes |  |
 
 **Constraints**
 - primary key: `PRIMARY KEY (id)`
@@ -1303,7 +1305,9 @@ Every admin view of a user, every admin action, every admin SQL query.
 **Indexes**
 - `UNIQUE USING btree (id)`
 - `USING btree (action, at DESC)`
+- `USING btree (admin_user_id, at DESC)`
 - `USING btree (at DESC)`
+- `USING btree (target_type, target_id, at DESC) WHERE (target_id IS NOT NULL)`
 
 **Grants**: ao_admin (INSERT, SELECT); ao_owner (DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE); ao_readonly (SELECT)
 

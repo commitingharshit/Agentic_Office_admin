@@ -339,7 +339,7 @@ export async function sweepGuardrails(deps: AdminDeps): Promise<string[]> {
     [GUARDRAILS.minImpressions, GUARDRAILS.maxDismissRate]);
   for (const { id } of bad) {
     await deps.admin.query(`UPDATE campaigns SET status = 'paused', paused_reason = 'guardrail: dismiss rate', updated_at = now() WHERE id = $1 AND status = 'live'`, [id]);
-    await deps.admin.query('INSERT INTO admin_audit(admin_user_id, action, target_user_id, detail) VALUES ($1,$2,$3,$4)', ['system', 'guardrail_pause', null, JSON.stringify({ campaign: id })]);
+    await deps.admin.query('INSERT INTO admin_audit(admin_user_id, action, target_user_id, target_type, target_id, detail) VALUES ($1,$2,$3,$4,$5,$6)', ['system', 'guardrail_pause', null, 'campaign', id, JSON.stringify({ campaign: id })]);
   }
   return bad.map((b) => b.id);
 }
