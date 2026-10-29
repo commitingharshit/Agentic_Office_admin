@@ -1,0 +1,19 @@
+# Turns on auto-merge for pull requests from trusted authors; GitHub then merges each one once the required checks
+# (branch protection on main: api, console, secrets) pass. It never checks out or runs the PR's code.
+name: automerge
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  enable:
+    if: ${{ !github.event.pull_request.draft && contains(fromJSON('["commitingharshit","iprashantraj"]'), github.event.pull_request.user.login) }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh pr merge --auto --merge "$PR"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.html_url }}
