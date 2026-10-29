@@ -100,7 +100,7 @@ const pricing = parsePricing(env.AO_PRICING);
 const upstream = env.AO_UPSTREAM_URL && env.AO_UPSTREAM_KEY ? httpUpstream(env.AO_UPSTREAM_URL, env.AO_UPSTREAM_KEY) : undefined;
 const streamUpstream = env.AO_UPSTREAM_URL && env.AO_UPSTREAM_KEY ? httpStreamUpstream(env.AO_UPSTREAM_URL, env.AO_UPSTREAM_KEY) : undefined;
 const laya = env.LAYA_URL ? httpLaya(env.LAYA_URL, env.LAYA_API_KEY || undefined) : undefined;
-// laya_shadow holds people's own words: nothing older than 60 days stays (database/migrations/0034_laya_shadow.sql).
+// laya_shadow holds people's own words: nothing older than 60 days stays (database/migrations/0035_laya_shadow.sql).
 const pruneLaya = () => { deps.admin.query(`DELETE FROM laya_shadow WHERE created_at < now() - interval '60 days'`).catch((e) => console.error('laya_shadow cleanup failed:', e.message)); };
 pruneLaya(); setInterval(pruneLaya, 3_600_000).unref();
 const authIssuer = env.AUTH_ISSUER?.replace(/\/+$/, '');

@@ -24,7 +24,7 @@ if (process.argv.includes('--status')) {
 }
 
 // Files renumbered after some database had already applied them under the old name (same SQL, new prefix): record the new name instead of running them twice.
-const RENAMED: Record<string, string> = { '0029_growth.sql': '0021_growth.sql', '0030_releases_email.sql': '0022_releases_email.sql' };
+const RENAMED: Record<string, string> = { '0029_growth.sql': '0021_growth.sql', '0030_releases_email.sql': '0022_releases_email.sql', '0035_laya_shadow.sql': '0034_laya_shadow.sql', '0036_laya_shadow_app.sql': '0035_laya_shadow_app.sql' };
 
 for (const f of files) {
   if (done.has(f)) continue;
