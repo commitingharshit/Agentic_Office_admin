@@ -397,6 +397,10 @@ export function syncHandler(deps: SyncDeps) {
       if (a === 'support' && b === 'tickets' && c && m === 'POST') { const d = await json(req, 8_000); return send(200, await q((cl) => ops.userReply(cl, uid, c, d))), true; }
       // ── opt-in usage sharing and run telemetry (src/api/telemetry.ts: nothing is stored while sharing is off; free text is refused)
       if (a === 'me' && b === 'usage-consent' && m === 'GET') return send(200, await q(telemetry.getConsent)), true;
+      if (a === 'me' && b === 'telemetry-allowed' && m === 'GET') {
+        if (!(await q(telemetry.tracesAllowed))) throw new HttpError(403, 'Usage sharing is off.');
+        res.writeHead(204, { 'cache-control': 'no-store' }); res.end(); return true;
+      }
       if (a === 'me' && b === 'usage-consent' && m === 'PUT') { const d = await json(req, 1_000); return send(200, await q((cl) => telemetry.setConsent(cl, uid, d))), true; }
       if (a === 'telemetry' && b === 'runs' && m === 'POST') {
         if (!telemetryCalls.take(uid)) throw tooMany(telemetryCalls, uid);

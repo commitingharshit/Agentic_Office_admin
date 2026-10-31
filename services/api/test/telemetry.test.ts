@@ -156,3 +156,33 @@ test("a record built by Hermes' own sanitizer (a fixture generated from the Pyth
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(await count(u.id), 1);
 });
+
+// The API gate asks this before letting a trace through to the telemetry relay (services/gateway/api-gate.conf, /relay/v1/traces).
+const allowed = async (token: string | null) => {
+  const r = await fetch(base + '/v1/me/telemetry-allowed', { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  return { status: r.status, text: await r.text() };
+};
+
+test('telemetry-allowed answers 204 while sharing', { skip }, async () => {
+  const u = await signedIn('allow');
+  await send('/v1/me/usage-consent', u.tok, { shared: true }, 'PUT');
+  assert.deepEqual(await allowed(u.tok), { status: 204, text: '' });
+});
+
+test('telemetry-allowed answers 403 after sharing is turned off', { skip }, async () => {
+  const u = await signedIn('allowoff');
+  await send('/v1/me/usage-consent', u.tok, { shared: true }, 'PUT');
+  await send('/v1/me/usage-consent', u.tok, { shared: false }, 'PUT');
+  const r = await allowed(u.tok);
+  assert.equal(r.status, 403);
+  assert.match(JSON.parse(r.text).error, /sharing is off/i);
+});
+
+test('telemetry-allowed answers 403 with no consent row', { skip }, async () => {
+  const u = await signedIn('allownone');
+  assert.equal((await allowed(u.tok)).status, 403);
+});
+
+test('telemetry-allowed answers 401 without a token', { skip }, async () => {
+  assert.equal((await allowed(null)).status, 401);
+});
