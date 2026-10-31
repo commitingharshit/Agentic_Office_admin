@@ -51,6 +51,11 @@ export async function getConsent(c: pg.PoolClient) {
   return { shared: r?.shared ?? false, version: r?.version ?? 1, updated_at: r?.updated_at ?? null };
 }
 
+/** Whether this person's request traces may pass the API gate to the telemetry relay (only while they share usage). */
+export async function tracesAllowed(c: pg.PoolClient): Promise<boolean> {
+  return (await getConsent(c)).shared;
+}
+
 /** Turn sharing on or off. Turning it off can also erase what was already shared (the person decides). */
 export async function setConsent(c: pg.PoolClient, userId: string, b: Record<string, unknown>) {
   exact(b, ['shared', 'delete_existing'], 'The request');

@@ -12,6 +12,13 @@ want 200 "$BASE/v1/status"
 want 200 "$BASE/status"
 want '400|401' -X POST -H 'content-type: application/json' --data '{}' "$BASE/v1/auth/exchange"
 want 401 "$BASE/v1/me"
+# the telemetry relay: request traces only, and only with a device token whose person shares usage
+want 200 "$BASE/relay/health"
+want 401 -X POST --data x "$BASE/relay/v1/traces"
+want 401 -X POST -H 'Authorization: Bearer not-a-token' --data x "$BASE/relay/v1/traces"
+want 413 -X POST -H 'Authorization: Bearer not-a-token' --data-binary @<(head -c 5000000 /dev/zero) "$BASE/relay/v1/traces"
+want 404 -X POST --data '{}' "$BASE/relay/laya/predict"
+want 404 "$BASE/relay/"
 # closed: the admin API, and the webhooks nobody has switched on
 for p in / /admin /admin/users /admin/health /admin/growth/campaigns /admin/marketplace /v1/webhooks/resend /v1/payments/webhooks/youpi-experimental /.git/config /metrics; do want 404 "$BASE$p"; done
 want 404 -X POST --data '{}' "$BASE/v1/webhooks/resend"
