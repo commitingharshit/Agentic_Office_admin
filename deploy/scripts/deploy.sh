@@ -16,6 +16,9 @@ cd "$(git rev-parse --show-toplevel)"
 if [[ -n "$(git status --porcelain --untracked-files=no)" && -z "${ALLOW_DIRTY:-}" ]]; then echo "uncommitted changes: commit first (the host gets exactly what is committed), or ALLOW_DIRTY=1" >&2; exit 1; fi
 COMMIT=$(git rev-parse --short HEAD); echo "deploying $COMMIT to $HOST:~/$AO_HOME"
 ssh_() { ssh -o BatchMode=yes "$HOST" "$@"; }
+# A gate's config is one bind-mounted file; step 2 replaces that file, and a running container keeps reading the old one, so `up` alone
+# leaves the old rules live. Check the new file in a throwaway container, then recreate the gate (about a second without it).
+gate_() { echo "deploy/stack.sh $1 run --rm --no-deps -T --entrypoint nginx $2 -t -q && deploy/stack.sh $1 up -d --no-deps --force-recreate $2"; }
 
 echo "1/8 dump the live database"
 DUMP=$(ssh_ 'mkdir -p ~/ao-backups-manual; f=~/ao-backups-manual/pre-platform-$(date -u +%Y%m%dT%H%M%SZ).dump; docker exec ao-live-postgres-1 sh -c "pg_dump -U ao_owner -Fc agentic_office" > $f; echo $f')
@@ -39,10 +42,10 @@ echo "5/8 migrate (the migrator records the renamed growth migrations instead of
 ssh_ "cd ~/$AO_HOME/database && (set -a; . ../deploy/compose/api/.env; set +a; docker run --rm --network ao-live_default -v \"\$PWD\":/w -w /w -e DATABASE_URL=\"postgres://ao_owner:\${PG_OWNER_PASSWORD}@postgres:5432/agentic_office\" -e AO_APP_PASSWORD -e AO_READONLY_PASSWORD -e AO_ADMIN_PASSWORD -e AO_AUTH_PASSWORD -e AO_BILLING_PASSWORD node:24.15.0-alpine sh -c 'npm ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null && node migrate.ts')"
 
 echo "6/8 build images, then start: gate first (sign-in stays reachable), then API, verifier, prober, media worker"
-ssh_ "cd ~/$AO_HOME && deploy/stack.sh api build api media-worker prober >/dev/null && deploy/stack.sh api up -d --no-deps api-gate && deploy/stack.sh api up -d --no-deps api && (docker image inspect ao-verifier:latest >/dev/null 2>&1 && deploy/stack.sh api up -d --no-deps verifier || true) && deploy/stack.sh api up -d --no-deps prober && deploy/stack.sh api up -d --no-deps minio-init media-worker && sleep 8 && docker logs --tail 12 ao-live-api-1 2>&1 | sed -E 's/(key|secret|token)=[^ ]+/\\1=<hidden>/Ig'"
+ssh_ "cd ~/$AO_HOME && deploy/stack.sh api build api media-worker prober >/dev/null && $(gate_ api api-gate) && deploy/stack.sh api up -d --no-deps api && (docker image inspect ao-verifier:latest >/dev/null 2>&1 && deploy/stack.sh api up -d --no-deps verifier || true) && deploy/stack.sh api up -d --no-deps prober && deploy/stack.sh api up -d --no-deps minio-init media-worker && sleep 8 && docker logs --tail 12 ao-live-api-1 2>&1 | sed -E 's/(key|secret|token)=[^ ]+/\\1=<hidden>/Ig'"
 
 echo "7/8 console and Keycloak (their compose files moved to this repo; same project names, same volumes)"
-ssh_ "cd ~/$AO_HOME && deploy/stack.sh console up -d --build && deploy/stack.sh keycloak up -d"
+ssh_ "cd ~/$AO_HOME && deploy/stack.sh console up -d --build && deploy/stack.sh keycloak up -d && $(gate_ keycloak gate)"
 
 echo "8/8 checks against the gate on the host"
 ssh_ "cd ~/$AO_HOME && tests/tools/api-gate-check.sh http://127.0.0.1:8183 && tests/tools/keycloak-gate-check.sh http://127.0.0.1:8181"
